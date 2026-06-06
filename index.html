@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Handleliste</title>
+  <meta name="theme-color" content="#2d6a4f" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f7f5f0; --surface: #fff; --ink: #1c1c1e; --ink2: #6b6b6b; --ink3: #aeaead;
+      --accent: #2d6a4f; --accent-light: #d8f3dc; --accent2: #e07a2f;
+      --danger: #c0392b; --border: #e8e4dc; --radius: 14px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+    body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); min-height:100dvh; max-width:480px; margin:0 auto; }
+
+    /* LOGIN */
+    #login-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:2rem; gap:2rem; }
+    .login-logo { font-family:'DM Serif Display',serif; font-size:2.8rem; color:var(--ink); text-align:center; line-height:1.1; }
+    .login-logo span { display:block; font-family:'DM Sans',sans-serif; font-size:1rem; font-weight:300; color:var(--ink2); margin-top:.5rem; }
+    .login-btn { display:flex; align-items:center; gap:12px; background:var(--surface); border:1.5px solid var(--border); border-radius:50px; padding:14px 28px; font-family:'DM Sans',sans-serif; font-size:1rem; font-weight:500; cursor:pointer; color:var(--ink); transition:all .2s; box-shadow:var(--shadow); }
+    .login-btn:hover { transform:translateY(-1px); box-shadow:0 4px 20px rgba(0,0,0,.12); }
+    .google-icon { width:20px; height:20px; }
+
+    /* APP */
+    #app-screen { display:none; flex-direction:column; min-height:100dvh; }
+    header { background:var(--surface); border-bottom:1px solid var(--border); padding:1rem 1.25rem .75rem; position:sticky; top:0; z-index:10; }
+    .header-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+    .app-title { font-family:'DM Serif Display',serif; font-size:1.5rem; color:var(--ink); }
+    .user-area { display:flex; align-items:center; gap:8px; }
+    .avatar { width:32px; height:32px; border-radius:50%; background:var(--accent-light); color:var(--accent); font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1.5px solid var(--accent); }
+    .signout-btn { background:none; border:none; font-size:12px; color:var(--ink3); cursor:pointer; padding:4px 8px; border-radius:6px; }
+    .signout-btn:hover { color:var(--danger); }
+
+    /* NAV TABS */
+    .nav-tabs { display:flex; gap:4px; margin-bottom:.75rem; }
+    .nav-tab { flex:1; background:none; border:1px solid var(--border); border-radius:8px; padding:7px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500; color:var(--ink2); cursor:pointer; transition:all .15s; }
+    .nav-tab.active { background:var(--accent); border-color:var(--accent); color:white; }
+
+    /* ADD FORM */
+    .add-form { display:flex; gap:8px; position:relative; }
+    .add-input { flex:1; border:1.5px solid var(--border); border-radius:50px; padding:10px 16px; font-family:'DM Sans',sans-serif; font-size:15px; background:var(--bg); color:var(--ink); outline:none; transition:border-color .2s; }
+    .add-input:focus { border-color:var(--accent); background:white; }
+    .add-btn { background:var(--accent); color:white; border:none; border-radius:50px; width:42px; height:42px; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .2s; }
+    .add-btn:hover { background:#235c42; }
+    .add-btn:active { transform:scale(.95); }
+
+    /* AUTOCOMPLETE */
+    .autocomplete-list { position:absolute; top:calc(100% + 6px); left:0; right:52px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); z-index:100; overflow:hidden; display:none; }
+    .autocomplete-list.open { display:block; }
+    .autocomplete-item { display:flex; align-items:center; gap:10px; padding:10px 16px; font-size:14px; cursor:pointer; color:var(--ink); transition:background .1s; }
+    .autocomplete-item:hover, .autocomplete-item.ac-active { background:var(--accent-light); color:var(--accent); }
+    .autocomplete-item .ac-sub { color:var(--ink3); font-size:11px; margin-left:auto; }
+
+    /* MAIN */
+    main { flex:1; padding:1rem 1.25rem 6rem; }
+
+    /* SMART BTN */
+    .smart-list-btn { display:flex; align-items:center; gap:8px; width:100%; background:linear-gradient(135deg,#2d6a4f,#40916c); color:white; border:none; border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; box-shadow:0 2px 8px rgba(45,106,79,.25); }
+    .smart-list-btn:hover { transform:translateY(-1px); box-shadow:0 4px 16px rgba(45,106,79,.35); }
+    .smart-list-btn .btn-icon { font-size:18px; }
+    .smart-list-btn .btn-sub { font-size:11px; opacity:.8; margin-left:auto; }
+    .smart-preview { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin-bottom:1rem; display:none; }
+    .smart-preview.open { display:block; }
+    .smart-preview-title { font-size:12px; font-weight:500; color:var(--ink2); margin-bottom:.75rem; }
+    .smart-preview-items { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:.75rem; }
+    .smart-preview-item { display:flex; align-items:center; gap:4px; background:var(--accent-light); color:var(--accent); border-radius:20px; padding:4px 10px; font-size:13px; }
+    .smart-preview-actions { display:flex; gap:8px; }
+    .smart-confirm-btn { flex:1; background:var(--accent); color:white; border:none; border-radius:8px; padding:9px; font-size:13px; font-weight:500; cursor:pointer; }
+    .smart-cancel-btn { background:none; border:1px solid var(--border); color:var(--ink2); border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer; }
+    .smart-thin-msg { font-size:12px; color:var(--ink3); text-align:center; padding:.5rem; }
+
+    /* SUGGESTIONS */
+    .suggestions-section { margin-bottom:1.5rem; }
+    .section-label { font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:.6rem; }
+    .chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .chip { display:flex; align-items:center; gap:5px; background:var(--surface); border:1.5px solid var(--border); border-radius:50px; padding:6px 12px; font-size:13px; color:var(--ink2); cursor:pointer; transition:all .15s; }
+    .chip:hover { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
+    .chip-days { font-size:10px; background:#f0f0f0; border-radius:10px; padding:1px 5px; color:var(--ink3); }
+
+    /* LIST */
+    .list-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+    .clear-done-btn { background:none; border:none; font-size:12px; color:var(--ink3); cursor:pointer; padding:4px 8px; border-radius:6px; }
+    .clear-done-btn:hover { color:var(--danger); }
+    .items-list { display:flex; flex-direction:column; gap:6px; }
+
+    /* CATEGORY GROUP */
+    .cat-group { margin-bottom:1.25rem; }
+    .cat-group-label { font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:.5rem; display:flex; align-items:center; gap:6px; }
+
+    /* ITEM */
+    .item { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; transition:all .2s; animation:slideIn .2s ease; }
+    @keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+    .item.done { opacity:.4; background:var(--bg); }
+    .item.done .item-name { text-decoration:line-through; color:var(--ink3); }
+    .check-btn { width:24px; height:24px; border-radius:50%; border:2px solid var(--border); background:none; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:all .15s; font-size:13px; }
+    .item.done .check-btn { background:var(--accent); border-color:var(--accent); color:white; }
+    .check-btn:hover { border-color:var(--accent); }
+    .item-main { flex:1; min-width:0; }
+    .item-name { font-size:15px; font-weight:400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .item-detail { font-size:11px; color:var(--ink3); margin-top:1px; }
+    .by-whom { font-size:10px; color:var(--accent2); font-weight:500; letter-spacing:.04em; flex-shrink:0; }
+    .qty-wrap { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+    .qty-btn { background:none; border:1px solid var(--border); width:22px; height:22px; border-radius:6px; font-size:14px; cursor:pointer; color:var(--ink2); display:flex; align-items:center; justify-content:center; line-height:1; transition:all .15s; }
+    .qty-btn:hover { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
+    .qty-num { font-size:13px; font-weight:500; min-width:18px; text-align:center; color:var(--ink); }
+    .delete-btn { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:18px; padding:2px 4px; border-radius:6px; line-height:1; transition:color .15s; }
+    .delete-btn:hover { color:var(--danger); }
+    .empty-state { text-align:center; padding:3rem 1rem; color:var(--ink3); }
+    .empty-state .big { font-size:2.5rem; margin-bottom:.5rem; }
+    .empty-state p { font-size:14px; }
+
+    /* UNIT PICKER (inline on item) */
+    .unit-select { font-size:11px; border:1px solid var(--border); border-radius:6px; padding:2px 5px; background:var(--bg); color:var(--ink2); cursor:pointer; }
+
+    /* HISTORY TAB */
+    #history-screen { display:none; }
+    .history-list { display:flex; flex-direction:column; gap:8px; }
+    .history-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; cursor:pointer; }
+    .history-card-header { display:flex; align-items:center; justify-content:space-between; padding:13px 16px; }
+    .history-date { font-weight:500; font-size:14px; }
+    .history-count { font-size:12px; color:var(--ink3); }
+    .history-chevron { color:var(--ink3); font-size:16px; transition:transform .2s; }
+    .history-card.open .history-chevron { transform:rotate(90deg); }
+    .history-items { display:none; padding:0 16px 12px; flex-wrap:wrap; gap:5px; }
+    .history-card.open .history-items { display:flex; }
+    .history-item-chip { font-size:12px; background:var(--bg); border:1px solid var(--border); border-radius:20px; padding:3px 10px; color:var(--ink2); }
+    .history-empty { text-align:center; padding:3rem 1rem; color:var(--ink3); }
+
+    /* RECEIPT SCAN */
+    .receipt-btn { display:flex; align-items:center; gap:8px; width:100%; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; color:var(--ink2); }
+    .receipt-btn:hover { border-color:var(--accent2); color:var(--accent2); background:#FFF8F3; }
+    .receipt-btn .btn-icon { font-size:18px; }
+    .receipt-btn .btn-sub { font-size:11px; opacity:.7; margin-left:auto; }
+    .receipt-preview { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin-bottom:1rem; display:none; }
+    .receipt-preview.open { display:block; }
+    .receipt-preview-title { font-size:12px; font-weight:500; color:var(--ink2); margin-bottom:.75rem; }
+    .receipt-items-list { display:flex; flex-direction:column; gap:6px; margin-bottom:.75rem; max-height:300px; overflow-y:auto; }
+    .receipt-item-row { display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--bg); border-radius:8px; }
+    .receipt-item-check { accent-color:var(--accent); width:16px; height:16px; cursor:pointer; }
+    .receipt-item-name { flex:1; font-size:13px; }
+    .receipt-item-price { font-size:13px; font-weight:500; color:var(--accent); }
+    .receipt-scanning { text-align:center; padding:1.5rem; color:var(--ink3); font-size:14px; }
+    .receipt-scanning .spin { display:inline-block; animation:spin .7s linear infinite; font-size:24px; margin-bottom:.5rem; }
+
+    /* PRICE SUMMARY */
+    .price-summary { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1rem; display:flex; align-items:center; justify-content:space-between; }
+    .price-summary-label { font-size:12px; color:var(--ink2); }
+    .price-summary-total { font-family:'DM Serif Display',serif; font-size:1.4rem; color:var(--accent); }
+    .price-summary-sub { font-size:11px; color:var(--ink3); text-align:right; }
+
+    /* LOADING */
+    #loading { display:flex; align-items:center; justify-content:center; min-height:100dvh; }
+    .spinner { width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; margin-bottom:1rem; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    /* ITEM EDIT MODAL */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:200; display:none; align-items:flex-end; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal { background:var(--surface); border-radius:20px 20px 0 0; padding:1.5rem 1.25rem 2rem; width:100%; max-width:480px; }
+    .modal-title { font-family:'DM Serif Display',serif; font-size:1.2rem; margin-bottom:1.25rem; }
+    .modal-row { display:flex; gap:8px; margin-bottom:.75rem; align-items:center; }
+    .modal-label { font-size:12px; color:var(--ink2); width:70px; flex-shrink:0; }
+    .modal-input { flex:1; border:1.5px solid var(--border); border-radius:8px; padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; }
+    .modal-input:focus { border-color:var(--accent); }
+    .modal-select { flex:1; border:1.5px solid var(--border); border-radius:8px; padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; }
+    .modal-actions { display:flex; gap:8px; margin-top:1rem; }
+    .modal-save { flex:1; background:var(--accent); color:white; border:none; border-radius:10px; padding:12px; font-size:14px; font-weight:500; cursor:pointer; }
+    .modal-cancel { background:none; border:1px solid var(--border); color:var(--ink2); border-radius:10px; padding:12px 16px; font-size:14px; cursor:pointer; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div style="text-align:center">
+    <div class="spinner"></div>
+    <p style="font-size:14px;color:var(--ink3)">Laster...</p>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="login-screen" style="display:none">
+  <div class="login-logo">Handleliste<span>Del listen med den du handler med</span></div>
+  <button class="login-btn" id="google-login-btn">
+    <svg class="google-icon" viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+    </svg>
+    Logg inn med Google
+  </button>
+</div>
+
+<!-- APP -->
+<div id="app-screen" style="display:none">
+  <header>
+    <div class="header-top">
+      <div class="app-title">Handleliste</div>
+      <div class="user-area">
+        <div class="avatar" id="user-avatar">?</div>
+        <button class="signout-btn" id="signout-btn">Logg ut</button>
+      </div>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="tab-list" onclick="showTab('list')">🛒 Liste</button>
+      <button class="nav-tab" id="tab-history" onclick="showTab('history')">📋 Historikk</button>
+    </div>
+    <div class="add-form" id="add-form-area">
+      <input class="add-input" id="new-item-input" type="text" placeholder="Legg til vare..." autocomplete="off" />
+      <button class="add-btn" id="add-btn">+</button>
+      <div class="autocomplete-list" id="autocomplete-list"></div>
+    </div>
+  </header>
+
+  <main>
+    <!-- LIST TAB -->
+    <div id="list-screen">
+      <button class="smart-list-btn" id="smart-list-btn">
+        <span class="btn-icon">✨</span>
+        Fyll liste automatisk
+        <span class="btn-sub">basert på historikk</span>
+      </button>
+      <div class="smart-preview" id="smart-preview">
+        <div class="smart-preview-title" id="smart-preview-title"></div>
+        <div class="smart-preview-items" id="smart-preview-items"></div>
+        <div class="smart-preview-actions">
+          <button class="smart-confirm-btn" id="smart-confirm-btn">Legg alle til listen</button>
+          <button class="smart-cancel-btn" id="smart-cancel-btn">Avbryt</button>
+        </div>
+      </div>
+
+      <!-- PRICE SUMMARY -->
+      <div class="price-summary" id="price-summary" style="display:none">
+        <div>
+          <div class="price-summary-label">Estimert handletur</div>
+          <div class="price-summary-total" id="price-total">0 kr</div>
+        </div>
+        <div class="price-summary-sub" id="price-sub"></div>
+      </div>
+
+      <!-- RECEIPT SCAN -->
+      <button class="receipt-btn" id="receipt-btn">
+        <span class="btn-icon">📷</span>
+        Scan kvittering
+        <span class="btn-sub">oppdater priser</span>
+      </button>
+      <input type="file" id="receipt-input" accept="image/*" capture="environment" style="display:none" />
+      <div class="receipt-preview" id="receipt-preview">
+        <div class="receipt-preview-title" id="receipt-preview-title">Skanner kvittering...</div>
+        <div id="receipt-items-area"></div>
+        <div class="smart-preview-actions" id="receipt-actions" style="display:none">
+          <button class="smart-confirm-btn" id="receipt-confirm-btn">Oppdater priser</button>
+          <button class="smart-cancel-btn" id="receipt-cancel-btn">Avbryt</button>
+        </div>
+      </div>
+
+      <div class="suggestions-section" id="suggestions-section">
+        <div class="section-label">Kanskje på tide å kjøpe?</div>
+        <div class="chips" id="chips-container"></div>
+      </div>
+
+      <div class="list-section">
+        <div class="list-header">
+          <div class="section-label">På listen</div>
+          <button class="clear-done-btn" id="clear-done-btn">✓ Lagre og avslutt</button>
+        </div>
+        <div class="items-list" id="items-list">
+          <div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY TAB -->
+    <div id="history-screen">
+      <div class="section-label" style="margin-bottom:.75rem">Tidligere handleturer</div>
+      <div class="history-list" id="history-list">
+        <div class="history-empty"><div style="font-size:2rem;margin-bottom:.5rem">📋</div><p style="font-size:14px">Ingen historikk ennå</p></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Rediger vare</div>
+    <div class="modal-row">
+      <span class="modal-label">Navn</span>
+      <input class="modal-input" id="modal-name" type="text" />
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Antall</span>
+      <input class="modal-input" id="modal-qty" type="number" min="1" value="1" style="width:80px;flex:none" />
+      <select class="modal-select" id="modal-unit">
+        <option value="stk">stk</option>
+        <option value="g">g</option>
+        <option value="kg">kg</option>
+        <option value="dl">dl</option>
+        <option value="l">l</option>
+        <option value="pk">pk</option>
+        <option value="boks">boks</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Kategori</span>
+      <select class="modal-select" id="modal-cat">
+        <option value="frukt-gront">🥦 Frukt &amp; grønt</option>
+        <option value="meieri">🥛 Meieri</option>
+        <option value="brod-bakeri">🍞 Brød &amp; bakeri</option>
+        <option value="kjott-fisk">🥩 Kjøtt &amp; fisk</option>
+        <option value="tørrvarer">🌾 Tørrvarer</option>
+        <option value="frysevarer">❄️ Frysevarer</option>
+        <option value="drikke">🧃 Drikke</option>
+        <option value="snacks">🍫 Snacks &amp; godis</option>
+        <option value="hygiene">🧴 Hygiene &amp; rengjøring</option>
+        <option value="annet">📦 Annet</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Pris</span>
+      <input class="modal-input" id="modal-price" type="number" min="0" step="0.1" placeholder="kr (valgfritt)" style="width:120px;flex:none" />
+      <span style="font-size:13px;color:var(--ink3);margin-left:4px">kr</span>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-save" id="modal-save">Lagre</button>
+      <button class="modal-cancel" id="modal-cancel">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCoWYFF9JxVxMFNlwnLzrulSkHmTjh46uY",
+    authDomain: "handleliste-64ec3.firebaseapp.com",
+    projectId: "handleliste-64ec3",
+    storageBucket: "handleliste-64ec3.firebasestorage.app",
+    messagingSenderId: "156616802673",
+    appId: "1:156616802673:web:d7d84ed77ff471edd676d0"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const LIST_ID = "hjem";
+
+  // Kategori-rekkefølge som i butikken
+  const CAT_ORDER = ["frukt-gront","meieri","brod-bakeri","kjott-fisk","tørrvarer","frysevarer","drikke","snacks","hygiene","annet"];
+  const CAT_LABELS = {
+    "frukt-gront":"🥦 Frukt & grønt","meieri":"🥛 Meieri","brod-bakeri":"🍞 Brød & bakeri",
+    "kjott-fisk":"🥩 Kjøtt & fisk","tørrvarer":"🌾 Tørrvarer","frysevarer":"❄️ Frysevarer",
+    "drikke":"🧃 Drikke","snacks":"🍫 Snacks & godis","hygiene":"🧴 Hygiene","annet":"📦 Annet"
+  };
+
+  // Automatisk kategori basert på navn
+  const AUTO_CAT = {
+    "frukt-gront":["eple","banan","appelsin","sitron","kiwi","mango","jordbær","blåbær","bringebær","tomat","agurk","salat","spinat","brokkoli","blomkål","gulrot","løk","hvitløk","paprika","poteter","sopp","mais","erter","avokado","lime","druer","pære"],
+    "meieri":["melk","smør","ost","egg","yoghurt","rømme","fløte","kremfløte","kesam","brunost","hvitost","cottage"],
+    "brod-bakeri":["brød","rundstykker","knekkebrød","pita","wraps","bagel","loff","baguette","croissant"],
+    "kjott-fisk":["kylling","kjøttdeig","bacon","pølser","laks","torsk","reker","svinekjøtt","biff","karbonader","skinke","tunfisk"],
+    "tørrvarer":["mel","sukker","salt","pepper","ris","pasta","havregryn","olje","eddik","soya","ketchup","majones","sennep","syltetøy","honning","kaffe","te","kakao","tomat på boks","kokosmelk","linser","kikerter","bønner","karri","kanel","paprika krydder"],
+    "frysevarer":["pizza","frossen","is","fiskepinner","pommes"],
+    "drikke":["juice","vann","brus","øl","vin","rødvin","hvitvin","saft","melkefri"],
+    "snacks":["sjokolade","chips","nøtter","popcorn","kjeks","kake","godteri","rosiner"],
+    "hygiene":["toalettpapir","tannkrem","sjampo","dusjsåpe","oppvaskmiddel","vaskemiddel","tøymykner","håndkrem","deodorant"]
+  };
+
+  function guessCategory(name) {
+    const n = name.toLowerCase();
+    for (const [cat, words] of Object.entries(AUTO_CAT)) {
+      if (words.some(w => n.includes(w))) return cat;
+    }
+    return "annet";
+  }
+
+  const BASISVARER = [
+    {navn:"Melk",ikon:"🥛",dager:7,cat:"meieri"},{navn:"Brød",ikon:"🍞",dager:5,cat:"brod-bakeri"},
+    {navn:"Smør",ikon:"🧈",dager:14,cat:"meieri"},{navn:"Egg",ikon:"🥚",dager:10,cat:"meieri"},
+    {navn:"Ost",ikon:"🧀",dager:10,cat:"meieri"},{navn:"Yoghurt",ikon:"🍶",dager:7,cat:"meieri"},
+    {navn:"Kaffe",ikon:"☕",dager:21,cat:"tørrvarer"},{navn:"Mel",ikon:"🌾",dager:30,cat:"tørrvarer"},
+    {navn:"Sukker",ikon:"🍬",dager:45,cat:"tørrvarer"},{navn:"Salt",ikon:"🧂",dager:60,cat:"tørrvarer"},
+    {navn:"Toalettpapir",ikon:"🧻",dager:21,cat:"hygiene"},{navn:"Pasta",ikon:"🍝",dager:21,cat:"tørrvarer"},
+    {navn:"Ris",ikon:"🍚",dager:30,cat:"tørrvarer"},{navn:"Løk",ikon:"🧅",dager:10,cat:"frukt-gront"},
+    {navn:"Hvitløk",ikon:"🧄",dager:21,cat:"frukt-gront"},{navn:"Tomater",ikon:"🍅",dager:7,cat:"frukt-gront"},
+    {navn:"Bananer",ikon:"🍌",dager:5,cat:"frukt-gront"},{navn:"Epler",ikon:"🍎",dager:7,cat:"frukt-gront"},
+  ];
+
+  let currentUser = null;
+  let purchaseHistory = {};
+  let unsubscribeList = null;
+  let currentItems = [];
+  let editingItemId = null;
+
+  // AUTH
+  document.getElementById("google-login-btn").addEventListener("click", async () => {
+    const provider = new GoogleAuthProvider();
+    try { await signInWithPopup(auth, provider); } catch(e) { console.error(e); }
+  });
+  document.getElementById("signout-btn").addEventListener("click", () => signOut(auth));
+
+  onAuthStateChanged(auth, async (user) => {
+    document.getElementById("loading").style.display = "none";
+    if (user) {
+      currentUser = user;
+      document.getElementById("login-screen").style.display = "none";
+      document.getElementById("app-screen").style.display = "flex";
+      const initials = user.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
+      document.getElementById("user-avatar").textContent = initials;
+      await loadPurchaseHistory();
+      startListeningWithPrice();
+      renderSuggestions();
+      loadHistory();
+    } else {
+      currentUser = null;
+      document.getElementById("login-screen").style.display = "flex";
+      document.getElementById("app-screen").style.display = "none";
+      if (unsubscribeList) unsubscribeList();
+    }
+  });
+
+  // TABS
+  window.showTab = (tab) => {
+    document.getElementById("tab-list").classList.toggle("active", tab === "list");
+    document.getElementById("tab-history").classList.toggle("active", tab === "history");
+    document.getElementById("list-screen").style.display = tab === "list" ? "block" : "none";
+    document.getElementById("history-screen").style.display = tab === "history" ? "block" : "none";
+    document.getElementById("add-form-area").style.display = tab === "list" ? "flex" : "none";
+  };
+
+  // PURCHASE HISTORY
+  async function loadPurchaseHistory() {
+    try {
+      const ref = doc(db, "lists", LIST_ID, "meta", "history2");
+      const snap = await getDoc(ref);
+      if (snap.exists()) purchaseHistory = snap.data();
+    } catch(e) {}
+  }
+
+  async function savePurchaseHistory() {
+    try {
+      const ref = doc(db, "lists", LIST_ID, "meta", "history2");
+      await setDoc(ref, purchaseHistory);
+    } catch(e) {}
+  }
+
+  function avgInterval(navn) {
+    const h = purchaseHistory[navn];
+    if (!h || !h.intervals || h.intervals.length === 0) {
+      const basis = BASISVARER.find(v => v.navn === navn);
+      return basis ? basis.dager : 14;
+    }
+    return Math.round(h.intervals.reduce((a,b)=>a+b,0) / h.intervals.length);
+  }
+
+  function cleanName(name) {
+    return name.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27FF}\s]+/u, "").trim();
+  }
+
+  function learnFromPurchase(boughtItems) {
+    const now = Date.now();
+    const names = boughtItems.map(n => cleanName(n)).filter(Boolean);
+    names.forEach(navn => {
+      if (!purchaseHistory[navn]) purchaseHistory[navn] = { lastBought: null, intervals: [], partners: {} };
+      const h = purchaseHistory[navn];
+      if (h.lastBought) {
+        const daysSince = (now - h.lastBought) / (1000*60*60*24);
+        if (daysSince > 0.5) h.intervals = [...(h.intervals||[]).slice(-9), Math.round(daysSince)];
+      }
+      h.lastBought = now;
+      names.forEach(partner => {
+        if (partner !== navn) {
+          h.partners = h.partners || {};
+          h.partners[partner] = (h.partners[partner] || 0) + 1;
+        }
+      });
+    });
+  }
+
+  // SUGGESTIONS
+  function renderSuggestions() {
+    const now = Date.now();
+    const container = document.getElementById("chips-container");
+    const section = document.getElementById("suggestions-section");
+    const onList = new Set(currentItems.filter(i=>!i.done).map(i=>cleanName(i.name).toLowerCase()));
+    const suggestions = [];
+
+    const alleKjente = new Set([...BASISVARER.map(v=>v.navn), ...Object.keys(purchaseHistory)]);
+    alleKjente.forEach(navn => {
+      if (onList.has(navn.toLowerCase())) return;
+      const h = purchaseHistory[navn];
+      const interval = avgInterval(navn);
+      const lastBought = h?.lastBought || null;
+      let score = 0, label = "Ikke kjøpt ennå";
+      if (!lastBought) { score = 0.3; }
+      else {
+        const daysSince = (now - lastBought) / (1000*60*60*24);
+        if (daysSince >= interval) {
+          score = Math.min(1, daysSince / interval);
+          label = `${Math.round(daysSince)}d siden`;
+        }
+      }
+      if (score > 0) {
+        const basis = BASISVARER.find(v=>v.navn===navn);
+        suggestions.push({ navn, ikon: basis?.ikon||"🛒", score, label, reason:"tid" });
+      }
+    });
+
+    currentItems.filter(i=>!i.done).forEach(item => {
+      const navn = cleanName(item.name);
+      const h = purchaseHistory[navn];
+      if (!h?.partners) return;
+      Object.entries(h.partners).forEach(([partner, count]) => {
+        if (count < 2) return;
+        if (onList.has(partner.toLowerCase())) return;
+        if (suggestions.find(s=>s.navn===partner)) return;
+        const basis = BASISVARER.find(v=>v.navn===partner);
+        suggestions.push({ navn:partner, ikon:basis?.ikon||"🛒", score:0.5+(count*0.1), label:`med ${navn} ${count}×`, reason:"mønster" });
+      });
+    });
+
+    const top = suggestions.sort((a,b)=>b.score-a.score).slice(0, 10);
+    if (top.length === 0) { section.style.display = "none"; return; }
+    section.style.display = "block";
+    container.innerHTML = top.map(s => {
+      const bg = s.reason==="mønster" ? "#FFF3E0" : "#f0f0f0";
+      const tc = s.reason==="mønster" ? "#E65100" : "var(--ink3)";
+      return `<button class="chip" onclick="addFromSuggestion('${s.navn}','${s.ikon}')">
+        <span>${s.ikon}</span>${s.navn}
+        <span class="chip-days" style="background:${bg};color:${tc}">${s.label}</span>
+      </button>`;
+    }).join("");
+  }
+
+  window.addFromSuggestion = async (navn, ikon) => { await addItem(`${ikon} ${navn}`); };
+
+  // LIST
+  function startListening() {
+    const q = query(collection(db, "lists", LIST_ID, "items"), orderBy("createdAt","asc"));
+    unsubscribeList = onSnapshot(q, snapshot => {
+      currentItems = [];
+      snapshot.forEach(d => currentItems.push({ id:d.id, ...d.data() }));
+      renderList(currentItems);
+      renderSuggestions();
+    });
+  }
+
+  function renderList(items) {
+    const container = document.getElementById("items-list");
+    if (items.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>`;
+      return;
+    }
+
+    const active = items.filter(i=>!i.done);
+    const done = items.filter(i=>i.done);
+
+    // Grupper aktive etter kategori
+    const groups = {};
+    active.forEach(item => {
+      const cat = item.cat || guessCategory(item.name);
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
+    });
+
+    let html = "";
+    CAT_ORDER.forEach(cat => {
+      if (!groups[cat]) return;
+      html += `<div class="cat-group">
+        <div class="cat-group-label">${CAT_LABELS[cat]}</div>
+        ${groups[cat].map(item => renderItem(item)).join("")}
+      </div>`;
+    });
+
+    // Avkryssede på bunnen
+    if (done.length > 0) {
+      html += `<div class="cat-group">
+        <div class="cat-group-label" style="color:var(--ink3)">✓ Ferdig</div>
+        ${done.map(item => renderItem(item)).join("")}
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function renderItem(item) {
+    const qty = item.qty || 1;
+    const unit = item.unit || "stk";
+    const addedBy = item.addedBy || "";
+    const initials = addedBy.split(" ").map(n=>n[0]).join("").slice(0,2);
+    const price = estimatePrice(item.name);
+    const lineTotal = price ? (price * qty) : null;
+    const priceStr = lineTotal ? `· ${lineTotal % 1 === 0 ? lineTotal : lineTotal.toFixed(0)} kr` : "";
+    const detail = `${qty} ${unit} ${priceStr}`;
+    return `<div class="item ${item.done?'done':''}" id="item-${item.id}">
+      <button class="check-btn" onclick="toggleItem('${item.id}',${item.done})">${item.done?"✓":""}</button>
+      <div class="item-main" onclick="openEdit('${item.id}')" style="cursor:pointer">
+        <div class="item-name">${item.name}</div>
+        <div class="item-detail">${detail}</div>
+      </div>
+      ${initials ? `<span class="by-whom">${initials}</span>` : ""}
+      <div class="qty-wrap">
+        <button class="qty-btn" onclick="changeQty('${item.id}',${qty},-1)">−</button>
+        <span class="qty-num">${qty}</span>
+        <button class="qty-btn" onclick="changeQty('${item.id}',${qty},1)">+</button>
+      </div>
+      <button class="delete-btn" onclick="deleteItem('${item.id}')">×</button>
+    </div>`;
+  }
+
+  async function addItem(name, cat, unit) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const category = cat || guessCategory(trimmed);
+    await addDoc(collection(db, "lists", LIST_ID, "items"), {
+      name: trimmed, done: false, qty: 1,
+      unit: unit || "stk", cat: category,
+      createdAt: Date.now(), addedBy: currentUser?.displayName || "",
+    });
+  }
+
+  window.changeQty = async (id, currentQty, delta) => {
+    const newQty = Math.max(1, currentQty + delta);
+    await updateDoc(doc(db, "lists", LIST_ID, "items", id), { qty: newQty });
+  };
+
+  window.toggleItem = async (id, currentDone) => {
+    await updateDoc(doc(db, "lists", LIST_ID, "items", id), { done: !currentDone });
+    if (!currentDone) {
+      const doneItems = currentItems.filter(i=>i.done||i.id===id).map(i=>i.name);
+      learnFromPurchase(doneItems);
+      await savePurchaseHistory();
+      renderSuggestions();
+    }
+  };
+
+  window.deleteItem = async (id) => {
+    await deleteDoc(doc(db, "lists", LIST_ID, "items", id));
+  };
+
+  // EDIT MODAL
+  window.openEdit = (id) => {
+    const item = currentItems.find(i=>i.id===id);
+    if (!item) return;
+    editingItemId = id;
+    document.getElementById("modal-name").value = item.name;
+    document.getElementById("modal-qty").value = item.qty || 1;
+    document.getElementById("modal-unit").value = item.unit || "stk";
+    document.getElementById("modal-cat").value = item.cat || guessCategory(item.name);
+    // Hent pris fra purchaseHistory hvis den finnes
+    const cleanN = cleanName(item.name);
+    const savedPrice = purchaseHistory[cleanN]?.lastPrice || item.price || "";
+    document.getElementById("modal-price").value = savedPrice;
+    document.getElementById("modal-overlay").classList.add("open");
+  };
+
+  document.getElementById("modal-save").addEventListener("click", async () => {
+    if (!editingItemId) return;
+    const name = document.getElementById("modal-name").value.trim();
+    const qty = parseInt(document.getElementById("modal-qty").value) || 1;
+    const unit = document.getElementById("modal-unit").value;
+    const cat = document.getElementById("modal-cat").value;
+    const priceVal = parseFloat(document.getElementById("modal-price").value);
+    const price = isNaN(priceVal) ? null : priceVal;
+    if (!name) return;
+    await updateDoc(doc(db, "lists", LIST_ID, "items", editingItemId), { name, qty, unit, cat, price });
+    // Lagre prisen i purchaseHistory så den huskes til neste gang
+    if (price) {
+      const cleanN = cleanName(name);
+      if (!purchaseHistory[cleanN]) purchaseHistory[cleanN] = { lastBought: null, intervals: [], partners: {} };
+      purchaseHistory[cleanN].lastPrice = price;
+      await savePurchaseHistory();
+    }
+    document.getElementById("modal-overlay").classList.remove("open");
+    editingItemId = null;
+  });
+
+  document.getElementById("modal-cancel").addEventListener("click", () => {
+    document.getElementById("modal-overlay").classList.remove("open");
+    editingItemId = null;
+  });
+
+  document.getElementById("modal-overlay").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById("modal-overlay").classList.remove("open");
+      editingItemId = null;
+    }
+  });
+
+  // SAVE & CLEAR (lagre handletur til historikk)
+  document.getElementById("clear-done-btn").addEventListener("click", async () => {
+    const doneItems = currentItems.filter(i=>i.done);
+    if (doneItems.length === 0) { alert("Ingen avkryssede varer å lagre."); return; }
+
+    // Lagre snapshot til historikk
+    const dateStr = new Date().toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" });
+    const historyRef = collection(db, "lists", LIST_ID, "history");
+    await addDoc(historyRef, {
+      date: dateStr,
+      timestamp: Date.now(),
+      items: doneItems.map(i => ({ name: i.name, qty: i.qty||1, unit: i.unit||"stk" }))
+    });
+
+    // Slett avkryssede
+    for (const item of doneItems) {
+      await deleteDoc(doc(db, "lists", LIST_ID, "items", item.id));
+    }
+
+    loadHistory();
+  });
+
+  // HISTORY
+  async function loadHistory() {
+    try {
+      const q = query(collection(db, "lists", LIST_ID, "history"), orderBy("timestamp","desc"));
+      const snap = await getDocs(q);
+      const trips = [];
+      snap.forEach(d => trips.push({ id:d.id, ...d.data() }));
+      renderHistory(trips);
+    } catch(e) {}
+  }
+
+  function renderHistory(trips) {
+    const container = document.getElementById("history-list");
+    if (trips.length === 0) {
+      container.innerHTML = `<div class="history-empty"><div style="font-size:2rem;margin-bottom:.5rem">📋</div><p style="font-size:14px">Ingen historikk ennå.<br>Kryss av varer og trykk "Lagre og avslutt"!</p></div>`;
+      return;
+    }
+    container.innerHTML = trips.map(trip => `
+      <div class="history-card" id="hcard-${trip.id}" onclick="toggleHistoryCard('${trip.id}')">
+        <div class="history-card-header">
+          <div>
+            <div class="history-date">${trip.date}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="history-count">${trip.items?.length || 0} varer</span>
+            <span class="history-chevron">›</span>
+          </div>
+        </div>
+        <div class="history-items">
+          ${(trip.items||[]).map(i=>`<span class="history-item-chip">${i.name} ${i.qty>1?i.qty+' '+i.unit:''}</span>`).join("")}
+        </div>
+      </div>`).join("");
+  }
+
+  window.toggleHistoryCard = (id) => {
+    document.getElementById(`hcard-${id}`).classList.toggle("open");
+  };
+
+  // SMART LIST
+  function buildSmartList() {
+    const now = Date.now();
+    const onList = new Set(currentItems.filter(i=>!i.done).map(i=>cleanName(i.name).toLowerCase()));
+    const entries = Object.entries(purchaseHistory);
+    if (entries.length < 3) return { items:[], thin:true };
+    const candidates = [];
+    entries.forEach(([navn, h]) => {
+      if (onList.has(navn.toLowerCase()) || !h.lastBought) return;
+      const interval = avgInterval(navn);
+      const daysSince = (now - h.lastBought) / (1000*60*60*24);
+      const timesLearned = (h.intervals||[]).length;
+      if (daysSince >= interval * 0.8) {
+        const urgency = daysSince / interval;
+        const confidence = Math.min(1, timesLearned / 5);
+        candidates.push({ navn, score: urgency * (0.5 + confidence * 0.5) });
+      }
+    });
+    return { items: candidates.sort((a,b)=>b.score-a.score).slice(0,12).map(c=>c.navn), thin:false };
+  }
+
+  let smartListItems = [];
+
+  document.getElementById("smart-list-btn").addEventListener("click", () => {
+    const preview = document.getElementById("smart-preview");
+    if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
+    const { items, thin } = buildSmartList();
+    smartListItems = items;
+    const previewItems = document.getElementById("smart-preview-items");
+    const previewTitle = document.getElementById("smart-preview-title");
+    const actions = document.getElementById("smart-confirm-btn").parentElement;
+    if (thin) {
+      previewTitle.textContent = "Ikke nok historikk ennå";
+      previewItems.innerHTML = `<p class="smart-thin-msg">Bruk appen i 1-2 uker til! 📈</p>`;
+      actions.style.display = "none";
+    } else if (items.length === 0) {
+      previewTitle.textContent = "Listen ser allerede bra ut! 🎉";
+      previewItems.innerHTML = "";
+      actions.style.display = "none";
+    } else {
+      previewTitle.textContent = `Vi tror dere trenger ${items.length} varer:`;
+      previewItems.innerHTML = items.map(navn => {
+        const b = BASISVARER.find(v=>v.navn===navn);
+        return `<div class="smart-preview-item">${b?.ikon||"🛒"} ${navn}</div>`;
+      }).join("");
+      actions.style.display = "flex";
+    }
+    preview.classList.add("open");
+  });
+
+  document.getElementById("smart-confirm-btn").addEventListener("click", async () => {
+    for (const navn of smartListItems) {
+      const basis = BASISVARER.find(v=>v.navn===navn);
+      await addItem(basis?.ikon ? `${basis.ikon} ${navn}` : navn, basis?.cat);
+    }
+    document.getElementById("smart-preview").classList.remove("open");
+  });
+
+  document.getElementById("smart-cancel-btn").addEventListener("click", () => {
+    document.getElementById("smart-preview").classList.remove("open");
+  });
+
+  // AUTOCOMPLETE
+  const AC_SOURCES = [
+    ...BASISVARER.map(v=>v.navn),
+    "Rømme","Fløte","Kremfløte","Rødvin","Hvitvin","Øl","Juice","Vann","Brus",
+    "Sjokolade","Chips","Nøtter","Rosiner","Syltetøy","Honning","Majones",
+    "Ketchup","Sennep","Olje","Eddik","Pepper","Paprika","Kanel","Karri",
+    "Tomat på boks","Kokosmelk","Linser","Kikerter","Bønner",
+    "Laks","Torsk","Reker","Kjøttdeig","Karbonader","Bacon","Pølser",
+    "Poteter","Gulrøtter","Brokkoli","Blomkål","Spinat","Salat","Agurk",
+    "Appelsin","Sitron","Kiwi","Mango","Jordbær","Blåbær",
+    "Havregryn","Knekkebrød","Rundstykker","Pita","Wraps",
+    "Toalettpapir","Oppvaskmiddel","Vaskemiddel","Tannkrem","Sjampo","Dusjsåpe"
+  ];
+  let acIndex = -1;
+
+  function getAcCandidates(q) {
+    if (!q || q.length < 1) return [];
+    const ql = q.toLowerCase();
+    const fromHistory = Object.keys(purchaseHistory);
+    const all = [...new Set([...fromHistory, ...AC_SOURCES])];
+    return all.filter(n => n.toLowerCase().startsWith(ql) || n.toLowerCase().includes(ql))
+      .sort((a,b) => {
+        const aS = a.toLowerCase().startsWith(ql) ? 0 : 1;
+        const bS = b.toLowerCase().startsWith(ql) ? 0 : 1;
+        const aH = purchaseHistory[a] ? 0 : 1;
+        const bH = purchaseHistory[b] ? 0 : 1;
+        return (aS-bS)||(aH-bH);
+      }).slice(0, 6);
+  }
+
+  function showAutocomplete(candidates) {
+    const list = document.getElementById("autocomplete-list");
+    if (candidates.length === 0) { list.classList.remove("open"); return; }
+    acIndex = -1;
+    list.innerHTML = candidates.map(name => {
+      const basis = BASISVARER.find(v=>v.navn===name);
+      const icon = basis?.ikon || (purchaseHistory[name] ? "🕐" : "");
+      const sub = purchaseHistory[name] ? "kjøpt før" : "";
+      return `<div class="autocomplete-item" data-name="${name}" onclick="selectAc('${name}')">
+        ${icon?`<span>${icon}</span>`:""}${name}
+        ${sub?`<span class="ac-sub">${sub}</span>`:""}
+      </div>`;
+    }).join("");
+    list.classList.add("open");
+  }
+
+  function hideAutocomplete() {
+    setTimeout(() => { document.getElementById("autocomplete-list").classList.remove("open"); acIndex = -1; }, 150);
+  }
+
+  window.selectAc = async (name) => {
+    const input = document.getElementById("new-item-input");
+    input.value = name;
+    document.getElementById("autocomplete-list").classList.remove("open");
+    await addItem(name);
+    input.value = "";
+  };
+
+  document.getElementById("add-btn").addEventListener("click", async () => {
+    const input = document.getElementById("new-item-input");
+    await addItem(input.value);
+    input.value = "";
+    document.getElementById("autocomplete-list").classList.remove("open");
+  });
+
+  document.getElementById("new-item-input").addEventListener("input", e => {
+    showAutocomplete(getAcCandidates(e.target.value));
+  });
+
+  document.getElementById("new-item-input").addEventListener("keydown", async e => {
+    const list = document.getElementById("autocomplete-list");
+    const items = list.querySelectorAll(".autocomplete-item");
+    if (e.key === "ArrowDown") { e.preventDefault(); acIndex = Math.min(acIndex+1,items.length-1); items.forEach((el,i)=>el.classList.toggle("ac-active",i===acIndex)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); acIndex = Math.max(acIndex-1,-1); items.forEach((el,i)=>el.classList.toggle("ac-active",i===acIndex)); }
+    else if (e.key === "Tab" && list.classList.contains("open")) { e.preventDefault(); const a = list.querySelector(".ac-active")||items[0]; if(a) await selectAc(a.dataset.name); }
+    else if (e.key === "Enter") {
+      const a = list.querySelector(".ac-active");
+      if (a) { e.preventDefault(); await selectAc(a.dataset.name); return; }
+      list.classList.remove("open");
+      await addItem(e.target.value);
+      e.target.value = "";
+    } else if (e.key === "Escape") { list.classList.remove("open"); }
+  });
+
+  document.getElementById("new-item-input").addEventListener("blur", hideAutocomplete);
+
+  // API-nøkkelen ligger trygt på Netlify-serveren, ikke her
+
+  // PRICE DATABASE — gjennomsnittspriser norske dagligvarer
+  const PRICE_DB = {
+    "Melk":25,"Lettmelk":25,"Helmelk":28,"Skummetmelk":22,
+    "Brød":35,"Loff":30,"Rundstykker":25,"Knekkebrød":30,
+    "Smør":45,"Margarin":35,
+    "Egg":45,"Egg 6pk":35,"Egg 12pk":65,
+    "Ost":90,"Brunost":55,"Norvegia":95,"Jarlsberg":85,
+    "Yoghurt":25,"Rømme":30,"Fløte":28,"Kremfløte":28,
+    "Kaffe":89,"Te":45,
+    "Mel":25,"Sukker":20,"Salt":12,"Pepper":25,
+    "Ris":35,"Pasta":25,"Havregryn":30,
+    "Olje":45,"Ketchup":30,"Majones":35,"Sennep":20,
+    "Toalettpapir":60,"Oppvaskmiddel":35,"Vaskemiddel":89,
+    "Tannkrem":30,"Sjampo":55,"Dusjsåpe":35,
+    "Tomater":30,"Agurk":20,"Salat":25,"Spinat":30,
+    "Gulrøtter":20,"Brokkoli":25,"Løk":15,"Hvitløk":15,
+    "Poteter":25,"Paprika":30,"Blomkål":30,
+    "Bananer":20,"Epler":35,"Appelsin":25,"Kiwi":20,
+    "Jordbær":45,"Blåbær":35,"Mango":30,
+    "Kylling":89,"Kjøttdeig":75,"Bacon":55,"Pølser":45,
+    "Laks":120,"Torsk":89,"Reker":99,
+    "Juice":35,"Brus":30,"Øl":25,"Vann":20,
+    "Sjokolade":30,"Chips":35,"Nøtter":55,
+    "Syltetøy":35,"Honning":55,"Kokosmelk":25,
+  };
+
+  function estimatePrice(name) {
+    const n = cleanName(name);
+    // Sjekk eksakt match fra historikk
+    if (purchaseHistory[n]?.lastPrice) return purchaseHistory[n].lastPrice;
+    // Sjekk PRICE_DB
+    const key = Object.keys(PRICE_DB).find(k => n.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(n.toLowerCase()));
+    if (key) return PRICE_DB[key];
+    return null;
+  }
+
+  function renderPriceSummary() {
+    const active = currentItems.filter(i => !i.done);
+    if (active.length === 0) { document.getElementById("price-summary").style.display = "none"; return; }
+
+    let total = 0;
+    let estimated = 0;
+    let unknown = 0;
+
+    active.forEach(item => {
+      const price = estimatePrice(item.name);
+      const qty = item.qty || 1;
+      if (price) { total += price * qty; estimated++; }
+      else unknown++;
+    });
+
+    if (total === 0) { document.getElementById("price-summary").style.display = "none"; return; }
+
+    document.getElementById("price-summary").style.display = "flex";
+    document.getElementById("price-total").textContent = `ca. ${Math.round(total)} kr`;
+    document.getElementById("price-sub").innerHTML = `${estimated} varer estimert${unknown > 0 ? `<br>${unknown} uten pris` : ""}`;
+  }
+
+  // Oppdater prissummering når lista endres
+  const origRenderList = renderList;
+
+  // RECEIPT SCANNING
+  let scannedReceipt = [];
+
+  document.getElementById("receipt-btn").addEventListener("click", () => {
+    document.getElementById("receipt-input").click();
+  });
+
+  document.getElementById("receipt-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+
+
+    const preview = document.getElementById("receipt-preview");
+    const area = document.getElementById("receipt-items-area");
+    const actions = document.getElementById("receipt-actions");
+    preview.classList.add("open");
+    actions.style.display = "none";
+    document.getElementById("receipt-preview-title").textContent = "Skanner kvittering...";
+    area.innerHTML = `<div class="receipt-scanning"><div class="spin">🔍</div><br>Claude leser kvitteringen din...</div>`;
+
+    try {
+      // Convert image to base64
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result.split(",")[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+
+      const mediaType = file.type || "image/jpeg";
+
+      const response = await fetch("/.netlify/functions/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64, mediaType, type: "receipt" })
+      });
+
+      const parsed = await response.json();
+      scannedReceipt = parsed.varer || [];
+
+      if (scannedReceipt.length === 0) {
+        area.innerHTML = `<div class="receipt-scanning">Fant ingen varer. Prøv et klarere bilde.</div>`;
+        return;
+      }
+
+      document.getElementById("receipt-preview-title").textContent = `Fant ${scannedReceipt.length} varer — velg hvilke som skal oppdatere priser:`;
+      area.innerHTML = `<div class="receipt-items-list">${scannedReceipt.map((v, i) =>
+        `<div class="receipt-item-row">
+          <input type="checkbox" class="receipt-item-check" id="rc-${i}" checked />
+          <span class="receipt-item-name">${v.navn}</span>
+          <span class="receipt-item-price">${v.pris} kr</span>
+        </div>`
+      ).join("")}</div>`;
+      actions.style.display = "flex";
+
+    } catch(err) {
+      area.innerHTML = `<div class="receipt-scanning">Noe gikk galt. Sjekk at API-nøkkelen er riktig og prøv igjen.</div>`;
+      console.error(err);
+    }
+
+    e.target.value = "";
+  });
+
+  document.getElementById("receipt-confirm-btn").addEventListener("click", async () => {
+    const checked = scannedReceipt.filter((_, i) => document.getElementById(`rc-${i}`)?.checked);
+    checked.forEach(v => {
+      if (!purchaseHistory[v.navn]) purchaseHistory[v.navn] = { lastBought: null, intervals: [], partners: {} };
+      purchaseHistory[v.navn].lastPrice = v.pris;
+    });
+    await savePurchaseHistory();
+    document.getElementById("receipt-preview").classList.remove("open");
+    renderPriceSummary();
+    alert(`✅ Oppdaterte priser for ${checked.length} varer!`);
+  });
+
+  document.getElementById("receipt-cancel-btn").addEventListener("click", () => {
+    document.getElementById("receipt-preview").classList.remove("open");
+  });
+
+  // Hook price summary into list updates
+  const _origSnap = startListening;
+  function startListeningWithPrice() {
+    const q = query(collection(db, "lists", LIST_ID, "items"), orderBy("createdAt","asc"));
+    unsubscribeList = onSnapshot(q, snapshot => {
+      currentItems = [];
+      snapshot.forEach(d => currentItems.push({ id:d.id, ...d.data() }));
+      renderList(currentItems);
+      renderSuggestions();
+      renderPriceSummary();
+    });
+  }
+
+</script>
+</body>
+</html>
