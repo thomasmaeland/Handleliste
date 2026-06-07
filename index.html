@@ -187,6 +187,7 @@
     .modal-select { flex:1; border:1.5px solid var(--border); border-radius:8px; padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; }
     .modal-actions { display:flex; gap:8px; margin-top:1rem; }
     .modal-save { flex:1; background:var(--accent); color:white; border:none; border-radius:10px; padding:12px; font-size:14px; font-weight:500; cursor:pointer; }
+    .modal-delete { background:var(--danger); color:white; border:none; border-radius:10px; padding:12px 16px; font-size:14px; font-weight:500; cursor:pointer; }
     .modal-cancel { background:none; border:1px solid var(--border); color:var(--ink2); border-radius:10px; padding:12px 16px; font-size:14px; cursor:pointer; }
   </style>
 </head>
@@ -363,6 +364,7 @@
       <span style="font-size:13px;color:var(--ink3);margin-left:4px">kr</span>
     </div>
     <div class="modal-actions">
+      <button class="modal-delete" id="modal-delete">Slett</button>
       <button class="modal-save" id="modal-save">Lagre</button>
       <button class="modal-cancel" id="modal-cancel">Avbryt</button>
     </div>
@@ -746,6 +748,16 @@
       purchaseHistory[cleanN].lastPrice = price;
       await savePurchaseHistory();
     }
+    document.getElementById("modal-overlay").classList.remove("open");
+    editingItemId = null;
+  });
+
+  document.getElementById("modal-delete").addEventListener("click", async () => {
+    if (!editingItemId) return;
+    if (!confirm("Slette denne varen fra listen?")) return;
+
+    await deleteDoc(doc(db, "lists", LIST_ID, "items", editingItemId));
+
     document.getElementById("modal-overlay").classList.remove("open");
     editingItemId = null;
   });
