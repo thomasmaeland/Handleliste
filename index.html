@@ -519,7 +519,7 @@
             await setDoc(doc(db, "users", user.uid), {
               householdId: "hjem",
               displayName: user.displayName || ""
-            });
+            }, { merge: true });
             LIST_ID = "hjem";
             startApp();
             return;
@@ -1042,8 +1042,25 @@
     const householdRef = doc(db, "households", code);
     const householdSnap = await getDoc(householdRef);
     if (!householdSnap.exists()) {
-      alert("Fant ingen husholdning med den koden. Sjekk at du har skrevet riktig!");
-      return;
+      // Sjekk om det er en gammel migrert liste
+      try {
+        const oldListRef = collection(db, "lists", code, "items");
+        const oldSnap = await getDocs(oldListRef);
+        if (!oldSnap.empty) {
+          // Gammel liste finnes — lag husholdning for den
+          await setDoc(householdRef, {
+            createdAt: Date.now(),
+            members: [currentUser.uid],
+            migrated: true
+          });
+        } else {
+          alert("Fant ingen husholdning med den koden. Sjekk at du har skrevet riktig!");
+          return;
+        }
+      } catch(e) {
+        alert("Fant ingen husholdning med den koden. Sjekk at du har skrevet riktig!");
+        return;
+      }
     }
     // Oppdater brukerens husholdning
     const members = householdSnap.data().members || [];
