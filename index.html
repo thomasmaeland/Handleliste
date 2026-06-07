@@ -188,7 +188,7 @@
     .share-copy-btn { width:100%; background:var(--accent); color:white; border:none; border-radius:10px; padding:12px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:.75rem; }
     .share-divider { text-align:center; font-size:12px; color:var(--ink3); margin:.75rem 0; }
     .share-join-row { display:flex; gap:8px; }
-    .share-join-input { flex:1; border:1.5px solid var(--border); border-radius:10px; padding:10px 14px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; text-transform:uppercase; letter-spacing:.05em; }
+    .share-join-input { flex:1; border:1.5px solid var(--border); border-radius:10px; padding:10px 14px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; text-transform:none; letter-spacing:.02em; }
     .share-join-input:focus { border-color:var(--accent); }
     .share-join-btn { background:var(--accent); color:white; border:none; border-radius:10px; padding:10px 16px; font-size:14px; cursor:pointer; white-space:nowrap; }
     .share-close-btn { width:100%; background:none; border:none; font-size:13px; color:var(--ink3); cursor:pointer; padding:8px; margin-top:.5rem; }
@@ -343,7 +343,7 @@
     <button class="share-copy-btn" id="share-copy-btn">📋 Kopier kode</button>
     <div class="share-divider">— eller bli med i en annen husholdning —</div>
     <div class="share-join-row">
-      <input class="share-join-input" id="share-join-input" type="text" placeholder="SKRIV INN KODE" maxlength="20" />
+      <input class="share-join-input" id="share-join-input" type="text" placeholder="Skriv inn kode (f.eks. hjem)" maxlength="20" />
       <button class="share-join-btn" id="share-join-btn">Bli med</button>
     </div>
     <button class="share-close-btn" id="share-close-btn">Lukk</button>
@@ -1563,13 +1563,17 @@
       const householdSnap = await getDoc(householdRef);
 
       if (!householdSnap.exists()) {
-        // Støtte for gammel struktur: lists/<kode> kan finnes selv om households/<kode> mangler
-        if (!(await legacyListExists(code))) {
+        // Spesialtilfelle: gammel standard-husholdning "hjem" skal alltid kunne brukes.
+        // Dette er nødvendig hvis du allerede har data under lists/hjem, eller bare vil flytte brukeren tilbake dit.
+        const isHomeLegacyCode = code === "hjem";
+        const hasLegacyData = await legacyListExists(code);
+
+        if (!isHomeLegacyCode && !hasLegacyData) {
           alert("Fant ingen husholdning med koden: " + code);
           return;
         }
 
-        // Lag husholdningsdokument for gammel liste
+        // Lag husholdningsdokument for gammel liste / hjem
         await setDoc(householdRef, {
           createdAt: Date.now(),
           createdBy: currentUser.uid,
