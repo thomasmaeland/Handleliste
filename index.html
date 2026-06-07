@@ -923,7 +923,7 @@
   function renderHistory(trips) {
     const container = document.getElementById("history-list");
     if (trips.length === 0) {
-      container.innerHTML = `<div class="history-empty"><div style="font-size:2rem;margin-bottom:.5rem">📋</div><p style="font-size:14px">Ingen historikk ennå.<br>Kryss av varer og trykk "Lagre og avslutt"!</p></div>`;
+      container.innerHTML = `<div class="history-empty"><div style="font-size:2rem;margin-bottom:.5rem">📋</div><p style="font-size:14px">Ingen historikk ennå.<br>Kryss av varer og trykk Lagre og avslutt!</p></div>`;
       return;
     }
     container.innerHTML = trips.map(trip => `
