@@ -1614,13 +1614,13 @@
     area.innerHTML = `<div class="receipt-scanning"><div class="spin">🔍</div><br>Leser hele kvitteringslinjene...</div>`;
 
     try {
-      // Skaler ned bildet før sending
+      // Skaler ned bildet før sending (høyere kvalitet for bedre OCR på kvitteringer)
       const base64 = await new Promise((res, rej) => {
         const img = new Image();
         const objectUrl = URL.createObjectURL(file);
         img.onload = () => {
           URL.revokeObjectURL(objectUrl);
-          const MAX = 1000;
+          const MAX = 2200;
           let w = img.width, h = img.height;
           if (w > MAX || h > MAX) {
             if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
@@ -1629,7 +1629,7 @@
           const canvas = document.createElement("canvas");
           canvas.width = w; canvas.height = h;
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-          res(canvas.toDataURL("image/jpeg", 0.75).split(",")[1]);
+          res(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
         };
         img.onerror = rej;
         img.src = objectUrl;
