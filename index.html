@@ -153,6 +153,23 @@
     .price-summary-total { font-family:'DM Serif Display',serif; font-size:1.4rem; color:var(--accent); }
     .price-summary-sub { font-size:11px; color:var(--ink3); text-align:right; }
 
+    /* SHARING MODAL */
+    .share-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:300; display:none; align-items:flex-end; justify-content:center; }
+    .share-modal-overlay.open { display:flex; }
+    .share-modal { background:var(--surface); border-radius:20px 20px 0 0; padding:1.5rem 1.25rem 2.5rem; width:100%; max-width:480px; }
+    .share-modal-title { font-family:'DM Serif Display',serif; font-size:1.2rem; margin-bottom:.5rem; }
+    .share-modal-sub { font-size:13px; color:var(--ink2); margin-bottom:1.25rem; }
+    .share-code-box { background:var(--accent-light); border:1.5px solid var(--accent); border-radius:var(--radius); padding:1rem; text-align:center; margin-bottom:1rem; }
+    .share-code-label { font-size:11px; color:var(--accent); font-weight:500; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+    .share-code-value { font-family:'DM Serif Display',serif; font-size:1.8rem; color:var(--accent); letter-spacing:.05em; }
+    .share-copy-btn { width:100%; background:var(--accent); color:white; border:none; border-radius:10px; padding:12px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:.75rem; }
+    .share-divider { text-align:center; font-size:12px; color:var(--ink3); margin:.75rem 0; }
+    .share-join-row { display:flex; gap:8px; }
+    .share-join-input { flex:1; border:1.5px solid var(--border); border-radius:10px; padding:10px 14px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; text-transform:uppercase; letter-spacing:.05em; }
+    .share-join-input:focus { border-color:var(--accent); }
+    .share-join-btn { background:var(--accent); color:white; border:none; border-radius:10px; padding:10px 16px; font-size:14px; cursor:pointer; white-space:nowrap; }
+    .share-close-btn { width:100%; background:none; border:none; font-size:13px; color:var(--ink3); cursor:pointer; padding:8px; margin-top:.5rem; }
+
     /* LOADING */
     #loading { display:flex; align-items:center; justify-content:center; min-height:100dvh; }
     .spinner { width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; margin-bottom:1rem; }
@@ -202,7 +219,7 @@
     <div class="header-top">
       <div class="app-title">Handleliste</div>
       <div class="user-area">
-        <div class="avatar" id="user-avatar">?</div>
+        <div class="avatar" id="user-avatar" onclick="openShareModal()" style="cursor:pointer" title="Del husholdning">?</div>
         <button class="signout-btn" id="signout-btn">Logg ut</button>
       </div>
     </div>
@@ -283,6 +300,25 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- SHARING MODAL -->
+<div class="share-modal-overlay" id="share-modal">
+  <div class="share-modal">
+    <div class="share-modal-title">Del husholdning</div>
+    <div class="share-modal-sub">Del koden med de du vil handle med</div>
+    <div class="share-code-box">
+      <div class="share-code-label">Din husholdningskode</div>
+      <div class="share-code-value" id="share-code-value">...</div>
+    </div>
+    <button class="share-copy-btn" id="share-copy-btn">📋 Kopier kode</button>
+    <div class="share-divider">— eller bli med i en annen husholdning —</div>
+    <div class="share-join-row">
+      <input class="share-join-input" id="share-join-input" type="text" placeholder="SKRIV INN KODE" maxlength="20" />
+      <button class="share-join-btn" id="share-join-btn">Bli med</button>
+    </div>
+    <button class="share-close-btn" id="share-close-btn">Lukk</button>
+  </div>
 </div>
 
 <!-- EDIT MODAL -->
@@ -410,6 +446,13 @@
     document.getElementById("loading").style.display = "none";
     if (user) {
       currentUser = user;
+      // Last husholdnings-ID fra brukerprofil
+      try {
+        const userSnap = await getDoc(doc(db, "users", user.uid));
+        if (userSnap.exists() && userSnap.data().householdId) {
+          LIST_ID = userSnap.data().householdId;
+        }
+      } catch(e) {}
       document.getElementById("login-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "flex";
       const initials = user.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
@@ -841,6 +884,104 @@
 
   document.getElementById("smart-cancel-btn").addEventListener("click", () => {
     document.getElementById("smart-preview").classList.remove("open");
+  });
+
+  // SHARING
+  function generateCode() {
+    const adj = ["GRØNN","BLÅ","RØD","GULL","GLAD","RASK","STERK","LITEN","STOR","RUND"];
+    const noun = ["ELEFANT","LØVE","TIGER","BJØRN","ULV","ØRN","HAI","PANDA","KOALA","ULVEN"];
+    const num = Math.floor(Math.random() * 90) + 10;
+    return adj[Math.floor(Math.random()*adj.length)] + "-" + noun[Math.floor(Math.random()*noun.length)] + "-" + num;
+  }
+
+  window.openShareModal = async () => {
+    // Finn eller lag husholdningskode for denne brukeren
+    const userRef = doc(db, "users", currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    let code = LIST_ID;
+    if (userSnap.exists() && userSnap.data().householdId) {
+      code = userSnap.data().householdId;
+    }
+    document.getElementById("share-code-value").textContent = code;
+    document.getElementById("share-modal").classList.add("open");
+  };
+
+  document.getElementById("share-close-btn").addEventListener("click", () => {
+    document.getElementById("share-modal").classList.remove("open");
+  });
+
+  document.getElementById("share-modal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById("share-modal").classList.remove("open");
+    }
+  });
+
+  document.getElementById("share-copy-btn").addEventListener("click", () => {
+    const code = document.getElementById("share-code-value").textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      document.getElementById("share-copy-btn").textContent = "✅ Kopiert!";
+      setTimeout(() => {
+        document.getElementById("share-copy-btn").textContent = "📋 Kopier kode";
+      }, 2000);
+    });
+  });
+
+  document.getElementById("share-join-btn").addEventListener("click", async () => {
+    const input = document.getElementById("share-join-input");
+    const code = input.value.trim().toUpperCase();
+    if (!code) return;
+
+    try {
+      // Sjekk om husholdning finnes
+      const householdRef = doc(db, "households", code);
+      const householdSnap = await getDoc(householdRef);
+
+      if (!householdSnap.exists()) {
+        // Sjekk om det finnes en liste med denne ID-en
+        const listItems = await getDocs(collection(db, "lists", code, "items"));
+        if (listItems.empty) {
+          alert("Fant ingen husholdning med koden: " + code);
+          return;
+        }
+        // Lag husholdningsdokument for gammel liste
+        await setDoc(householdRef, {
+          createdAt: Date.now(),
+          members: [currentUser.uid],
+          migrated: true
+        });
+      } else {
+        // Legg til bruker i eksisterende husholdning
+        const members = householdSnap.data().members || [];
+        if (!members.includes(currentUser.uid)) {
+          await setDoc(householdRef, { members: [...members, currentUser.uid] }, { merge: true });
+        }
+      }
+
+      // Oppdater brukerens husholdning
+      await setDoc(doc(db, "users", currentUser.uid), {
+        householdId: code,
+        displayName: currentUser.displayName || ""
+      }, { merge: true });
+
+      // Bytt til ny liste
+      LIST_ID = code;
+      if (unsubscribeList) unsubscribeList();
+      await loadPurchaseHistory();
+      startListeningWithPrice();
+      renderSuggestions();
+      loadHistory();
+
+      document.getElementById("share-modal").classList.remove("open");
+      input.value = "";
+      alert("✅ Du er nå med i husholdning: " + code);
+    } catch(e) {
+      console.error(e);
+      alert("Noe gikk galt. Prøv igjen.");
+    }
+  });
+
+  document.getElementById("share-join-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("share-join-btn").click();
   });
 
   // AUTOCOMPLETE
