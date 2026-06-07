@@ -389,6 +389,7 @@
           </select>
         </div>
         <button class="board-add-btn" id="board-add-btn" type="button">+ Legg til på tavlen</button>
+        <button class="board-add-btn" id="push-enable-btn" type="button" style="background:var(--accent2);margin-top:8px">🔔 Aktiver varsler</button>
       </div>
       <div id="board-content">
         <div class="board-empty">Ingen oppgaver ennå</div>
@@ -571,6 +572,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
   import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCoWYFF9JxVxMFNlwnLzrulSkHmTjh46uY",
@@ -584,6 +586,7 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
+  const messagingVapidKey = "BPvPJGtqU_7ewG0u98mNnW5LJcod5vYZ88XMVZIp7nf9Tu8RWWj9vrMkX75IqssXlMMnJ7EFLPGVHgmqrkTGEi8";
 
   // Kategori-rekkefølge som i butikken
   const CAT_ORDER = ["frukt-gront","meieri","brod-bakeri","kjott-fisk","tørrvarer","frysevarer","drikke","snacks","hygiene","annet"];
@@ -842,6 +845,91 @@
       }
     }
   });
+
+
+  // PUSH NOTIFICATIONS
+  async function enablePushNotifications() {
+    if (!currentUser) {
+      alert("Du må være logget inn først.");
+      return;
+    }
+
+    if (!("Notification" in window)) {
+      alert("Denne nettleseren støtter ikke push-varsler.");
+      return;
+    }
+
+    try {
+      const supported = await isMessagingSupported();
+      if (!supported) {
+        alert("Push-varsler støttes ikke i denne nettleseren/enheten.");
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        alert("Varsler ble ikke tillatt.");
+        return;
+      }
+
+      let swRegistration = null;
+      if ("serviceWorker" in navigator) {
+        swRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+        await navigator.serviceWorker.ready;
+      }
+
+      const messaging = getMessaging(app);
+      const token = await getToken(messaging, {
+        vapidKey: messagingVapidKey,
+        serviceWorkerRegistration: swRegistration || undefined
+      });
+
+      if (!token) {
+        alert("Klarte ikke å hente push-token. Prøv igjen.");
+        return;
+      }
+
+      await setDoc(doc(db, "users", currentUser.uid), {
+        pushToken: token,
+        pushTokenUpdatedAt: Date.now(),
+        pushEnabled: true,
+        pushUserAgent: navigator.userAgent,
+        pushHouseholdId: LIST_ID || null
+      }, { merge: true });
+
+      const btn = document.getElementById("push-enable-btn");
+      if (btn) btn.textContent = "✅ Varsler aktivert";
+
+      alert("Push-varsler er aktivert for denne enheten.");
+    } catch (err) {
+      console.error("Kunne ikke aktivere push-varsler", err);
+      alert("Kunne ikke aktivere varsler: " + (err.message || err));
+    }
+  }
+
+  window.enablePushNotifications = enablePushNotifications;
+
+  const pushEnableBtn = document.getElementById("push-enable-btn");
+  if (pushEnableBtn) {
+    pushEnableBtn.addEventListener("click", enablePushNotifications);
+  }
+
+  (async () => {
+    try {
+      const supported = await isMessagingSupported();
+      if (!supported) return;
+      const messaging = getMessaging(app);
+      onMessage(messaging, (payload) => {
+        const title = payload.notification?.title || "Handleliste";
+        const body = payload.notification?.body || "";
+        if (Notification.permission === "granted") {
+          new Notification(title, { body, icon: "/icon-192.png" });
+        }
+      });
+    } catch (e) {
+      console.warn("Kunne ikke sette opp foreground push", e);
+    }
+  })();
 
   // PURCHASE HISTORY
   async function loadPurchaseHistory() {
