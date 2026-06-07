@@ -608,12 +608,55 @@
     return code;
   }
 
+  async function legacyListExists(code) {
+    try {
+      const itemsSnap = await getDocs(collection(db, "lists", code, "items"));
+      if (!itemsSnap.empty) return true;
+
+      const historySnap = await getDocs(collection(db, "lists", code, "history"));
+      if (!historySnap.empty) return true;
+
+      const metaSnap = await getDocs(collection(db, "lists", code, "meta"));
+      if (!metaSnap.empty) return true;
+    } catch(e) {
+      console.warn("Kunne ikke sjekke gammel liste", code, e);
+    }
+    return false;
+  }
+
+  async function ensureHouseholdDocument(code, user) {
+    const householdRef = doc(db, "households", code);
+    const householdSnap = await getDoc(householdRef);
+
+    if (!householdSnap.exists()) {
+      await setDoc(householdRef, {
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        members: [user.uid],
+        migratedFromLegacyList: true
+      }, { merge: true });
+      return;
+    }
+
+    const members = householdSnap.data().members || [];
+    if (!members.includes(user.uid)) {
+      await setDoc(householdRef, { members: [...members, user.uid] }, { merge: true });
+    }
+  }
+
   async function getOrCreateUserHousehold(user) {
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
 
     if (userSnap.exists() && userSnap.data().householdId) {
-      return userSnap.data().householdId;
+      const code = userSnap.data().householdId;
+
+      // Støtte for gammel struktur, f.eks. lists/hjem uten households/hjem
+      if (await legacyListExists(code)) {
+        await ensureHouseholdDocument(code, user);
+      }
+
+      return code;
     }
 
     return await createUniqueHouseholdForUser(user);
@@ -1510,7 +1553,8 @@
 
   document.getElementById("share-join-btn").addEventListener("click", async () => {
     const input = document.getElementById("share-join-input");
-    const code = input.value.trim().toUpperCase();
+    const rawCode = input.value.trim();
+    const code = rawCode.toLowerCase() === "hjem" ? "hjem" : rawCode.toUpperCase();
     if (!code) return;
 
     try {
@@ -1519,18 +1563,19 @@
       const householdSnap = await getDoc(householdRef);
 
       if (!householdSnap.exists()) {
-        // Sjekk om det finnes en liste med denne ID-en
-        const listItems = await getDocs(collection(db, "lists", code, "items"));
-        if (listItems.empty) {
+        // Støtte for gammel struktur: lists/<kode> kan finnes selv om households/<kode> mangler
+        if (!(await legacyListExists(code))) {
           alert("Fant ingen husholdning med koden: " + code);
           return;
         }
+
         // Lag husholdningsdokument for gammel liste
         await setDoc(householdRef, {
           createdAt: Date.now(),
+          createdBy: currentUser.uid,
           members: [currentUser.uid],
-          migrated: true
-        });
+          migratedFromLegacyList: true
+        }, { merge: true });
       } else {
         // Legg til bruker i eksisterende husholdning
         const members = householdSnap.data().members || [];
