@@ -26,6 +26,18 @@
     .login-btn:hover { transform:translateY(-1px); box-shadow:0 4px 20px rgba(0,0,0,.12); }
     .google-icon { width:20px; height:20px; }
 
+    /* HOUSEHOLD INFO */
+    .household-info-popup { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:300; display:none; align-items:flex-end; justify-content:center; }
+    .household-info-popup.open { display:flex; }
+    .household-info-box { background:var(--surface); border-radius:20px 20px 0 0; padding:1.5rem 1.25rem 2.5rem; width:100%; max-width:480px; }
+    .household-info-title { font-family:'DM Serif Display',serif; font-size:1.2rem; margin-bottom:1.25rem; }
+    .household-code-display { background:var(--accent-light); border:1.5px solid var(--accent); border-radius:var(--radius); padding:1rem; text-align:center; margin-bottom:1rem; }
+    .household-code-display-label { font-size:11px; color:var(--accent); font-weight:500; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+    .household-code-display-code { font-family:'DM Serif Display',serif; font-size:1.6rem; color:var(--accent); letter-spacing:.05em; }
+    .household-action-btn { display:flex; align-items:center; gap:10px; width:100%; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; font-family:'DM Sans',sans-serif; font-size:14px; cursor:pointer; margin-bottom:8px; color:var(--ink); transition:all .15s; }
+    .household-action-btn:hover { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
+    .household-close-btn { width:100%; background:none; border:none; font-size:13px; color:var(--ink3); cursor:pointer; padding:8px; margin-top:4px; }
+
     /* ONBOARDING */
     #onboarding-screen { display:none; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:2rem; gap:1.5rem; }
     .onboarding-title { font-family:'DM Serif Display',serif; font-size:2rem; text-align:center; color:var(--ink); }
@@ -253,7 +265,7 @@
     <div class="header-top">
       <div class="app-title">Handleliste</div>
       <div class="user-area">
-        <div class="avatar" id="user-avatar">?</div>
+        <div class="avatar" id="user-avatar" onclick="showHouseholdPopup()" title="Din husholdning">?</div>
         <button class="signout-btn" id="signout-btn">Logg ut</button>
       </div>
     </div>
@@ -334,6 +346,21 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- HOUSEHOLD INFO POPUP -->
+<div class="household-info-popup" id="household-popup">
+  <div class="household-info-box">
+    <div class="household-info-title">Din husholdning</div>
+    <div class="household-code-display">
+      <div class="household-code-display-label">Invitasjonskode</div>
+      <div class="household-code-display-code" id="popup-household-code">...</div>
+    </div>
+    <p style="font-size:13px;color:var(--ink2);margin-bottom:1rem;text-align:center">Del denne koden med alle som skal handle med deg</p>
+    <button class="household-action-btn" id="popup-copy-btn">📋 Kopier kode</button>
+    <button class="household-action-btn" id="popup-switch-btn" style="color:var(--danger);border-color:var(--danger)">🔄 Bytt til annen husholdning</button>
+    <button class="household-close-btn" id="popup-close-btn">Lukk</button>
+  </div>
 </div>
 
 <!-- EDIT MODAL -->
@@ -981,6 +1008,61 @@
   document.getElementById("smart-cancel-btn").addEventListener("click", () => {
     document.getElementById("smart-preview").classList.remove("open");
   });
+
+  // HOUSEHOLD POPUP
+  window.showHouseholdPopup = () => {
+    document.getElementById("popup-household-code").textContent = LIST_ID || "...";
+    document.getElementById("household-popup").classList.add("open");
+  };
+
+  document.getElementById("popup-close-btn").addEventListener("click", () => {
+    document.getElementById("household-popup").classList.remove("open");
+  });
+
+  document.getElementById("household-popup").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) document.getElementById("household-popup").classList.remove("open");
+  });
+
+  document.getElementById("popup-copy-btn").addEventListener("click", () => {
+    navigator.clipboard.writeText(LIST_ID || "");
+    document.getElementById("popup-copy-btn").textContent = "✅ Kopiert!";
+    setTimeout(() => document.getElementById("popup-copy-btn").textContent = "📋 Kopier kode", 2000);
+  });
+
+  document.getElementById("popup-switch-btn").addEventListener("click", () => {
+    document.getElementById("household-popup").classList.remove("open");
+    // Vis bytt-husholdning dialog
+    const newCode = prompt("Skriv inn koden til husholdningen du vil bli med i:");
+    if (!newCode) return;
+    switchHousehold(newCode.trim().toUpperCase());
+  });
+
+  async function switchHousehold(code) {
+    if (!code) return;
+    const householdRef = doc(db, "households", code);
+    const householdSnap = await getDoc(householdRef);
+    if (!householdSnap.exists()) {
+      alert("Fant ingen husholdning med den koden. Sjekk at du har skrevet riktig!");
+      return;
+    }
+    // Oppdater brukerens husholdning
+    const members = householdSnap.data().members || [];
+    if (!members.includes(currentUser.uid)) {
+      await setDoc(householdRef, { members: [...members, currentUser.uid] }, { merge: true });
+    }
+    await setDoc(doc(db, "users", currentUser.uid), {
+      householdId: code,
+      displayName: currentUser.displayName || ""
+    }, { merge: true });
+    LIST_ID = code;
+    // Restart lytting på ny liste
+    if (unsubscribeList) unsubscribeList();
+    loadPurchaseHistory();
+    startListeningWithPrice();
+    renderSuggestions();
+    loadHistory();
+    alert(`✅ Du er nå med i husholdning: ${code}`);
+  }
 
   // AUTOCOMPLETE
   const AC_SOURCES = [
