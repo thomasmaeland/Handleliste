@@ -1071,6 +1071,41 @@
       .filter(([, value]) => Number(value || 0) > 0)
       .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0));
 
+    const productStats = {};
+    const storeStats = {};
+
+    monthTrips.forEach(trip => {
+      const store = (trip.butikk || trip.store || "Ukjent butikk").trim() || "Ukjent butikk";
+      const calculated = getTripTotalAndCategories(trip);
+      if (!storeStats[store]) storeStats[store] = { total: 0, trips: 0 };
+      storeStats[store].total += Number(calculated.total || 0);
+      storeStats[store].trips += 1;
+
+      (trip.items || []).forEach(item => {
+        const rawName = item.name || item.navn || item.line || "Ukjent vare";
+        const name = cleanName(rawName).replace(/\s+/g, " ").trim() || "Ukjent vare";
+        const key = name.toLowerCase();
+        const qty = Number(item.qty || item.antall || 1) || 1;
+        const amount = getHistoryItemLineTotal(item);
+        if (!productStats[key]) productStats[key] = { name, qty: 0, amount: 0 };
+        productStats[key].qty += qty;
+        productStats[key].amount += Number(amount || 0);
+      });
+    });
+
+    const topProducts = Object.values(productStats)
+      .sort((a, b) => (b.qty - a.qty) || (b.amount - a.amount))
+      .slice(0, 7);
+
+    const topStores = Object.entries(storeStats)
+      .sort((a, b) => Number(b[1].total || 0) - Number(a[1].total || 0))
+      .slice(0, 5);
+
+    const fmtQty = (qty) => {
+      const rounded = Math.round(qty * 10) / 10;
+      return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
+    };
+
     box.style.display = "block";
     box.innerHTML = `
       <div class="month-summary-header">
@@ -1086,12 +1121,30 @@
         <span>${monthTrips.length} handletur${monthTrips.length === 1 ? "" : "er"} · ${itemCount} varer</span>
         <strong>${Math.round(total)} kr</strong>
       </div>
+
+      <div class="section-label" style="margin-top:.75rem;margin-bottom:.35rem">Kategorier</div>
       ${sortedCats.length ? sortedCats.map(([cat, value]) => `
         <div class="month-summary-row">
           <span>${CAT_LABELS[cat] || cat}</span>
           <strong>${Math.round(Number(value || 0))} kr</strong>
         </div>
       `).join("") : `<div class="month-summary-empty">Ingen summer å vise for denne måneden.</div>`}
+
+      <div class="section-label" style="margin-top:.9rem;margin-bottom:.35rem">Topp produkter</div>
+      ${topProducts.length ? topProducts.map((p, index) => `
+        <div class="month-summary-row">
+          <span>${index + 1}. ${escapeHtml(p.name)} · ${fmtQty(p.qty)} stk</span>
+          <strong>${Math.round(Number(p.amount || 0))} kr</strong>
+        </div>
+      `).join("") : `<div class="month-summary-empty">Ingen produkter å vise.</div>`}
+
+      <div class="section-label" style="margin-top:.9rem;margin-bottom:.35rem">Topp butikker</div>
+      ${topStores.length ? topStores.map(([store, data], index) => `
+        <div class="month-summary-row">
+          <span>${index + 1}. ${escapeHtml(store)} · ${data.trips} tur${data.trips === 1 ? "" : "er"}</span>
+          <strong>${Math.round(Number(data.total || 0))} kr</strong>
+        </div>
+      `).join("") : `<div class="month-summary-empty">Ingen butikker å vise.</div>`}
     `;
   }
 
