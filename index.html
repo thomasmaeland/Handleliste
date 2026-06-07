@@ -174,6 +174,14 @@
     .board-delete { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:18px; line-height:1; padding:0 3px; }
     .board-delete:hover { color:var(--danger); }
     .board-empty { text-align:center; padding:1.5rem 1rem; color:var(--ink3); font-size:14px; }
+    .board-filters { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:.75rem; margin-bottom:1rem; }
+    .board-filter-title { font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:.5rem; }
+    .board-filter-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .board-filter-chip { background:var(--bg); border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size:12px; color:var(--ink2); cursor:pointer; }
+    .board-filter-chip.active { background:var(--accent); border-color:var(--accent); color:white; }
+    .board-person-row { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+    .board-person-pill { display:inline-block; background:#f4f1ea; color:var(--ink2); border-radius:999px; padding:2px 7px; font-size:10px; }
+
 
     /* RECEIPT SCAN */
     .receipt-btn { display:flex; align-items:center; gap:8px; width:100%; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; color:var(--ink2); }
@@ -368,8 +376,8 @@
             <option value="event">Aktivitet</option>
             <option value="reminder">Påminnelse</option>
           </select>
-          <input class="board-input" id="board-assigned-input" type="text" placeholder="Ansvarlig" />
-          <input class="board-input" id="board-person-input" type="text" placeholder="Gjelder hvem" />
+          <input class="board-input" id="board-assigned-input" type="text" placeholder="Ansvarlig" list="family-people-list" />
+          <input class="board-input" id="board-person-input" type="text" placeholder="Gjelder hvem (kan være flere, skill med komma)" list="family-people-list" />
           <input class="board-input" id="board-date-input" type="date" />
           <input class="board-input" id="board-time-input" type="time" />
           <select class="board-select" id="board-repeat-input">
@@ -387,6 +395,8 @@
         </div>
         <button class="board-add-btn" id="board-add-btn" type="button">+ Legg til på tavlen</button>
       </div>
+      <datalist id="family-people-list"></datalist>
+      <div class="board-filters" id="board-filters" style="display:none"></div>
       <div id="board-content">
         <div class="board-empty">Ingen oppgaver ennå</div>
       </div>
@@ -628,6 +638,8 @@
   let unsubscribeList = null;
   let unsubscribeTasks = null;
   let familyBoardItems = [];
+  let selectedBoardPerson = "alle";
+  const DEFAULT_FAMILY_PEOPLE = ["Thomas", "Katrine", "Selma", "Emely", "Olav", "Mor"];
   let currentItems = [];
   let editingItemId = null;
   let historyTripsCache = [];
@@ -1838,6 +1850,17 @@
       .replace(/'/g, "&#039;");
   }
 
+
+  function escapeJs(str) {
+    return String(str || "")
+      .replace(/\/g, "\\")
+      .replace(/'/g, "\'")
+      .replace(/
+/g, " ")
+      .replace(/
+/g, " ");
+  }
+
   function normalizeScannedReceiptItem(item) {
     const lineText = item.linje || item.line || item.originalLinje || item.original || item.tekst || "";
     const name = item.navn || item.name || item.vare || item.product || "";
@@ -2192,6 +2215,64 @@
 
 
   // FAMILY BOARD / TASKS
+  function splitPeople(value) {
+    if (Array.isArray(value)) return value.map(v => String(v || "").trim()).filter(Boolean);
+    return String(value || "").split(",").map(v => v.trim()).filter(Boolean);
+  }
+
+  function uniquePeople(list) {
+    const seen = new Set();
+    const out = [];
+    list.forEach(name => {
+      const clean = String(name || "").trim();
+      if (!clean) return;
+      const key = clean.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(clean);
+    });
+    return out;
+  }
+
+  function getTaskRelatedPeople(task) {
+    return uniquePeople([...(task.relatedPeople || []), ...splitPeople(task.relatedPerson)]);
+  }
+
+  function getTaskPeople(task) {
+    return uniquePeople([task.assignedTo, ...getTaskRelatedPeople(task)]);
+  }
+
+  function getAllBoardPeople() {
+    return uniquePeople([
+      ...DEFAULT_FAMILY_PEOPLE,
+      ...familyBoardItems.flatMap(getTaskPeople)
+    ]);
+  }
+
+  function updateFamilyPeopleDatalist() {
+    const datalist = document.getElementById("family-people-list");
+    if (!datalist) return;
+    datalist.innerHTML = getAllBoardPeople().map(p => `<option value="${escapeHtml(p)}"></option>`).join("");
+  }
+
+  function renderBoardFilters() {
+    const box = document.getElementById("board-filters");
+    if (!box) return;
+    const people = getAllBoardPeople();
+    if (people.length === 0) { box.style.display = "none"; return; }
+    box.style.display = "block";
+    box.innerHTML = `<div class="board-filter-title">Vis tavle for</div>
+      <div class="board-filter-chips">
+        <button class="board-filter-chip ${selectedBoardPerson === "alle" ? "active" : ""}" onclick="setBoardPersonFilter('alle')">Alle</button>
+        ${people.map(p => `<button class="board-filter-chip ${selectedBoardPerson === p ? "active" : ""}" onclick="setBoardPersonFilter('${escapeJs(p)}')">${escapeHtml(p)}</button>`).join("")}
+      </div>`;
+  }
+
+  window.setBoardPersonFilter = (person) => {
+    selectedBoardPerson = person || "alle";
+    renderFamilyBoard();
+  };
+
   function startListeningTasks() {
     if (!LIST_ID) return;
     if (unsubscribeTasks) unsubscribeTasks();
@@ -2243,6 +2324,8 @@
   function renderTaskCard(task) {
     const recText = recurrenceLabel(task.recurrence);
     const reminderText = task.reminder?.enabled ? `Varsel ${task.reminder.minutesBefore} min før` : "";
+    const relatedPeople = getTaskRelatedPeople(task);
+    const peoplePills = getTaskPeople(task).map(p => `<span class="board-person-pill">${escapeHtml(p)}</span>`).join("");
     return `<div class="board-card ${task.completed ? "done" : ""}">
       <button class="board-check" onclick="toggleBoardTask('${task.id}', ${!!task.completed})">${task.completed ? "✓" : ""}</button>
       <div class="board-main">
@@ -2250,8 +2333,9 @@
         <div class="board-meta">
           ${escapeHtml(formatTaskDate(task))}
           ${task.assignedTo ? ` · Ansvarlig: ${escapeHtml(task.assignedTo)}` : ""}
-          ${task.relatedPerson ? ` · Gjelder: ${escapeHtml(task.relatedPerson)}` : ""}
+          ${relatedPeople.length ? ` · Gjelder: ${escapeHtml(relatedPeople.join(", "))}` : ""}
         </div>
+        ${peoplePills ? `<div class="board-person-row">${peoplePills}</div>` : ""}
         <div>
           <span class="board-pill">${escapeHtml(taskTypeLabel(task.type))}</span>
           ${recText ? `<span class="board-pill">🔁 ${escapeHtml(recText)}</span>` : ""}
@@ -2265,13 +2349,24 @@
   function renderFamilyBoard() {
     const container = document.getElementById("board-content");
     if (!container) return;
+    updateFamilyPeopleDatalist();
+    renderBoardFilters();
     if (!familyBoardItems || familyBoardItems.length === 0) {
       container.innerHTML = `<div class="board-empty">Ingen oppgaver ennå</div>`;
       return;
     }
 
-    const active = familyBoardItems.filter(t => !t.completed);
-    const done = familyBoardItems.filter(t => t.completed);
+    const visibleItems = selectedBoardPerson === "alle"
+      ? familyBoardItems
+      : familyBoardItems.filter(t => getTaskPeople(t).some(p => p.toLowerCase() === selectedBoardPerson.toLowerCase()));
+
+    if (visibleItems.length === 0) {
+      container.innerHTML = `<div class="board-empty">Ingen oppgaver for ${escapeHtml(selectedBoardPerson)}</div>`;
+      return;
+    }
+
+    const active = visibleItems.filter(t => !t.completed);
+    const done = visibleItems.filter(t => t.completed);
     const today = active.filter(t => isTodayDate(getTaskDate(t)));
     const upcoming = active.filter(t => !isTodayDate(getTaskDate(t))).sort((a,b) => {
       const ad = getTaskDate(a)?.getTime() || 9999999999999;
@@ -2293,6 +2388,7 @@
     const type = document.getElementById("board-type-input").value || "task";
     const assignedTo = document.getElementById("board-assigned-input").value.trim();
     const relatedPerson = document.getElementById("board-person-input").value.trim();
+    const relatedPeople = splitPeople(relatedPerson);
     const dueDate = document.getElementById("board-date-input").value || "";
     const dueTime = document.getElementById("board-time-input").value || "";
     const repeat = document.getElementById("board-repeat-input").value || "none";
@@ -2303,6 +2399,7 @@
       type,
       assignedTo,
       relatedPerson,
+      relatedPeople,
       dueDate,
       dueTime,
       completed: false,
