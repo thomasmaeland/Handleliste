@@ -1844,11 +1844,12 @@
 
 
   function escapeJsString(value) {
-    return String(value ?? "").replace(/\/g, "\\").replace(/'/g, "\'").replace(/
-/g, " ").replace(/
-/g, " ");
+    return String(value ?? "")
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, " ")
+      .replace(/\r/g, " ");
   }
-
   function normalizeScannedReceiptItem(item) {
     const lineText = item.linje || item.line || item.originalLinje || item.original || item.tekst || "";
     const name = item.navn || item.name || item.vare || item.product || "";
