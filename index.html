@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="no">
 <head>
@@ -398,7 +397,7 @@
   let unsubscribeList = null;
   let currentItems = [];
   let editingItemId = null;
-  const LIST_ID = "hjem";
+  let LIST_ID = "hjem";
 
   // AUTH
   document.getElementById("google-login-btn").addEventListener("click", async () => {
@@ -411,81 +410,20 @@
     document.getElementById("loading").style.display = "none";
     if (user) {
       currentUser = user;
-      // Sjekk om brukeren allerede har en husholdning
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists() && userSnap.data().householdId) {
-        // Eksisterende bruker med husholdning
-        LIST_ID = userSnap.data().householdId;
-        startApp();
-      } else {
-        // Sjekk om brukeren har gammel data under "hjem"
-        try {
-          const oldListRef = collection(db, "lists", "hjem", "items");
-          const oldSnap = await getDocs(oldListRef);
-          if (!oldSnap.empty) {
-            // Migrer til "hjem" som husholdning
-            await setDoc(doc(db, "households", "hjem"), {
-              createdBy: user.uid,
-              createdAt: Date.now(),
-              members: [user.uid],
-              migrated: true
-            }, { merge: true });
-            await setDoc(doc(db, "users", user.uid), {
-              householdId: "hjem",
-              displayName: user.displayName || ""
-            }, { merge: true });
-            LIST_ID = "hjem";
-            startApp();
-            return;
-          }
-        } catch(e) {}
-        // Ny bruker uten data — vis onboarding
-        document.getElementById("login-screen").style.display = "none";
-        document.getElementById("onboarding-screen").style.display = "flex";
-      }
+      document.getElementById("login-screen").style.display = "none";
+      document.getElementById("app-screen").style.display = "flex";
+      const initials = user.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
+      document.getElementById("user-avatar").textContent = initials;
+      await loadPurchaseHistory();
+      startListeningWithPrice();
+      renderSuggestions();
+      loadHistory();
     } else {
       currentUser = null;
-      LIST_ID = null;
       document.getElementById("login-screen").style.display = "flex";
-      document.getElementById("onboarding-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "none";
       if (unsubscribeList) unsubscribeList();
     }
-  });
-
-  function startApp() {
-    document.getElementById("login-screen").style.display = "none";
-    document.getElementById("onboarding-screen").style.display = "none";
-    document.getElementById("app-screen").style.display = "flex";
-    const initials = currentUser.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
-    document.getElementById("user-avatar").textContent = initials;
-    loadPurchaseHistory();
-    startListeningWithPrice();
-    renderSuggestions();
-    loadHistory();
-  }
-
-  // LAG NY HUSHOLDNING
-  document.getElementById("create-household-btn").addEventListener("click", async () => {
-    const code = generateHouseholdCode();
-    document.getElementById("new-household-code").textContent = code;
-    document.getElementById("new-household-box").style.display = "block";
-    document.getElementById("create-household-btn").style.display = "none";
-    document.getElementById("join-household-toggle").style.display = "none";
-    document.getElementById("onboarding-divider") && (document.querySelector(".onboarding-divider").style.display = "none");
-
-    // Lagre husholdning i Firebase
-    await setDoc(doc(db, "households", code), {
-      createdBy: currentUser.uid,
-      createdAt: Date.now(),
-      members: [currentUser.uid]
-    });
-    await setDoc(doc(db, "users", currentUser.uid), {
-      householdId: code,
-      displayName: currentUser.displayName || ""
-    });
-    LIST_ID = code;
   });
 
   document.getElementById("copy-code-btn").addEventListener("click", () => {
