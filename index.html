@@ -1113,30 +1113,106 @@
 
   // RECEIPT SCANNING
   let scannedReceipt = [];
-  window.deleteScannedProduct = (index) => {
-    scannedReceipt.splice(index, 1);
+  let scannedDate = null;
+  let scannedButikk = null;
 
+  function parseNumber(value, fallback = null) {
+    if (value === null || value === undefined || value === "") return fallback;
+    if (typeof value === "number") return isNaN(value) ? fallback : value;
+    const normalized = String(value).replace(",", ".").replace(/[^\d.-]/g, "");
+    const parsed = parseFloat(normalized);
+    return isNaN(parsed) ? fallback : parsed;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function normalizeScannedReceiptItem(item) {
+    const lineText = item.linje || item.line || item.originalLinje || item.original || item.tekst || "";
+    const name = item.navn || item.name || item.vare || item.product || "";
+
+    let qty = parseNumber(item.antall ?? item.qty ?? item.quantity, null);
+    let unit = item.enhet || item.unit || "stk";
+
+    // Forsøk å lese antall fra hele linjen hvis backend ikke har sendt antall.
+    // Eksempler: "2 x MELK 25,00", "2,000 KG BANANER 39,90", "3 STK YOGHURT 45,00"
+    if (!qty && lineText) {
+      const line = String(lineText).toLowerCase();
+
+      let match =
+        line.match(/(^|\s)(\d+(?:[,.]\d+)?)\s*x\s+/i) ||
+        line.match(/(^|\s)(\d+(?:[,.]\d+)?)\s*(stk|pk|kg|g|l|dl)\b/i);
+
+      if (match) {
+        qty = parseNumber(match[2], 1);
+        if (match[3]) unit = match[3];
+      }
+    }
+
+    if (!qty || qty <= 0) qty = 1;
+
+    const totalPrice = parseNumber(
+      item.total ?? item.totalpris ?? item.linjesum ?? item.sum ?? item.pris ?? item.price,
+      null
+    );
+
+    const unitPrice = parseNumber(
+      item.stkpris ?? item.enhetspris ?? item.unitPrice,
+      totalPrice !== null && qty > 0 ? totalPrice / qty : null
+    );
+
+    return {
+      navn: cleanName(name || lineText || "Ukjent vare"),
+      linje: lineText || name || "",
+      antall: qty,
+      enhet: unit || "stk",
+      pris: totalPrice,
+      stkpris: unitPrice
+    };
+  }
+
+  function renderScannedReceipt() {
     const area = document.getElementById("receipt-items-area");
 
     if (scannedReceipt.length === 0) {
       area.innerHTML = '<div class="receipt-scanning">Ingen produkter igjen.</div>';
+      document.getElementById("receipt-actions").style.display = "none";
       return;
     }
 
     area.innerHTML = `<div class="receipt-items-list">
-      ${scannedReceipt.map((v, i) => `
-        <div class="receipt-item-row">
-          <input type="checkbox" class="receipt-item-check" id="rc-${i}" checked>
-          <span class="receipt-item-name">${v.navn}</span>
-          <span class="receipt-item-price">${v.pris} kr</span>
-          <button class="delete-btn" onclick="deleteScannedProduct(${i})">×</button>
-        </div>
-      `).join("")}
-    </div>`;
-  };
+      ${scannedReceipt.map((v, i) => {
+        const qtyText = `${v.antall || 1} ${v.enhet || "stk"}`;
+        const priceText = v.pris !== null && v.pris !== undefined ? `${Math.round(v.pris * 100) / 100} kr` : "ukjent pris";
+        const unitPriceText = v.stkpris && v.antall > 1 ? ` · ${Math.round(v.stkpris * 100) / 100} kr/${v.enhet || "stk"}` : "";
+        const lineText = v.linje ? `<div class="item-detail">${escapeHtml(v.linje)}</div>` : "";
 
-  let scannedDate = null;
-  let scannedButikk = null;
+        return `
+          <div class="receipt-item-row">
+            <input type="checkbox" class="receipt-item-check" id="rc-${i}" checked>
+            <div class="item-main">
+              <div class="receipt-item-name">${escapeHtml(v.navn)}</div>
+              <div class="item-detail">${escapeHtml(qtyText)}${escapeHtml(unitPriceText)}</div>
+              ${lineText}
+            </div>
+            <span class="receipt-item-price">${escapeHtml(priceText)}</span>
+            <button class="delete-btn" onclick="deleteScannedProduct(${i})">×</button>
+          </div>
+        `;
+      }).join("")}
+    </div>`;
+  }
+
+  window.deleteScannedProduct = (index) => {
+    scannedReceipt.splice(index, 1);
+    renderScannedReceipt();
+  };
 
   document.getElementById("receipt-btn").addEventListener("click", () => {
     document.getElementById("receipt-input").click();
@@ -1146,18 +1222,16 @@
     const file = e.target.files[0];
     if (!file) return;
 
-
-
     const preview = document.getElementById("receipt-preview");
     const area = document.getElementById("receipt-items-area");
     const actions = document.getElementById("receipt-actions");
     preview.classList.add("open");
     actions.style.display = "none";
     document.getElementById("receipt-preview-title").textContent = "Skanner kvittering...";
-    area.innerHTML = `<div class="receipt-scanning"><div class="spin">🔍</div><br>Claude leser kvitteringen din...</div>`;
+    area.innerHTML = `<div class="receipt-scanning"><div class="spin">🔍</div><br>Leser hele kvitteringslinjene...</div>`;
 
     try {
-            // Skaler ned bildet før sending
+      // Skaler ned bildet før sending
       const base64 = await new Promise((res, rej) => {
         const img = new Image();
         const objectUrl = URL.createObjectURL(file);
@@ -1180,32 +1254,31 @@
 
       const mediaType = "image/jpeg";
 
-
       const response = await fetch("/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64, mediaType, type: "receipt" })
+        body: JSON.stringify({
+          image: base64,
+          mediaType,
+          type: "receipt",
+          instructions: "Les hele kvitteringslinjen for hver vare. Returner varer som JSON med feltene navn, linje, antall, enhet, pris og eventuelt stkpris. pris skal være linjesum/totalpris for varen."
+        })
       });
 
       if (!response.ok) throw new Error("Server feil: " + response.status);
       const parsed = await response.json();
-      scannedReceipt = parsed.varer || [];
-      scannedDate = parsed.dato || null;
-      scannedButikk = parsed.butikk || null;
+
+      scannedReceipt = (parsed.varer || parsed.items || []).map(normalizeScannedReceiptItem);
+      scannedDate = parsed.dato || parsed.date || null;
+      scannedButikk = parsed.butikk || parsed.store || null;
 
       if (scannedReceipt.length === 0) {
         area.innerHTML = `<div class="receipt-scanning">Fant ingen varer. Prøv et klarere bilde.</div>`;
         return;
       }
 
-      document.getElementById("receipt-preview-title").textContent = `Fant ${scannedReceipt.length} varer — velg hvilke som skal oppdatere priser:`;
-      area.innerHTML = `<div class="receipt-items-list">${scannedReceipt.map((v, i) =>
-        `<div class="receipt-item-row">
-          <input type="checkbox" class="receipt-item-check" id="rc-${i}" checked />
-          <span class="receipt-item-name">${v.navn}</span>
-          <span class="receipt-item-price">${v.pris} kr</span>
-        </div>`
-      ).join("")}</div>`;
+      document.getElementById("receipt-preview-title").textContent = `Fant ${scannedReceipt.length} varer — sjekk antall og hele linjen før lagring:`;
+      renderScannedReceipt();
       actions.style.display = "flex";
 
     } catch(err) {
@@ -1218,34 +1291,46 @@
 
   document.getElementById("receipt-confirm-btn").addEventListener("click", async () => {
     const checked = scannedReceipt.filter((_, i) => document.getElementById(`rc-${i}`)?.checked);
-    
+
     // Oppdater priser i historikk
     checked.forEach(v => {
-      if (!purchaseHistory[v.navn]) purchaseHistory[v.navn] = { lastBought: null, intervals: [], partners: {} };
-      purchaseHistory[v.navn].lastPrice = v.pris;
-      // Oppdater lastBought basert på kvitteringsdato
+      const navn = cleanName(v.navn);
+      if (!purchaseHistory[navn]) purchaseHistory[navn] = { lastBought: null, intervals: [], partners: {} };
+
+      // Husk enhetspris hvis vi har antall, ellers bruk linjesummen
+      purchaseHistory[navn].lastPrice = v.stkpris || v.pris || null;
+      purchaseHistory[navn].lastReceiptLine = v.linje || "";
+      purchaseHistory[navn].lastQty = v.antall || 1;
+      purchaseHistory[navn].lastUnit = v.enhet || "stk";
+
       if (scannedDate) {
-        purchaseHistory[v.navn].lastBought = new Date(scannedDate).getTime();
+        purchaseHistory[navn].lastBought = new Date(scannedDate).getTime();
       } else {
-        purchaseHistory[v.navn].lastBought = Date.now();
+        purchaseHistory[navn].lastBought = Date.now();
       }
     });
     await savePurchaseHistory();
 
-    // Lagre som handletur i historikk
-    const dateStr = scannedDate 
+    const dateStr = scannedDate
       ? new Date(scannedDate).toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" })
       : new Date().toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" });
-    
+
     const total = checked.reduce((sum, v) => sum + (v.pris || 0), 0);
-    
+
     const historyRef = collection(db, "lists", LIST_ID, "history");
     await addDoc(historyRef, {
       date: dateStr,
       timestamp: scannedDate ? new Date(scannedDate).getTime() : Date.now(),
       butikk: scannedButikk || "Ukjent butikk",
       total: Math.round(total * 100) / 100,
-      items: checked.map(v => ({ name: v.navn, qty: 1, unit: "stk", price: v.pris })),
+      items: checked.map(v => ({
+        name: v.navn,
+        qty: v.antall || 1,
+        unit: v.enhet || "stk",
+        price: v.pris,
+        unitPrice: v.stkpris || null,
+        line: v.linje || ""
+      })),
       source: "kvittering"
     });
 
@@ -1258,6 +1343,7 @@
   document.getElementById("receipt-cancel-btn").addEventListener("click", () => {
     document.getElementById("receipt-preview").classList.remove("open");
   });
+
 
   // Hook price summary into list updates
   const _origSnap = startListening;
