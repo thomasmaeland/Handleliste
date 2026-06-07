@@ -1040,45 +1040,52 @@
   async function switchHousehold(code) {
     if (!code) return;
     const householdRef = doc(db, "households", code);
-    const householdSnap = await getDoc(householdRef);
-    if (!householdSnap.exists()) {
-      // Sjekk om det er en gammel migrert liste
-      try {
+    
+    try {
+      const householdSnap = await getDoc(householdRef);
+      
+      if (householdSnap.exists()) {
+        // Husholdning finnes — legg til bruker
+        const members = householdSnap.data().members || [];
+        if (!members.includes(currentUser.uid)) {
+          await setDoc(householdRef, { members: [...members, currentUser.uid] }, { merge: true });
+        }
+      } else {
+        // Sjekk om det finnes en liste med denne koden
         const oldListRef = collection(db, "lists", code, "items");
         const oldSnap = await getDocs(oldListRef);
         if (!oldSnap.empty) {
-          // Gammel liste finnes — lag husholdning for den
+          // Liste finnes — lag husholdningsdokument
           await setDoc(householdRef, {
             createdAt: Date.now(),
             members: [currentUser.uid],
             migrated: true
           });
         } else {
-          alert("Fant ingen husholdning med den koden. Sjekk at du har skrevet riktig!");
+          alert("Fant ingen husholdning med koden "" + code + "". Sjekk at du har skrevet riktig!");
           return;
         }
-      } catch(e) {
-        alert("Fant ingen husholdning med den koden. Sjekk at du har skrevet riktig!");
-        return;
       }
+
+      // Oppdater brukerens husholdning
+      await setDoc(doc(db, "users", currentUser.uid), {
+        householdId: code,
+        displayName: currentUser.displayName || ""
+      }, { merge: true });
+      
+      LIST_ID = code;
+      if (unsubscribeList) unsubscribeList();
+      loadPurchaseHistory();
+      startListeningWithPrice();
+      renderSuggestions();
+      loadHistory();
+      document.getElementById("household-popup").classList.remove("open");
+      document.getElementById("popup-household-code").textContent = code;
+      alert("✅ Du er nå med i husholdning: " + code);
+    } catch(e) {
+      console.error(e);
+      alert("Noe gikk galt: " + e.message);
     }
-    // Oppdater brukerens husholdning
-    const members = householdSnap.data().members || [];
-    if (!members.includes(currentUser.uid)) {
-      await setDoc(householdRef, { members: [...members, currentUser.uid] }, { merge: true });
-    }
-    await setDoc(doc(db, "users", currentUser.uid), {
-      householdId: code,
-      displayName: currentUser.displayName || ""
-    }, { merge: true });
-    LIST_ID = code;
-    // Restart lytting på ny liste
-    if (unsubscribeList) unsubscribeList();
-    loadPurchaseHistory();
-    startListeningWithPrice();
-    renderSuggestions();
-    loadHistory();
-    alert(`✅ Du er nå med i husholdning: ${code}`);
   }
 
   // AUTOCOMPLETE
