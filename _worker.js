@@ -18,7 +18,6 @@ export default {
 - Ikke ta med rabatter eller poser`
           : `Se på dette kjøleskapet. List varer som er tomme eller nesten tomme. Svar KUN med JSON:
 {"varer":[{"navn":"Melk","grunn":"nesten tom"}]}`;
-
         const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
@@ -39,7 +38,6 @@ export default {
             }]
           })
         });
-
         const rawText = await response.text();
         if (!response.ok) {
           return new Response(JSON.stringify({ 
@@ -50,10 +48,16 @@ export default {
             status: 500, headers: { "Content-Type": "application/json" }
           });
         }
-
         const data = JSON.parse(rawText);
         const text = data.content?.[0]?.text || "";
-        const clean = text.replace(/```json|```/g, "").trim();
+        let clean = text.replace(/```json|```/g, "").trim();
+
+        // Kutt ut alt utenfor første { og siste }
+        const firstBrace = clean.indexOf("{");
+        const lastBrace = clean.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace !== -1) {
+          clean = clean.substring(firstBrace, lastBrace + 1);
+        }
 
         if (!clean.startsWith("{")) {
           const fallback = type === "receipt"
@@ -63,12 +67,10 @@ export default {
             status: 200, headers: { "Content-Type": "application/json" }
           });
         }
-
         const parsed = JSON.parse(clean);
         return new Response(JSON.stringify(parsed), {
           headers: { "Content-Type": "application/json" }
         });
-
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500, headers: { "Content-Type": "application/json" }
