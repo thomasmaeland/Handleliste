@@ -1072,12 +1072,29 @@
 
   // API-nøkkelen ligger trygt på Netlify-serveren, ikke her
 
+  function normalizeProductName(name) {
+    return cleanName(name)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function estimatePrice(name) {
     const n = cleanName(name);
-    // Sjekk eksakt match fra historikk
+
     if (purchaseHistory[n]?.lastPrice) return purchaseHistory[n].lastPrice;
-    // Sjekk PRICE_DB
-    const key = Object.keys(PRICE_DB).find(k => n.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(n.toLowerCase()));
+
+    const normalized = normalizeProductName(name);
+
+    const key = Object.keys(PRICE_DB).find(k => {
+      const normalizedKey = normalizeProductName(k);
+      return (
+        normalized === normalizedKey ||
+        normalized.split(" ").includes(normalizedKey)
+      );
+    });
+
     if (key) return PRICE_DB[key];
     return null;
   }
@@ -1109,6 +1126,28 @@
 
   // RECEIPT SCANNING
   let scannedReceipt = [];
+  window.deleteScannedProduct = (index) => {
+    scannedReceipt.splice(index, 1);
+
+    const area = document.getElementById("receipt-items-area");
+
+    if (scannedReceipt.length === 0) {
+      area.innerHTML = '<div class="receipt-scanning">Ingen produkter igjen.</div>';
+      return;
+    }
+
+    area.innerHTML = `<div class="receipt-items-list">
+      ${scannedReceipt.map((v, i) => `
+        <div class="receipt-item-row">
+          <input type="checkbox" class="receipt-item-check" id="rc-${i}" checked>
+          <span class="receipt-item-name">${v.navn}</span>
+          <span class="receipt-item-price">${v.pris} kr</span>
+          <button class="delete-btn" onclick="deleteScannedProduct(${i})">×</button>
+        </div>
+      `).join("")}
+    </div>`;
+  };
+
   let scannedDate = null;
   let scannedButikk = null;
 
