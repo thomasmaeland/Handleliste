@@ -811,6 +811,7 @@
           <div style="display:flex;align-items:center;gap:8px">
             ${trip.total ? `<span style="font-size:13px;font-weight:500;color:var(--accent)">${trip.total} kr</span>` : ""}
             <span class="history-count">${trip.items?.length || 0} varer</span>
+            <button class="delete-btn" onclick="event.stopPropagation(); deleteHistory('${trip.id}')" title="Slett handletur">×</button>
             <span class="history-chevron">›</span>
           </div>
         </div>
@@ -822,6 +823,13 @@
 
   window.toggleHistoryCard = (id) => {
     document.getElementById(`hcard-${id}`).classList.toggle("open");
+  };
+
+  window.deleteHistory = async (id) => {
+    if (!confirm("Slette denne handleturen fra historikken?")) return;
+
+    await deleteDoc(doc(db, "lists", LIST_ID, "history", id));
+    loadHistory();
   };
 
   // SMART LIST
@@ -1317,20 +1325,43 @@
 
     const total = checked.reduce((sum, v) => sum + (v.pris || 0), 0);
 
+    const roundedTotal = Math.round(total * 100) / 100;
+    const receiptTimestamp = scannedDate ? new Date(scannedDate).getTime() : Date.now();
+    const receiptItems = checked.map(v => ({
+      name: v.navn,
+      qty: v.antall || 1,
+      unit: v.enhet || "stk",
+      price: v.pris,
+      unitPrice: v.stkpris || null,
+      line: v.linje || ""
+    }));
+
+    const receiptFingerprint = [
+      scannedButikk || "Ukjent butikk",
+      dateStr,
+      roundedTotal,
+      receiptItems.map(i => `${i.name}|${i.qty}|${i.unit}|${i.price}|${i.line}`).join(";;")
+    ].join("::");
+
     const historyRef = collection(db, "lists", LIST_ID, "history");
+
+    // Unngå duplikater hvis samme kvittering lagres flere ganger
+    const existingHistory = await getDocs(historyRef);
+    const duplicate = existingHistory.docs.some(d => d.data().receiptFingerprint === receiptFingerprint);
+
+    if (duplicate) {
+      alert("Denne kvitteringen ligger allerede i historikken.");
+      document.getElementById("receipt-preview").classList.remove("open");
+      return;
+    }
+
     await addDoc(historyRef, {
       date: dateStr,
-      timestamp: scannedDate ? new Date(scannedDate).getTime() : Date.now(),
+      timestamp: receiptTimestamp,
       butikk: scannedButikk || "Ukjent butikk",
-      total: Math.round(total * 100) / 100,
-      items: checked.map(v => ({
-        name: v.navn,
-        qty: v.antall || 1,
-        unit: v.enhet || "stk",
-        price: v.pris,
-        unitPrice: v.stkpris || null,
-        line: v.linje || ""
-      })),
+      total: roundedTotal,
+      items: receiptItems,
+      receiptFingerprint,
       source: "kvittering"
     });
 
