@@ -174,10 +174,9 @@
     .board-delete { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:18px; line-height:1; padding:0 3px; }
     .board-delete:hover { color:var(--danger); }
     .board-empty { text-align:center; padding:1.5rem 1rem; color:var(--ink3); font-size:14px; }
-
-    .board-filters { display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; margin-bottom:1rem; }
-    .board-filter-btn { flex:0 0 auto; background:var(--surface); border:1.5px solid var(--border); border-radius:999px; padding:6px 11px; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--ink2); cursor:pointer; }
-    .board-filter-btn.active { background:var(--accent); border-color:var(--accent); color:white; }
+    .board-person-filters { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:1rem; }
+    .board-filter-chip { background:var(--surface); border:1.5px solid var(--border); border-radius:999px; padding:6px 11px; font-size:12px; color:var(--ink2); cursor:pointer; }
+    .board-filter-chip.active { background:var(--accent); border-color:var(--accent); color:white; }
 
     /* RECEIPT SCAN */
     .receipt-btn { display:flex; align-items:center; gap:8px; width:100%; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; color:var(--ink2); }
@@ -390,15 +389,6 @@
           </select>
         </div>
         <button class="board-add-btn" id="board-add-btn" type="button">+ Legg til på tavlen</button>
-      </div>
-      <div class="board-filters" id="board-person-filters">
-        <button type="button" class="board-filter-btn active" onclick="setBoardPersonFilter('all')">Alle</button>
-        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Thomas')">Thomas</button>
-        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Katrine')">Katrine</button>
-        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Selma')">Selma</button>
-        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Emely')">Emely</button>
-        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Olav')">Olav</button>
-        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Mor')">Mor</button>
       </div>
       <div id="board-content">
         <div class="board-empty">Ingen oppgaver ennå</div>
@@ -641,7 +631,7 @@
   let unsubscribeList = null;
   let unsubscribeTasks = null;
   let familyBoardItems = [];
-  let boardPersonFilter = "all";
+  let selectedBoardPerson = "Alle";
   let currentItems = [];
   let editingItemId = null;
   let historyTripsCache = [];
@@ -1852,6 +1842,13 @@
       .replace(/'/g, "&#039;");
   }
 
+
+  function escapeJsString(value) {
+    return String(value ?? "").replace(/\/g, "\\").replace(/'/g, "\'").replace(/
+/g, " ").replace(/
+/g, " ");
+  }
+
   function normalizeScannedReceiptItem(item) {
     const lineText = item.linje || item.line || item.originalLinje || item.original || item.tekst || "";
     const name = item.navn || item.name || item.vare || item.product || "";
@@ -2276,48 +2273,68 @@
     </div>`;
   }
 
-
-  function normalizeBoardPersonValue(value) {
-    return (value || "").toString().trim().toLowerCase();
+  function splitBoardPeople(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
+    return String(value)
+      .split(/[;,]/)
+      .map(v => v.trim())
+      .filter(Boolean);
   }
 
-  function taskMatchesBoardPersonFilter(task) {
-    if (!boardPersonFilter || boardPersonFilter === "all") return true;
-    const selected = normalizeBoardPersonValue(boardPersonFilter);
-    const assigned = normalizeBoardPersonValue(task.assignedTo);
-    const related = normalizeBoardPersonValue(task.relatedPerson);
-    return assigned === selected || related === selected;
-  }
-
-  function updateBoardFilterButtons() {
-    const wrap = document.getElementById("board-person-filters");
-    if (!wrap) return;
-    wrap.querySelectorAll(".board-filter-btn").forEach(btn => {
-      const text = (btn.textContent || "").trim();
-      const isActive = (boardPersonFilter === "all" && text === "Alle") || text === boardPersonFilter;
-      btn.classList.toggle("active", isActive);
+  function getBoardPeople() {
+    const people = new Set();
+    (familyBoardItems || []).forEach(task => {
+      splitBoardPeople(task.assignedTo).forEach(p => people.add(p));
+      splitBoardPeople(task.relatedPerson).forEach(p => people.add(p));
     });
+    return [...people].sort((a, b) => a.localeCompare(b, "no"));
+  }
+
+  function taskMatchesBoardPerson(task, person) {
+    if (!person || person === "Alle") return true;
+    const target = person.trim().toLowerCase();
+    const names = [
+      ...splitBoardPeople(task.assignedTo),
+      ...splitBoardPeople(task.relatedPerson)
+    ].map(v => v.toLowerCase());
+    return names.includes(target);
+  }
+
+  function renderBoardPersonFilters() {
+    const people = getBoardPeople();
+    if (people.length === 0) return "";
+    if (selectedBoardPerson !== "Alle" && !people.includes(selectedBoardPerson)) selectedBoardPerson = "Alle";
+
+    const all = ["Alle", ...people];
+    return `<div class="board-person-filters">
+      ${all.map(name => `
+        <button class="board-filter-chip ${selectedBoardPerson === name ? "active" : ""}" onclick="setBoardPersonFilter('${escapeJsString(name)}')">
+          ${escapeHtml(name)}
+        </button>
+      `).join("")}
+    </div>`;
   }
 
   window.setBoardPersonFilter = (person) => {
-    boardPersonFilter = person || "all";
-    updateBoardFilterButtons();
+    selectedBoardPerson = person || "Alle";
     renderFamilyBoard();
   };
 
   function renderFamilyBoard() {
     const container = document.getElementById("board-content");
     if (!container) return;
+
+    const filtersHtml = renderBoardPersonFilters();
+
     if (!familyBoardItems || familyBoardItems.length === 0) {
-      container.innerHTML = `<div class="board-empty">Ingen oppgaver ennå</div>`;
+      container.innerHTML = `${filtersHtml}<div class="board-empty">Ingen oppgaver ennå</div>`;
       return;
     }
 
-    updateBoardFilterButtons();
-    const visibleItems = familyBoardItems.filter(taskMatchesBoardPersonFilter);
+    const visibleItems = familyBoardItems.filter(t => taskMatchesBoardPerson(t, selectedBoardPerson));
     if (visibleItems.length === 0) {
-      const label = boardPersonFilter === "all" ? "Ingen oppgaver ennå" : `Ingen oppgaver for ${escapeHtml(boardPersonFilter)}`;
-      container.innerHTML = `<div class="board-empty">${label}</div>`;
+      container.innerHTML = `${filtersHtml}<div class="board-empty">Ingen oppgaver for ${escapeHtml(selectedBoardPerson)}</div>`;
       return;
     }
 
@@ -2330,7 +2347,7 @@
       return ad - bd;
     });
 
-    let html = "";
+    let html = filtersHtml;
     if (today.length) html += `<div class="board-section"><div class="board-section-title">I dag</div><div class="board-list">${today.map(renderTaskCard).join("")}</div></div>`;
     if (upcoming.length) html += `<div class="board-section"><div class="board-section-title">Kommende</div><div class="board-list">${upcoming.map(renderTaskCard).join("")}</div></div>`;
     if (done.length) html += `<div class="board-section"><div class="board-section-title">Fullført</div><div class="board-list">${done.slice(-10).reverse().map(renderTaskCard).join("")}</div></div>`;
