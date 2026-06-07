@@ -175,6 +175,10 @@
     .board-delete:hover { color:var(--danger); }
     .board-empty { text-align:center; padding:1.5rem 1rem; color:var(--ink3); font-size:14px; }
 
+    .board-filters { display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; margin-bottom:1rem; }
+    .board-filter-btn { flex:0 0 auto; background:var(--surface); border:1.5px solid var(--border); border-radius:999px; padding:6px 11px; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--ink2); cursor:pointer; }
+    .board-filter-btn.active { background:var(--accent); border-color:var(--accent); color:white; }
+
     /* RECEIPT SCAN */
     .receipt-btn { display:flex; align-items:center; gap:8px; width:100%; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; color:var(--ink2); }
     .receipt-btn:hover { border-color:var(--accent2); color:var(--accent2); background:#FFF8F3; }
@@ -386,6 +390,15 @@
           </select>
         </div>
         <button class="board-add-btn" id="board-add-btn" type="button">+ Legg til på tavlen</button>
+      </div>
+      <div class="board-filters" id="board-person-filters">
+        <button type="button" class="board-filter-btn active" onclick="setBoardPersonFilter('all')">Alle</button>
+        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Thomas')">Thomas</button>
+        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Katrine')">Katrine</button>
+        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Selma')">Selma</button>
+        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Emely')">Emely</button>
+        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Olav')">Olav</button>
+        <button type="button" class="board-filter-btn" onclick="setBoardPersonFilter('Mor')">Mor</button>
       </div>
       <div id="board-content">
         <div class="board-empty">Ingen oppgaver ennå</div>
@@ -628,6 +641,7 @@
   let unsubscribeList = null;
   let unsubscribeTasks = null;
   let familyBoardItems = [];
+  let boardPersonFilter = "all";
   let currentItems = [];
   let editingItemId = null;
   let historyTripsCache = [];
@@ -2262,6 +2276,35 @@
     </div>`;
   }
 
+
+  function normalizeBoardPersonValue(value) {
+    return (value || "").toString().trim().toLowerCase();
+  }
+
+  function taskMatchesBoardPersonFilter(task) {
+    if (!boardPersonFilter || boardPersonFilter === "all") return true;
+    const selected = normalizeBoardPersonValue(boardPersonFilter);
+    const assigned = normalizeBoardPersonValue(task.assignedTo);
+    const related = normalizeBoardPersonValue(task.relatedPerson);
+    return assigned === selected || related === selected;
+  }
+
+  function updateBoardFilterButtons() {
+    const wrap = document.getElementById("board-person-filters");
+    if (!wrap) return;
+    wrap.querySelectorAll(".board-filter-btn").forEach(btn => {
+      const text = (btn.textContent || "").trim();
+      const isActive = (boardPersonFilter === "all" && text === "Alle") || text === boardPersonFilter;
+      btn.classList.toggle("active", isActive);
+    });
+  }
+
+  window.setBoardPersonFilter = (person) => {
+    boardPersonFilter = person || "all";
+    updateBoardFilterButtons();
+    renderFamilyBoard();
+  };
+
   function renderFamilyBoard() {
     const container = document.getElementById("board-content");
     if (!container) return;
@@ -2270,8 +2313,16 @@
       return;
     }
 
-    const active = familyBoardItems.filter(t => !t.completed);
-    const done = familyBoardItems.filter(t => t.completed);
+    updateBoardFilterButtons();
+    const visibleItems = familyBoardItems.filter(taskMatchesBoardPersonFilter);
+    if (visibleItems.length === 0) {
+      const label = boardPersonFilter === "all" ? "Ingen oppgaver ennå" : `Ingen oppgaver for ${escapeHtml(boardPersonFilter)}`;
+      container.innerHTML = `<div class="board-empty">${label}</div>`;
+      return;
+    }
+
+    const active = visibleItems.filter(t => !t.completed);
+    const done = visibleItems.filter(t => t.completed);
     const today = active.filter(t => isTodayDate(getTaskDate(t)));
     const upcoming = active.filter(t => !isTodayDate(getTaskDate(t))).sort((a,b) => {
       const ad = getTaskDate(a)?.getTime() || 9999999999999;
