@@ -1080,49 +1080,36 @@
       .trim();
   }
 
+  function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function hasWholePhrase(haystack, needle) {
+    if (!haystack || !needle) return false;
+    const pattern = new RegExp(`(^|\\s)${escapeRegExp(needle)}($|\\s)`, "u");
+    return pattern.test(haystack);
+  }
+
   function estimatePrice(name) {
-    const n = cleanName(name);
+    const clean = cleanName(name);
+    const normalized = normalizeProductName(clean);
 
-    if (purchaseHistory[n]?.lastPrice) return purchaseHistory[n].lastPrice;
+    // Sjekk lagret pris fra historikk først
+    if (purchaseHistory[clean]?.lastPrice) return purchaseHistory[clean].lastPrice;
 
-    const normalized = normalizeProductName(name);
+    // 1. Eksakt match er best
+    const exactKey = Object.keys(PRICE_DB).find(k => normalizeProductName(k) === normalized);
+    if (exactKey) return PRICE_DB[exactKey];
 
-    const key = Object.keys(PRICE_DB).find(k => {
-      const normalizedKey = normalizeProductName(k);
-      return (
-        normalized === normalizedKey ||
-        normalized.split(" ").includes(normalizedKey)
-      );
-    });
+    // 2. Hel frase / hele ord. Ikke bred includes begge veier.
+    const phraseKey = Object.keys(PRICE_DB)
+      .sort((a, b) => normalizeProductName(b).length - normalizeProductName(a).length)
+      .find(k => hasWholePhrase(normalized, normalizeProductName(k)));
 
-    if (key) return PRICE_DB[key];
+    if (phraseKey) return PRICE_DB[phraseKey];
+
     return null;
   }
-
-  function renderPriceSummary() {
-    const active = currentItems.filter(i => !i.done);
-    if (active.length === 0) { document.getElementById("price-summary").style.display = "none"; return; }
-
-    let total = 0;
-    let estimated = 0;
-    let unknown = 0;
-
-    active.forEach(item => {
-      const price = estimatePrice(item.name);
-      const qty = item.qty || 1;
-      if (price) { total += price * qty; estimated++; }
-      else unknown++;
-    });
-
-    if (total === 0) { document.getElementById("price-summary").style.display = "none"; return; }
-
-    document.getElementById("price-summary").style.display = "flex";
-    document.getElementById("price-total").textContent = `ca. ${Math.round(total)} kr`;
-    document.getElementById("price-sub").innerHTML = `${estimated} varer estimert${unknown > 0 ? `<br>${unknown} uten pris` : ""}`;
-  }
-
-  // Oppdater prissummering når lista endres
-  const origRenderList = renderList;
 
   // RECEIPT SCANNING
   let scannedReceipt = [];
