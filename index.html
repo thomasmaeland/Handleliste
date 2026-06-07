@@ -425,53 +425,6 @@
       if (unsubscribeList) unsubscribeList();
     }
   });
-
-  document.getElementById("copy-code-btn").addEventListener("click", () => {
-    const code = document.getElementById("new-household-code").textContent;
-    navigator.clipboard.writeText(code);
-    document.getElementById("copy-code-btn").textContent = "✅ Kopiert!";
-    setTimeout(() => document.getElementById("copy-code-btn").textContent = "📋 Kopier kode", 2000);
-  });
-
-  document.getElementById("start-app-btn").addEventListener("click", () => {
-    startApp();
-  });
-
-  // BLI MED I HUSHOLDNING
-  document.getElementById("join-household-toggle").addEventListener("click", () => {
-    document.getElementById("join-code-area").classList.add("open");
-    document.getElementById("join-household-toggle").style.display = "none";
-  });
-
-  document.getElementById("join-household-btn").addEventListener("click", async () => {
-    const code = document.getElementById("join-code-input").value.trim().toUpperCase();
-    if (!code) return;
-
-    const householdRef = doc(db, "households", code);
-    const householdSnap = await getDoc(householdRef);
-
-    if (!householdSnap.exists()) {
-      alert("Fant ingen husholdning med den koden. Sjekk at du har skrevet riktig!");
-      return;
-    }
-
-    // Legg til bruker i husholdningen
-    const members = householdSnap.data().members || [];
-    if (!members.includes(currentUser.uid)) {
-      await setDoc(householdRef, { members: [...members, currentUser.uid] }, { merge: true });
-    }
-    await setDoc(doc(db, "users", currentUser.uid), {
-      householdId: code,
-      displayName: currentUser.displayName || ""
-    });
-    LIST_ID = code;
-    startApp();
-  });
-
-  document.getElementById("join-code-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("join-household-btn").click();
-  });
-
   // TABS
   window.showTab = (tab) => {
     document.getElementById("tab-list").classList.toggle("active", tab === "list");
