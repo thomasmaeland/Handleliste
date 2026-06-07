@@ -144,6 +144,12 @@
     .receipt-item-check { accent-color:var(--accent); width:16px; height:16px; cursor:pointer; }
     .receipt-item-name { flex:1; font-size:13px; }
     .receipt-item-price { font-size:13px; font-weight:500; color:var(--accent); }
+    .receipt-cat-group { margin-bottom:.75rem; }
+    .receipt-cat-label { font-size:10px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin:.35rem 0 .35rem; }
+    .receipt-item-row { cursor:pointer; }
+    .receipt-item-row:hover { background:var(--accent-light); }
+    .receipt-edit-hint { font-size:10px; color:var(--ink3); margin-top:2px; }
+    .receipt-edit-small { font-size:11px; color:var(--ink3); }
     .receipt-scanning { text-align:center; padding:1.5rem; color:var(--ink3); font-size:14px; }
     .receipt-scanning .spin { display:inline-block; animation:spin .7s linear infinite; font-size:24px; margin-bottom:.5rem; }
 
@@ -367,6 +373,59 @@
       <button class="modal-delete" id="modal-delete">Slett</button>
       <button class="modal-save" id="modal-save">Lagre</button>
       <button class="modal-cancel" id="modal-cancel">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECEIPT ITEM EDIT MODAL -->
+<div class="modal-overlay" id="receipt-edit-overlay">
+  <div class="modal">
+    <div class="modal-title">Rediger kvitteringsvare</div>
+    <div class="modal-row">
+      <span class="modal-label">Navn</span>
+      <input class="modal-input" id="receipt-edit-name" type="text" />
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Antall</span>
+      <input class="modal-input" id="receipt-edit-qty" type="number" min="0.01" step="0.01" value="1" style="width:80px;flex:none" />
+      <select class="modal-select" id="receipt-edit-unit">
+        <option value="stk">stk</option>
+        <option value="g">g</option>
+        <option value="kg">kg</option>
+        <option value="dl">dl</option>
+        <option value="l">l</option>
+        <option value="pk">pk</option>
+        <option value="boks">boks</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Kategori</span>
+      <select class="modal-select" id="receipt-edit-cat">
+        <option value="frukt-gront">🥦 Frukt &amp; grønt</option>
+        <option value="meieri">🥛 Meieri</option>
+        <option value="brod-bakeri">🍞 Brød &amp; bakeri</option>
+        <option value="kjott-fisk">🥩 Kjøtt &amp; fisk</option>
+        <option value="tørrvarer">🌾 Tørrvarer</option>
+        <option value="frysevarer">❄️ Frysevarer</option>
+        <option value="drikke">🧃 Drikke</option>
+        <option value="snacks">🍫 Snacks &amp; godis</option>
+        <option value="hygiene">🧴 Hygiene &amp; rengjøring</option>
+        <option value="annet">📦 Annet</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Pris</span>
+      <input class="modal-input" id="receipt-edit-price" type="number" min="0" step="0.01" placeholder="linjesum" style="width:120px;flex:none" />
+      <span class="receipt-edit-small">kr</span>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Linje</span>
+      <input class="modal-input" id="receipt-edit-line" type="text" placeholder="Original kvitteringslinje" />
+    </div>
+    <div class="modal-actions">
+      <button class="modal-delete" id="receipt-edit-delete">Slett</button>
+      <button class="modal-save" id="receipt-edit-save">Lagre</button>
+      <button class="modal-cancel" id="receipt-edit-cancel">Avbryt</button>
     </div>
   </div>
 </div>
@@ -1165,6 +1224,7 @@
   let scannedReceipt = [];
   let scannedDate = null;
   let scannedButikk = null;
+  let receiptEditingIndex = null;
 
   function parseNumber(value, fallback = null) {
     if (value === null || value === undefined || value === "") return fallback;
@@ -1223,7 +1283,8 @@
       antall: qty,
       enhet: unit || "stk",
       pris: totalPrice,
-      stkpris: unitPrice
+      stkpris: unitPrice,
+      cat: item.cat || item.kategori || item.category || guessCategory(name || lineText || "")
     };
   }
 
@@ -1236,33 +1297,113 @@
       return;
     }
 
-    area.innerHTML = `<div class="receipt-items-list">
-      ${scannedReceipt.map((v, i) => {
-        const qtyText = `${v.antall || 1} ${v.enhet || "stk"}`;
-        const priceText = v.pris !== null && v.pris !== undefined ? `${Math.round(v.pris * 100) / 100} kr` : "ukjent pris";
-        const unitPriceText = v.stkpris && v.antall > 1 ? ` · ${Math.round(v.stkpris * 100) / 100} kr/${v.enhet || "stk"}` : "";
-        const lineText = v.linje ? `<div class="item-detail">${escapeHtml(v.linje)}</div>` : "";
+    // Sorter varene etter kategori, men behold original indeks slik at redigering/sletting fungerer.
+    const grouped = {};
+    scannedReceipt.forEach((v, index) => {
+      const cat = v.cat || guessCategory(v.navn || v.linje || "");
+      v.cat = cat;
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push({ item: v, index });
+    });
 
-        return `
-          <div class="receipt-item-row">
-            <input type="checkbox" class="receipt-item-check" id="rc-${i}" checked>
-            <div class="item-main">
-              <div class="receipt-item-name">${escapeHtml(v.navn)}</div>
-              <div class="item-detail">${escapeHtml(qtyText)}${escapeHtml(unitPriceText)}</div>
-              ${lineText}
-            </div>
-            <span class="receipt-item-price">${escapeHtml(priceText)}</span>
-            <button class="delete-btn" onclick="deleteScannedProduct(${i})">×</button>
-          </div>
-        `;
-      }).join("")}
-    </div>`;
+    const groupHtml = CAT_ORDER
+      .filter(cat => grouped[cat]?.length)
+      .map(cat => `
+        <div class="receipt-cat-group">
+          <div class="receipt-cat-label">${CAT_LABELS[cat] || cat}</div>
+          ${grouped[cat].map(({ item: v, index: i }) => {
+            const qtyText = `${v.antall || 1} ${v.enhet || "stk"}`;
+            const priceText = v.pris !== null && v.pris !== undefined ? `${Math.round(v.pris * 100) / 100} kr` : "ukjent pris";
+            const unitPriceText = v.stkpris && v.antall > 1 ? ` · ${Math.round(v.stkpris * 100) / 100} kr/${v.enhet || "stk"}` : "";
+            const lineText = v.linje ? `<div class="item-detail">${escapeHtml(v.linje)}</div>` : "";
+
+            return `
+              <div class="receipt-item-row" onclick="openReceiptEdit(${i})">
+                <input type="checkbox" class="receipt-item-check" id="rc-${i}" checked onclick="event.stopPropagation()">
+                <div class="item-main">
+                  <div class="receipt-item-name">${escapeHtml(v.navn)}</div>
+                  <div class="item-detail">${escapeHtml(qtyText)}${escapeHtml(unitPriceText)}</div>
+                  ${lineText}
+                  <div class="receipt-edit-hint">Trykk for å redigere</div>
+                </div>
+                <span class="receipt-item-price">${escapeHtml(priceText)}</span>
+                <button class="delete-btn" onclick="event.stopPropagation(); deleteScannedProduct(${i})">×</button>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `).join("");
+
+    area.innerHTML = `<div class="receipt-items-list">${groupHtml}</div>`;
   }
 
   window.deleteScannedProduct = (index) => {
     scannedReceipt.splice(index, 1);
     renderScannedReceipt();
   };
+
+  window.openReceiptEdit = (index) => {
+    const item = scannedReceipt[index];
+    if (!item) return;
+    receiptEditingIndex = index;
+    document.getElementById("receipt-edit-name").value = item.navn || "";
+    document.getElementById("receipt-edit-qty").value = item.antall || 1;
+    document.getElementById("receipt-edit-unit").value = item.enhet || "stk";
+    document.getElementById("receipt-edit-cat").value = item.cat || guessCategory(item.navn || item.linje || "");
+    document.getElementById("receipt-edit-price").value = item.pris ?? "";
+    document.getElementById("receipt-edit-line").value = item.linje || "";
+    document.getElementById("receipt-edit-overlay").classList.add("open");
+  };
+
+  document.getElementById("receipt-edit-save").addEventListener("click", () => {
+    if (receiptEditingIndex === null) return;
+    const item = scannedReceipt[receiptEditingIndex];
+    if (!item) return;
+
+    const name = document.getElementById("receipt-edit-name").value.trim();
+    const qty = parseNumber(document.getElementById("receipt-edit-qty").value, 1) || 1;
+    const unit = document.getElementById("receipt-edit-unit").value || "stk";
+    const cat = document.getElementById("receipt-edit-cat").value || "annet";
+    const price = parseNumber(document.getElementById("receipt-edit-price").value, null);
+    const line = document.getElementById("receipt-edit-line").value.trim();
+
+    if (!name) return;
+
+    scannedReceipt[receiptEditingIndex] = {
+      ...item,
+      navn: name,
+      antall: qty,
+      enhet: unit,
+      cat,
+      pris: price,
+      stkpris: price !== null && qty > 0 ? price / qty : null,
+      linje: line
+    };
+
+    document.getElementById("receipt-edit-overlay").classList.remove("open");
+    receiptEditingIndex = null;
+    renderScannedReceipt();
+  });
+
+  document.getElementById("receipt-edit-delete").addEventListener("click", () => {
+    if (receiptEditingIndex === null) return;
+    scannedReceipt.splice(receiptEditingIndex, 1);
+    document.getElementById("receipt-edit-overlay").classList.remove("open");
+    receiptEditingIndex = null;
+    renderScannedReceipt();
+  });
+
+  document.getElementById("receipt-edit-cancel").addEventListener("click", () => {
+    document.getElementById("receipt-edit-overlay").classList.remove("open");
+    receiptEditingIndex = null;
+  });
+
+  document.getElementById("receipt-edit-overlay").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById("receipt-edit-overlay").classList.remove("open");
+      receiptEditingIndex = null;
+    }
+  });
 
   document.getElementById("receipt-btn").addEventListener("click", () => {
     document.getElementById("receipt-input").click();
@@ -1327,7 +1468,7 @@
         return;
       }
 
-      document.getElementById("receipt-preview-title").textContent = `Fant ${scannedReceipt.length} varer — sjekk antall og hele linjen før lagring:`;
+      document.getElementById("receipt-preview-title").textContent = `Fant ${scannedReceipt.length} varer — sortert på kategori. Trykk på en vare for å redigere:`;
       renderScannedReceipt();
       actions.style.display = "flex";
 
@@ -1369,10 +1510,17 @@
 
     const roundedTotal = Math.round(total * 100) / 100;
     const receiptTimestamp = scannedDate ? new Date(scannedDate).getTime() : Date.now();
+    const categoryTotals = {};
+    checked.forEach(v => {
+      const cat = v.cat || guessCategory(v.navn || v.linje || "") || "annet";
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + (v.pris || 0);
+    });
+
     const receiptItems = checked.map(v => ({
       name: v.navn,
       qty: v.antall || 1,
       unit: v.enhet || "stk",
+      cat: v.cat || guessCategory(v.navn || v.linje || "") || "annet",
       price: v.pris,
       unitPrice: v.stkpris || null,
       line: v.linje || ""
@@ -1402,6 +1550,7 @@
       timestamp: receiptTimestamp,
       butikk: scannedButikk || "Ukjent butikk",
       total: roundedTotal,
+      categoryTotals,
       items: receiptItems,
       receiptFingerprint,
       source: "kvittering"
