@@ -26,6 +26,26 @@
     .login-btn:hover { transform:translateY(-1px); box-shadow:0 4px 20px rgba(0,0,0,.12); }
     .google-icon { width:20px; height:20px; }
 
+    /* ONBOARDING */
+    #onboarding-screen { display:none; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:2rem; gap:1.5rem; }
+    .onboarding-title { font-family:'DM Serif Display',serif; font-size:2rem; text-align:center; color:var(--ink); }
+    .onboarding-sub { font-size:14px; color:var(--ink2); text-align:center; max-width:280px; line-height:1.6; }
+    .onboarding-btn { width:100%; max-width:320px; padding:14px; border-radius:50px; font-family:'DM Sans',sans-serif; font-size:15px; font-weight:500; cursor:pointer; transition:all .2s; }
+    .onboarding-btn-primary { background:var(--accent); color:white; border:none; box-shadow:0 2px 8px rgba(45,106,79,.25); }
+    .onboarding-btn-primary:hover { background:#235c42; transform:translateY(-1px); }
+    .onboarding-btn-secondary { background:var(--surface); color:var(--ink); border:1.5px solid var(--border); }
+    .onboarding-btn-secondary:hover { border-color:var(--accent); color:var(--accent); }
+    .onboarding-divider { font-size:12px; color:var(--ink3); }
+    .onboarding-code-area { display:none; flex-direction:column; gap:10px; width:100%; max-width:320px; }
+    .onboarding-code-area.open { display:flex; }
+    .onboarding-input { border:1.5px solid var(--border); border-radius:12px; padding:12px 16px; font-family:'DM Sans',sans-serif; font-size:16px; text-align:center; letter-spacing:.1em; text-transform:uppercase; outline:none; width:100%; }
+    .onboarding-input:focus { border-color:var(--accent); }
+    .household-code-box { background:var(--accent-light); border:1.5px solid var(--accent); border-radius:var(--radius); padding:1.25rem; text-align:center; width:100%; max-width:320px; }
+    .household-code-label { font-size:12px; color:var(--accent); font-weight:500; margin-bottom:.5rem; }
+    .household-code { font-family:'DM Serif Display',serif; font-size:1.8rem; color:var(--accent); letter-spacing:.05em; }
+    .household-code-sub { font-size:12px; color:var(--ink2); margin-top:.5rem; }
+    .copy-code-btn { background:var(--accent); color:white; border:none; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; margin-top:.75rem; }
+
     /* APP */
     #app-screen { display:none; flex-direction:column; min-height:100dvh; }
     header { background:var(--surface); border-bottom:1px solid var(--border); padding:1rem 1.25rem .75rem; position:sticky; top:0; z-index:10; }
@@ -194,6 +214,37 @@
     </svg>
     Logg inn med Google
   </button>
+</div>
+
+<!-- ONBOARDING -->
+<div id="onboarding-screen" style="display:none">
+  <div class="onboarding-title">Velkommen! 👋</div>
+  <div class="onboarding-sub">Vil du lage en ny husholdning eller bli med i en eksisterende?</div>
+
+  <button class="onboarding-btn onboarding-btn-primary" id="create-household-btn">
+    🏠 Lag ny husholdning
+  </button>
+
+  <div class="onboarding-divider">— eller —</div>
+
+  <button class="onboarding-btn onboarding-btn-secondary" id="join-household-toggle">
+    🔑 Skriv inn invitasjonskode
+  </button>
+
+  <div class="onboarding-code-area" id="join-code-area">
+    <input class="onboarding-input" id="join-code-input" type="text" placeholder="F.EKS. GRØNN-ELEFANT-42" maxlength="20" />
+    <button class="onboarding-btn onboarding-btn-primary" id="join-household-btn">Bli med</button>
+  </div>
+
+  <div class="household-code-box" id="new-household-box" style="display:none">
+    <div class="household-code-label">Din husholdningskode</div>
+    <div class="household-code" id="new-household-code">...</div>
+    <div class="household-code-sub">Del denne koden med de du vil handle med</div>
+    <button class="copy-code-btn" id="copy-code-btn">📋 Kopier kode</button>
+    <div style="margin-top:1rem">
+      <button class="onboarding-btn onboarding-btn-primary" id="start-app-btn" style="max-width:100%">Start appen →</button>
+    </div>
+  </div>
 </div>
 
 <!-- APP -->
@@ -398,6 +449,15 @@
   let unsubscribeList = null;
   let currentItems = [];
   let editingItemId = null;
+  let LIST_ID = null; // settes etter husholdning er valgt
+
+  // Generer en minneverdig husholdningskode
+  function generateHouseholdCode() {
+    const adj = ["GRØNN","BLÅ","RØD","GULL","SØLV","HVIT","GLAD","RASK","STERK","LITEN"];
+    const noun = ["ELEFANT","LØVE","TIGER","BJØRN","ULV","ØRN","HAI","PANDA","KOALA","PINGVIN"];
+    const num = Math.floor(Math.random() * 90) + 10;
+    return `${adj[Math.floor(Math.random()*adj.length)]}-${noun[Math.floor(Math.random()*noun.length)]}-${num}`;
+  }
 
   // AUTH
   document.getElementById("google-login-btn").addEventListener("click", async () => {
@@ -410,20 +470,106 @@
     document.getElementById("loading").style.display = "none";
     if (user) {
       currentUser = user;
-      document.getElementById("login-screen").style.display = "none";
-      document.getElementById("app-screen").style.display = "flex";
-      const initials = user.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
-      document.getElementById("user-avatar").textContent = initials;
-      await loadPurchaseHistory();
-      startListeningWithPrice();
-      renderSuggestions();
-      loadHistory();
+      // Sjekk om brukeren allerede har en husholdning
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists() && userSnap.data().householdId) {
+        // Eksisterende bruker med husholdning
+        LIST_ID = userSnap.data().householdId;
+        startApp();
+      } else {
+        // Ny bruker — vis onboarding
+        document.getElementById("login-screen").style.display = "none";
+        document.getElementById("onboarding-screen").style.display = "flex";
+      }
     } else {
       currentUser = null;
+      LIST_ID = null;
       document.getElementById("login-screen").style.display = "flex";
+      document.getElementById("onboarding-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "none";
       if (unsubscribeList) unsubscribeList();
     }
+  });
+
+  function startApp() {
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("onboarding-screen").style.display = "none";
+    document.getElementById("app-screen").style.display = "flex";
+    const initials = currentUser.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
+    document.getElementById("user-avatar").textContent = initials;
+    loadPurchaseHistory();
+    startListeningWithPrice();
+    renderSuggestions();
+    loadHistory();
+  }
+
+  // LAG NY HUSHOLDNING
+  document.getElementById("create-household-btn").addEventListener("click", async () => {
+    const code = generateHouseholdCode();
+    document.getElementById("new-household-code").textContent = code;
+    document.getElementById("new-household-box").style.display = "block";
+    document.getElementById("create-household-btn").style.display = "none";
+    document.getElementById("join-household-toggle").style.display = "none";
+    document.getElementById("onboarding-divider") && (document.querySelector(".onboarding-divider").style.display = "none");
+
+    // Lagre husholdning i Firebase
+    await setDoc(doc(db, "households", code), {
+      createdBy: currentUser.uid,
+      createdAt: Date.now(),
+      members: [currentUser.uid]
+    });
+    await setDoc(doc(db, "users", currentUser.uid), {
+      householdId: code,
+      displayName: currentUser.displayName || ""
+    });
+    LIST_ID = code;
+  });
+
+  document.getElementById("copy-code-btn").addEventListener("click", () => {
+    const code = document.getElementById("new-household-code").textContent;
+    navigator.clipboard.writeText(code);
+    document.getElementById("copy-code-btn").textContent = "✅ Kopiert!";
+    setTimeout(() => document.getElementById("copy-code-btn").textContent = "📋 Kopier kode", 2000);
+  });
+
+  document.getElementById("start-app-btn").addEventListener("click", () => {
+    startApp();
+  });
+
+  // BLI MED I HUSHOLDNING
+  document.getElementById("join-household-toggle").addEventListener("click", () => {
+    document.getElementById("join-code-area").classList.add("open");
+    document.getElementById("join-household-toggle").style.display = "none";
+  });
+
+  document.getElementById("join-household-btn").addEventListener("click", async () => {
+    const code = document.getElementById("join-code-input").value.trim().toUpperCase();
+    if (!code) return;
+
+    const householdRef = doc(db, "households", code);
+    const householdSnap = await getDoc(householdRef);
+
+    if (!householdSnap.exists()) {
+      alert("Fant ingen husholdning med den koden. Sjekk at du har skrevet riktig!");
+      return;
+    }
+
+    // Legg til bruker i husholdningen
+    const members = householdSnap.data().members || [];
+    if (!members.includes(currentUser.uid)) {
+      await setDoc(householdRef, { members: [...members, currentUser.uid] }, { merge: true });
+    }
+    await setDoc(doc(db, "users", currentUser.uid), {
+      householdId: code,
+      displayName: currentUser.displayName || ""
+    });
+    LIST_ID = code;
+    startApp();
+  });
+
+  document.getElementById("join-code-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("join-household-btn").click();
   });
 
   // TABS
