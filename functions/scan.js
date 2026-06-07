@@ -1,7 +1,6 @@
 export async function onRequestPost(context) {
   try {
     const { image, mediaType, type } = await context.request.json();
-
     const prompt = type === "receipt"
       ? `Dette er en norsk dagligvarekvittering. List opp alle kjøpte varer med pris og finn datoen på kvitteringen. Svar KUN med JSON, ingen annen tekst:
 {"dato":"2026-06-07","butikk":"Rema 1000","varer":[{"navn":"Melk","pris":29.90},{"navn":"Brød","pris":34.90}]}
@@ -24,6 +23,7 @@ Bruk korte, vanlige varenavn.`;
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 1000,
+        system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst. Hvis du ikke kan analysere bildet, svar med tomt resultat i JSON-format.",
         messages: [{
           role: "user",
           content: [
@@ -37,17 +37,30 @@ Bruk korte, vanlige varenavn.`;
     const data = await response.json();
     const text = data.content?.[0]?.text || "";
     const clean = text.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
 
+    // Hvis svaret ikke er JSON, returner tom fallback
+    if (!clean.startsWith("{")) {
+      const fallback = type === "receipt"
+        ? { dato: null, butikk: null, varer: [], feil: "Kunne ikke lese kvitteringen. Prøv et klarere bilde." }
+        : { varer: [], feil: "Kunne ikke analysere bildet. Prøv et klarere bilde." };
+      return new Response(JSON.stringify(fallback), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const parsed = JSON.parse(clean);
     return new Response(JSON.stringify(parsed), {
       headers: { "Content-Type": "application/json" }
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ 
+      error: err.message,
+      varer: [] 
+    }), {
       status: 500,
       headers: { "Content-Type": "application/json" }
     });
   }
 }
-
