@@ -202,7 +202,7 @@
     <div class="header-top">
       <div class="app-title">Handleliste</div>
       <div class="user-area">
-        <div class="avatar" id="user-avatar" onclick="showHouseholdPopup()" title="Din husholdning">?</div>
+        <div class="avatar" id="user-avatar">?</div>
         <button class="signout-btn" id="signout-btn">Logg ut</button>
       </div>
     </div>
@@ -816,85 +816,6 @@
   document.getElementById("smart-cancel-btn").addEventListener("click", () => {
     document.getElementById("smart-preview").classList.remove("open");
   });
-
-  // HOUSEHOLD POPUP
-  window.showHouseholdPopup = () => {
-    document.getElementById("popup-household-code").textContent = LIST_ID || "...";
-    document.getElementById("household-popup").classList.add("open");
-  };
-
-  document.getElementById("popup-close-btn").addEventListener("click", () => {
-    document.getElementById("household-popup").classList.remove("open");
-  });
-
-  document.getElementById("household-popup").addEventListener("click", (e) => {
-    if (e.target === e.currentTarget) document.getElementById("household-popup").classList.remove("open");
-  });
-
-  document.getElementById("popup-copy-btn").addEventListener("click", () => {
-    navigator.clipboard.writeText(LIST_ID || "");
-    document.getElementById("popup-copy-btn").textContent = "✅ Kopiert!";
-    setTimeout(() => document.getElementById("popup-copy-btn").textContent = "📋 Kopier kode", 2000);
-  });
-
-  document.getElementById("popup-switch-btn").addEventListener("click", () => {
-    document.getElementById("household-popup").classList.remove("open");
-    // Vis bytt-husholdning dialog
-    const newCode = prompt("Skriv inn koden til husholdningen du vil bli med i:");
-    if (!newCode) return;
-    switchHousehold(newCode.trim().toUpperCase());
-  });
-
-  async function switchHousehold(code) {
-    if (!code) return;
-    const householdRef = doc(db, "households", code);
-    
-    try {
-      const householdSnap = await getDoc(householdRef);
-      
-      if (householdSnap.exists()) {
-        // Husholdning finnes — legg til bruker
-        const members = householdSnap.data().members || [];
-        if (!members.includes(currentUser.uid)) {
-          await setDoc(householdRef, { members: [...members, currentUser.uid] }, { merge: true });
-        }
-      } else {
-        // Sjekk om det finnes en liste med denne koden
-        const oldListRef = collection(db, "lists", code, "items");
-        const oldSnap = await getDocs(oldListRef);
-        if (!oldSnap.empty) {
-          // Liste finnes — lag husholdningsdokument
-          await setDoc(householdRef, {
-            createdAt: Date.now(),
-            members: [currentUser.uid],
-            migrated: true
-          });
-        } else {
-          alert("Fant ingen husholdning med koden: " + code + ". Sjekk at du har skrevet riktig!");
-          return;
-        }
-      }
-
-      // Oppdater brukerens husholdning
-      await setDoc(doc(db, "users", currentUser.uid), {
-        householdId: code,
-        displayName: currentUser.displayName || ""
-      }, { merge: true });
-      
-      LIST_ID = code;
-      if (unsubscribeList) unsubscribeList();
-      loadPurchaseHistory();
-      startListeningWithPrice();
-      renderSuggestions();
-      loadHistory();
-      document.getElementById("household-popup").classList.remove("open");
-      document.getElementById("popup-household-code").textContent = code;
-      alert("✅ Du er nå med i husholdning: " + code);
-    } catch(e) {
-      console.error(e);
-      alert("Noe gikk galt: " + e.message);
-    }
-  }
 
   // AUTOCOMPLETE
   const AC_SOURCES = [
