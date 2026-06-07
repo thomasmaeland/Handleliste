@@ -2,9 +2,15 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // Handle scan API endpoint
     if (url.pathname === "/scan" && request.method === "POST") {
       try {
+        const apiKey = env.ANTHROPIC_API_KEY;
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "API key not configured" }), {
+            status: 500, headers: { "Content-Type": "application/json" }
+          });
+        }
+
         const { image, mediaType, type } = await request.json();
 
         const prompt = type === "receipt"
@@ -12,16 +18,15 @@ export default {
 {"dato":"2026-06-07","butikk":"Rema 1000","varer":[{"navn":"Melk","pris":29.90},{"navn":"Brød","pris":34.90}]}
 - Korte norske varenavn (TINE LETTMELK 1L → Melk, NORVEGIA 500G → Ost)
 - dato format: YYYY-MM-DD
-- Ikke ta med rabatter eller poser
-- butikk: butikknavnet fra kvitteringen`
+- Ikke ta med rabatter eller poser`
           : `Se på dette kjøleskapet. List varer som er tomme eller nesten tomme. Svar KUN med JSON:
-{"varer":[{"navn":"Melk","grunn":"nesten tom"},{"navn":"Smør","grunn":"lite igjen"}]}`;
+{"varer":[{"navn":"Melk","grunn":"nesten tom"}]}`;
 
         const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
+            "x-api-key": apiKey,
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
@@ -38,6 +43,12 @@ export default {
         });
 
         const data = await response.json();
+        if (data.error) {
+          return new Response(JSON.stringify({ error: data.error.message }), {
+            status: 500, headers: { "Content-Type": "application/json" }
+          });
+        }
+        
         const text = data.content?.[0]?.text || "";
         const clean = text.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(clean);
@@ -48,13 +59,11 @@ export default {
 
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
+          status: 500, headers: { "Content-Type": "application/json" }
         });
       }
     }
 
-    // All other requests — serve static assets
     return env.ASSETS.fetch(request);
   }
 };
