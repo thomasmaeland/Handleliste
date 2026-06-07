@@ -430,6 +430,55 @@
   </div>
 </div>
 
+<!-- HISTORY ITEM EDIT MODAL -->
+<div class="modal-overlay" id="history-item-modal-overlay">
+  <div class="modal">
+    <div class="modal-title">Rediger historikkvare</div>
+    <div class="modal-row">
+      <span class="modal-label">Navn</span>
+      <input class="modal-input" id="history-item-name" type="text" />
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Antall</span>
+      <input class="modal-input" id="history-item-qty" type="number" min="1" value="1" style="width:80px;flex:none" />
+      <select class="modal-select" id="history-item-unit">
+        <option value="stk">stk</option>
+        <option value="g">g</option>
+        <option value="kg">kg</option>
+        <option value="dl">dl</option>
+        <option value="l">l</option>
+        <option value="pk">pk</option>
+        <option value="boks">boks</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Kategori</span>
+      <select class="modal-select" id="history-item-cat">
+        <option value="frukt-gront">🥦 Frukt &amp; grønt</option>
+        <option value="meieri">🥛 Meieri</option>
+        <option value="brod-bakeri">🍞 Brød &amp; bakeri</option>
+        <option value="kjott-fisk">🥩 Kjøtt &amp; fisk</option>
+        <option value="tørrvarer">🌾 Tørrvarer</option>
+        <option value="frysevarer">❄️ Frysevarer</option>
+        <option value="drikke">🧃 Drikke</option>
+        <option value="snacks">🍫 Snacks &amp; godis</option>
+        <option value="hygiene">🧴 Hygiene &amp; rengjøring</option>
+        <option value="annet">📦 Annet</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Pris</span>
+      <input class="modal-input" id="history-item-price" type="number" min="0" step="0.1" placeholder="kr" style="width:120px;flex:none" />
+      <span style="font-size:13px;color:var(--ink3);margin-left:4px">kr</span>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-delete" id="history-item-delete">Slett</button>
+      <button class="modal-save" id="history-item-save">Lagre</button>
+      <button class="modal-cancel" id="history-item-cancel">Avbryt</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -494,6 +543,9 @@
   let unsubscribeList = null;
   let currentItems = [];
   let editingItemId = null;
+  let historyTripsCache = [];
+  let editingHistoryTripId = null;
+  let editingHistoryItemIndex = null;
   let LIST_ID = "hjem";
 
   // AUTH
@@ -882,8 +934,66 @@
       const snap = await getDocs(q);
       const trips = [];
       snap.forEach(d => trips.push({ id:d.id, ...d.data() }));
+      historyTripsCache = trips;
       renderHistory(trips);
     } catch(e) {}
+  }
+
+
+  function isReceiptLineItem(item) {
+    return item.unitPrice != null || !!item.line;
+  }
+
+  function getHistoryItemLineTotal(item) {
+    const price = Number(item.price || 0);
+    if (isReceiptLineItem(item)) return price;
+    const qty = Number(item.qty || 1);
+    return price * qty;
+  }
+
+  function recalculateTripTotals(items) {
+    const categoryTotals = {};
+    let total = 0;
+
+    (items || []).forEach(item => {
+      const cat = item.cat || guessCategory(item.name || item.line || "") || "annet";
+      const lineTotal = getHistoryItemLineTotal(item);
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + lineTotal;
+      total += lineTotal;
+    });
+
+    return {
+      total: Math.round(total * 100) / 100,
+      categoryTotals
+    };
+  }
+
+  function renderHistoryItemsByCategory(trip) {
+    const items = trip.items || [];
+    const groups = {};
+
+    items.forEach((item, index) => {
+      const cat = item.cat || guessCategory(item.name || item.line || "") || "annet";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push({ item, index });
+    });
+
+    let html = "";
+    CAT_ORDER.forEach(cat => {
+      if (!groups[cat]) return;
+      html += `<div style="width:100%;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;margin:4px 0">${CAT_LABELS[cat] || cat}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">
+          ${groups[cat].map(({ item, index }) => `
+            <button class="history-item-chip" onclick="event.stopPropagation(); openHistoryItemEdit('${trip.id}', ${index})" style="cursor:pointer;border:1px solid var(--border)">
+              ${item.name}${item.price ? " · " + item.price + " kr" : ""}${item.qty>1 ? " " + item.qty + " " + (item.unit || "stk") : ""}
+            </button>
+          `).join("")}
+        </div>
+      </div>`;
+    });
+
+    return html;
   }
 
   function renderHistory(trips) {
@@ -907,7 +1017,7 @@
           </div>
         </div>
         <div class="history-items">
-          ${(trip.items||[]).map(i=>`<span class="history-item-chip">${i.name}${i.price ? " · " + i.price + " kr" : ""}${i.qty>1?" "+i.qty+" "+i.unit:""}</span>`).join("")}
+          ${renderHistoryItemsByCategory(trip)}
           ${trip.categoryTotals ? `
             <div style="width:100%;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
               ${Object.entries(trip.categoryTotals).map(([cat,total]) =>
@@ -921,6 +1031,88 @@
         </div>
       </div>`).join("");
   }
+
+
+  window.openHistoryItemEdit = (tripId, itemIndex) => {
+    const trip = historyTripsCache.find(t => t.id === tripId);
+    if (!trip || !trip.items || !trip.items[itemIndex]) return;
+
+    const item = trip.items[itemIndex];
+    editingHistoryTripId = tripId;
+    editingHistoryItemIndex = itemIndex;
+
+    document.getElementById("history-item-name").value = item.name || "";
+    document.getElementById("history-item-qty").value = item.qty || 1;
+    document.getElementById("history-item-unit").value = item.unit || "stk";
+    document.getElementById("history-item-cat").value = item.cat || guessCategory(item.name || item.line || "") || "annet";
+    document.getElementById("history-item-price").value = item.price || "";
+    document.getElementById("history-item-modal-overlay").classList.add("open");
+  };
+
+  async function saveEditedHistoryItem(deleteItem = false) {
+    if (!editingHistoryTripId || editingHistoryItemIndex === null) return;
+
+    const trip = historyTripsCache.find(t => t.id === editingHistoryTripId);
+    if (!trip) return;
+
+    const items = [...(trip.items || [])];
+
+    if (deleteItem) {
+      items.splice(editingHistoryItemIndex, 1);
+    } else {
+      const name = document.getElementById("history-item-name").value.trim();
+      const qty = parseFloat(document.getElementById("history-item-qty").value) || 1;
+      const unit = document.getElementById("history-item-unit").value || "stk";
+      const cat = document.getElementById("history-item-cat").value || "annet";
+      const priceVal = parseFloat(document.getElementById("history-item-price").value);
+      const price = isNaN(priceVal) ? 0 : priceVal;
+
+      if (!name) return;
+
+      const oldItem = items[editingHistoryItemIndex] || {};
+      items[editingHistoryItemIndex] = {
+        ...oldItem,
+        name,
+        qty,
+        unit,
+        cat,
+        price,
+        // Når historikk redigeres manuelt, behandler vi pris som linjesum.
+        unitPrice: oldItem.unitPrice || null,
+        line: oldItem.line || "redigert i historikk"
+      };
+    }
+
+    const totals = recalculateTripTotals(items);
+    await updateDoc(doc(db, "lists", LIST_ID, "history", editingHistoryTripId), {
+      items,
+      total: totals.total,
+      categoryTotals: totals.categoryTotals,
+      updatedAt: Date.now()
+    });
+
+    document.getElementById("history-item-modal-overlay").classList.remove("open");
+    editingHistoryTripId = null;
+    editingHistoryItemIndex = null;
+    await loadHistory();
+  }
+
+  document.getElementById("history-item-save").addEventListener("click", () => saveEditedHistoryItem(false));
+  document.getElementById("history-item-delete").addEventListener("click", () => {
+    if (confirm("Slette denne varen fra historikken?")) saveEditedHistoryItem(true);
+  });
+  document.getElementById("history-item-cancel").addEventListener("click", () => {
+    document.getElementById("history-item-modal-overlay").classList.remove("open");
+    editingHistoryTripId = null;
+    editingHistoryItemIndex = null;
+  });
+  document.getElementById("history-item-modal-overlay").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById("history-item-modal-overlay").classList.remove("open");
+      editingHistoryTripId = null;
+      editingHistoryItemIndex = null;
+    }
+  });
 
   window.toggleHistoryCard = (id) => {
     document.getElementById(`hcard-${id}`).classList.toggle("open");
