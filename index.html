@@ -327,7 +327,7 @@
         <div class="receipt-preview-title" id="receipt-preview-title">Skanner kvittering...</div>
         <div id="receipt-items-area"></div>
         <div class="smart-preview-actions" id="receipt-actions" style="display:none">
-          <button class="smart-confirm-btn" id="receipt-confirm-btn">Oppdater priser</button>
+          <button class="smart-confirm-btn" id="receipt-confirm-btn">Lagre kvittering</button>
           <button class="smart-cancel-btn" id="receipt-cancel-btn">Avbryt</button>
         </div>
       </div>
@@ -1818,6 +1818,7 @@
   let scannedReceipt = [];
   let scannedDate = null;
   let scannedButikk = null;
+  let scannedTotal = null;
   let receiptEditingIndex = null;
 
   function parseNumber(value, fallback = null) {
@@ -1918,7 +1919,7 @@
                   <div class="receipt-item-name">${escapeHtml(v.navn)}</div>
                   <div class="item-detail">${escapeHtml(qtyText)}${escapeHtml(unitPriceText)}</div>
                   ${lineText}
-                  <div class="receipt-edit-hint">Trykk for å redigere</div>
+                  <div class="receipt-edit-hint">Trykk for å redigere · avhuking = bruk til pris/forslag</div>
                 </div>
                 <span class="receipt-item-price">${escapeHtml(priceText)}</span>
                 <button class="delete-btn" onclick="event.stopPropagation(); deleteScannedProduct(${i})">×</button>
@@ -2046,7 +2047,7 @@
           image: base64,
           mediaType,
           type: "receipt",
-          instructions: "Les hele kvitteringslinjen for hver vare. Returner varer som JSON med feltene navn, linje, antall, enhet, pris og eventuelt stkpris. pris skal være linjesum/totalpris for varen."
+          instructions: "Les hele kvitteringslinjen for hver vare. Returner varer som JSON med feltene navn, linje, antall, enhet, pris og eventuelt stkpris. pris skal være linjesum/totalpris for varen. Returner også kvitteringens totalbeløp som total."
         })
       });
 
@@ -2056,13 +2057,14 @@
       scannedReceipt = (parsed.varer || parsed.items || []).map(normalizeScannedReceiptItem);
       scannedDate = parsed.dato || parsed.date || null;
       scannedButikk = parsed.butikk || parsed.store || null;
+      scannedTotal = parseNumber(parsed.total ?? parsed.totalbelop ?? parsed.totalBelop ?? parsed.sum ?? parsed.amount, null);
 
       if (scannedReceipt.length === 0) {
         area.innerHTML = `<div class="receipt-scanning">Fant ingen varer. Prøv et klarere bilde.</div>`;
         return;
       }
 
-      document.getElementById("receipt-preview-title").textContent = `Fant ${scannedReceipt.length} varer — sortert på kategori. Trykk på en vare for å redigere:`;
+      document.getElementById("receipt-preview-title").textContent = `Fant ${scannedReceipt.length} varer — alle lagres i historikk og brukes til fremtidige forslag:`;
       renderScannedReceipt();
       actions.style.display = "flex";
 
@@ -2075,24 +2077,34 @@
   });
 
   document.getElementById("receipt-confirm-btn").addEventListener("click", async () => {
-    const checked = scannedReceipt.filter((_, i) => document.getElementById(`rc-${i}`)?.checked);
+    // Alle scannede varer brukes nå til pris-/kjøpshistorikk og fremtidige forslag.
+    // Avhuking beholdes bare visuelt foreløpig, men påvirker ikke lagringen.
+    const purchaseTimestamp = scannedDate ? new Date(scannedDate).getTime() : Date.now();
+    const allNames = scannedReceipt.map(v => cleanName(v.navn)).filter(Boolean);
 
-    // Oppdater priser i historikk
-    checked.forEach(v => {
+    scannedReceipt.forEach(v => {
       const navn = cleanName(v.navn);
+      if (!navn) return;
       if (!purchaseHistory[navn]) purchaseHistory[navn] = { lastBought: null, intervals: [], partners: {} };
 
-      // Husk enhetspris hvis vi har antall, ellers bruk linjesummen
-      purchaseHistory[navn].lastPrice = v.stkpris || v.pris || null;
-      purchaseHistory[navn].lastReceiptLine = v.linje || "";
-      purchaseHistory[navn].lastQty = v.antall || 1;
-      purchaseHistory[navn].lastUnit = v.enhet || "stk";
-
-      if (scannedDate) {
-        purchaseHistory[navn].lastBought = new Date(scannedDate).getTime();
-      } else {
-        purchaseHistory[navn].lastBought = Date.now();
+      const h = purchaseHistory[navn];
+      if (h.lastBought) {
+        const daysSince = (purchaseTimestamp - h.lastBought) / (1000 * 60 * 60 * 24);
+        if (daysSince > 0.5) h.intervals = [...(h.intervals || []).slice(-9), Math.round(daysSince)];
       }
+
+      // Husk enhetspris hvis vi har antall, ellers bruk linjesummen
+      h.lastPrice = v.stkpris || v.pris || null;
+      h.lastReceiptLine = v.linje || "";
+      h.lastQty = v.antall || 1;
+      h.lastUnit = v.enhet || "stk";
+      h.lastBought = purchaseTimestamp;
+
+      // Lær hvilke varer som ofte kjøpes sammen, slik at forslagene blir bedre.
+      h.partners = h.partners || {};
+      allNames.forEach(partner => {
+        if (partner !== navn) h.partners[partner] = (h.partners[partner] || 0) + 1;
+      });
     });
     await savePurchaseHistory();
 
@@ -2100,24 +2112,38 @@
       ? new Date(scannedDate).toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" })
       : new Date().toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" });
 
-    const total = checked.reduce((sum, v) => sum + (v.pris || 0), 0);
-
-    const roundedTotal = Math.round(total * 100) / 100;
+    const allScannedTotal = scannedReceipt.reduce((sum, v) => sum + Number(v.pris || 0), 0);
+    const receiptTotal = scannedTotal !== null && scannedTotal !== undefined ? Number(scannedTotal) : allScannedTotal;
+    const roundedTotal = Math.round(receiptTotal * 100) / 100;
+    const unallocatedAmount = Math.max(0, Math.round((roundedTotal - allScannedTotal) * 100) / 100);
     const receiptTimestamp = scannedDate ? new Date(scannedDate).getTime() : Date.now();
-    const categoryTotals = {};
-    checked.forEach(v => {
+
+    // Fordel kvitteringens totalbeløp proporsjonalt på kategoriene vi har funnet.
+    // Da havner ikke differansen automatisk i Annet, og månedssummer matcher totalen.
+    const rawCategoryTotals = {};
+    scannedReceipt.forEach(v => {
       const cat = v.cat || guessCategory(v.navn || v.linje || "") || "annet";
-      categoryTotals[cat] = (categoryTotals[cat] || 0) + (v.pris || 0);
+      rawCategoryTotals[cat] = (rawCategoryTotals[cat] || 0) + Number(v.pris || 0);
     });
 
-    const receiptItems = checked.map(v => ({
+    const categoryTotals = {};
+    if (allScannedTotal > 0) {
+      Object.entries(rawCategoryTotals).forEach(([cat, value]) => {
+        categoryTotals[cat] = Math.round((Number(value || 0) / allScannedTotal) * roundedTotal * 100) / 100;
+      });
+    } else if (roundedTotal > 0) {
+      categoryTotals["annet"] = roundedTotal;
+    }
+
+    const receiptItems = scannedReceipt.map((v, index) => ({
       name: v.navn,
       qty: v.antall || 1,
       unit: v.enhet || "stk",
       cat: v.cat || guessCategory(v.navn || v.linje || "") || "annet",
       price: v.pris,
       unitPrice: v.stkpris || null,
-      line: v.linje || ""
+      line: v.linje || "",
+      useForPurchaseHistory: true
     }));
 
     const receiptFingerprint = [
@@ -2144,6 +2170,8 @@
       timestamp: receiptTimestamp,
       butikk: scannedButikk || "Ukjent butikk",
       total: roundedTotal,
+      scannedItemsTotal: Math.round(allScannedTotal * 100) / 100,
+      unallocatedAmount,
       categoryTotals,
       items: receiptItems,
       receiptFingerprint,
@@ -2153,7 +2181,7 @@
     document.getElementById("receipt-preview").classList.remove("open");
     renderPriceSummary();
     loadHistory();
-    alert(`✅ Lagret handletur med ${checked.length} varer${scannedDate ? " fra " + dateStr : ""}!`);
+    alert(`✅ Lagret kvittering med ${scannedReceipt.length} varer i historikk og brukt til fremtidige forslag${scannedDate ? " fra " + dateStr : ""}.`);
   });
 
   document.getElementById("receipt-cancel-btn").addEventListener("click", () => {
