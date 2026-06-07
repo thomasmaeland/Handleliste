@@ -1169,7 +1169,7 @@
       actions.style.display = "flex";
 
     } catch(err) {
-      area.innerHTML = `<div class="receipt-scanning">Noe gikk galt. Sjekk at API-nøkkelen er riktig og prøv igjen.</div>`;
+      area.innerHTML = `<div class="receipt-scanning">Feil: ${err.message}. Sjekk konsollen for detaljer.</div>`;
       console.error(err);
     }
 
