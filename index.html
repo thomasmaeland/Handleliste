@@ -551,6 +551,32 @@
     });
   }
 
+  // PRICE DATABASE — gjennomsnittspriser norske dagligvarer
+  const PRICE_DB = {
+    "Melk":25,"Lettmelk":25,"Helmelk":28,"Skummetmelk":22,
+    "Brød":35,"Loff":30,"Rundstykker":25,"Knekkebrød":30,
+    "Smør":45,"Margarin":35,
+    "Egg":45,"Egg 6pk":35,"Egg 12pk":65,
+    "Ost":90,"Brunost":55,"Norvegia":95,"Jarlsberg":85,
+    "Yoghurt":25,"Rømme":30,"Fløte":28,"Kremfløte":28,
+    "Kaffe":89,"Te":45,
+    "Mel":25,"Sukker":20,"Salt":12,"Pepper":25,
+    "Ris":35,"Pasta":25,"Havregryn":30,
+    "Olje":45,"Ketchup":30,"Majones":35,"Sennep":20,
+    "Toalettpapir":60,"Oppvaskmiddel":35,"Vaskemiddel":89,
+    "Tannkrem":30,"Sjampo":55,"Dusjsåpe":35,
+    "Tomater":30,"Agurk":20,"Salat":25,"Spinat":30,
+    "Gulrøtter":20,"Brokkoli":25,"Løk":15,"Hvitløk":15,
+    "Poteter":25,"Paprika":30,"Blomkål":30,
+    "Bananer":20,"Epler":35,"Appelsin":25,"Kiwi":20,
+    "Jordbær":45,"Blåbær":35,"Mango":30,
+    "Kylling":89,"Kjøttdeig":75,"Bacon":55,"Pølser":45,
+    "Laks":120,"Torsk":89,"Reker":99,
+    "Juice":35,"Brus":30,"Øl":25,"Vann":20,
+    "Sjokolade":30,"Chips":35,"Nøtter":55,
+    "Syltetøy":35,"Honning":55,"Kokosmelk":25,
+  };
+
   function renderList(items) {
     const container = document.getElementById("items-list");
     if (items.length === 0) {
@@ -904,32 +930,6 @@
   document.getElementById("new-item-input").addEventListener("blur", hideAutocomplete);
 
   // API-nøkkelen ligger trygt på Netlify-serveren, ikke her
-
-  // PRICE DATABASE — gjennomsnittspriser norske dagligvarer
-  const PRICE_DB = {
-    "Melk":25,"Lettmelk":25,"Helmelk":28,"Skummetmelk":22,
-    "Brød":35,"Loff":30,"Rundstykker":25,"Knekkebrød":30,
-    "Smør":45,"Margarin":35,
-    "Egg":45,"Egg 6pk":35,"Egg 12pk":65,
-    "Ost":90,"Brunost":55,"Norvegia":95,"Jarlsberg":85,
-    "Yoghurt":25,"Rømme":30,"Fløte":28,"Kremfløte":28,
-    "Kaffe":89,"Te":45,
-    "Mel":25,"Sukker":20,"Salt":12,"Pepper":25,
-    "Ris":35,"Pasta":25,"Havregryn":30,
-    "Olje":45,"Ketchup":30,"Majones":35,"Sennep":20,
-    "Toalettpapir":60,"Oppvaskmiddel":35,"Vaskemiddel":89,
-    "Tannkrem":30,"Sjampo":55,"Dusjsåpe":35,
-    "Tomater":30,"Agurk":20,"Salat":25,"Spinat":30,
-    "Gulrøtter":20,"Brokkoli":25,"Løk":15,"Hvitløk":15,
-    "Poteter":25,"Paprika":30,"Blomkål":30,
-    "Bananer":20,"Epler":35,"Appelsin":25,"Kiwi":20,
-    "Jordbær":45,"Blåbær":35,"Mango":30,
-    "Kylling":89,"Kjøttdeig":75,"Bacon":55,"Pølser":45,
-    "Laks":120,"Torsk":89,"Reker":99,
-    "Juice":35,"Brus":30,"Øl":25,"Vann":20,
-    "Sjokolade":30,"Chips":35,"Nøtter":55,
-    "Syltetøy":35,"Honning":55,"Kokosmelk":25,
-  };
 
   function estimatePrice(name) {
     const n = cleanName(name);
