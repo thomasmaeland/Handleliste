@@ -1,6 +1,16 @@
 export async function onRequestPost(context) {
   try {
     const { image, mediaType, type } = await context.request.json();
+
+    // Sjekk at API-nøkkelen finnes
+    const apiKey = context.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "API-nøkkel mangler i environment" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
     const prompt = type === "receipt"
       ? `Dette er en norsk dagligvarekvittering. List opp alle kjøpte varer med pris og finn datoen på kvitteringen. Svar KUN med JSON, ingen annen tekst:
 {"dato":"2026-06-07","butikk":"Rema 1000","varer":[{"navn":"Melk","pris":29.90},{"navn":"Brød","pris":34.90}]}
@@ -17,7 +27,7 @@ Bruk korte, vanlige varenavn.`;
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": context.env.ANTHROPIC_API_KEY,
+        "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
@@ -34,11 +44,23 @@ Bruk korte, vanlige varenavn.`;
       })
     });
 
-    const data = await response.json();
+    // Logg Anthropic-svaret råt
+    const rawText = await response.text();
+    if (!response.ok) {
+      return new Response(JSON.stringify({ 
+        error: "Anthropic API feil", 
+        status: response.status,
+        detaljer: rawText 
+      }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const data = JSON.parse(rawText);
     const text = data.content?.[0]?.text || "";
     const clean = text.replace(/```json|```/g, "").trim();
 
-    // Hvis svaret ikke er JSON, returner tom fallback
     if (!clean.startsWith("{")) {
       const fallback = type === "receipt"
         ? { dato: null, butikk: null, varer: [], feil: "Kunne ikke lese kvitteringen. Prøv et klarere bilde." }
