@@ -26,38 +26,6 @@
     .login-btn:hover { transform:translateY(-1px); box-shadow:0 4px 20px rgba(0,0,0,.12); }
     .google-icon { width:20px; height:20px; }
 
-    /* HOUSEHOLD INFO */
-    .household-info-popup { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:300; display:none; align-items:flex-end; justify-content:center; }
-    .household-info-popup.open { display:flex; }
-    .household-info-box { background:var(--surface); border-radius:20px 20px 0 0; padding:1.5rem 1.25rem 2.5rem; width:100%; max-width:480px; }
-    .household-info-title { font-family:'DM Serif Display',serif; font-size:1.2rem; margin-bottom:1.25rem; }
-    .household-code-display { background:var(--accent-light); border:1.5px solid var(--accent); border-radius:var(--radius); padding:1rem; text-align:center; margin-bottom:1rem; }
-    .household-code-display-label { font-size:11px; color:var(--accent); font-weight:500; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
-    .household-code-display-code { font-family:'DM Serif Display',serif; font-size:1.6rem; color:var(--accent); letter-spacing:.05em; }
-    .household-action-btn { display:flex; align-items:center; gap:10px; width:100%; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; font-family:'DM Sans',sans-serif; font-size:14px; cursor:pointer; margin-bottom:8px; color:var(--ink); transition:all .15s; }
-    .household-action-btn:hover { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
-    .household-close-btn { width:100%; background:none; border:none; font-size:13px; color:var(--ink3); cursor:pointer; padding:8px; margin-top:4px; }
-
-    /* ONBOARDING */
-    #onboarding-screen { display:none; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:2rem; gap:1.5rem; }
-    .onboarding-title { font-family:'DM Serif Display',serif; font-size:2rem; text-align:center; color:var(--ink); }
-    .onboarding-sub { font-size:14px; color:var(--ink2); text-align:center; max-width:280px; line-height:1.6; }
-    .onboarding-btn { width:100%; max-width:320px; padding:14px; border-radius:50px; font-family:'DM Sans',sans-serif; font-size:15px; font-weight:500; cursor:pointer; transition:all .2s; }
-    .onboarding-btn-primary { background:var(--accent); color:white; border:none; box-shadow:0 2px 8px rgba(45,106,79,.25); }
-    .onboarding-btn-primary:hover { background:#235c42; transform:translateY(-1px); }
-    .onboarding-btn-secondary { background:var(--surface); color:var(--ink); border:1.5px solid var(--border); }
-    .onboarding-btn-secondary:hover { border-color:var(--accent); color:var(--accent); }
-    .onboarding-divider { font-size:12px; color:var(--ink3); }
-    .onboarding-code-area { display:none; flex-direction:column; gap:10px; width:100%; max-width:320px; }
-    .onboarding-code-area.open { display:flex; }
-    .onboarding-input { border:1.5px solid var(--border); border-radius:12px; padding:12px 16px; font-family:'DM Sans',sans-serif; font-size:16px; text-align:center; letter-spacing:.1em; text-transform:uppercase; outline:none; width:100%; }
-    .onboarding-input:focus { border-color:var(--accent); }
-    .household-code-box { background:var(--accent-light); border:1.5px solid var(--accent); border-radius:var(--radius); padding:1.25rem; text-align:center; width:100%; max-width:320px; }
-    .household-code-label { font-size:12px; color:var(--accent); font-weight:500; margin-bottom:.5rem; }
-    .household-code { font-family:'DM Serif Display',serif; font-size:1.8rem; color:var(--accent); letter-spacing:.05em; }
-    .household-code-sub { font-size:12px; color:var(--ink2); margin-top:.5rem; }
-    .copy-code-btn { background:var(--accent); color:white; border:none; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; margin-top:.75rem; }
-
     /* APP */
     #app-screen { display:none; flex-direction:column; min-height:100dvh; }
     header { background:var(--surface); border-bottom:1px solid var(--border); padding:1rem 1.25rem .75rem; position:sticky; top:0; z-index:10; }
@@ -228,37 +196,6 @@
   </button>
 </div>
 
-<!-- ONBOARDING -->
-<div id="onboarding-screen" style="display:none">
-  <div class="onboarding-title">Velkommen! 👋</div>
-  <div class="onboarding-sub">Vil du lage en ny husholdning eller bli med i en eksisterende?</div>
-
-  <button class="onboarding-btn onboarding-btn-primary" id="create-household-btn">
-    🏠 Lag ny husholdning
-  </button>
-
-  <div class="onboarding-divider">— eller —</div>
-
-  <button class="onboarding-btn onboarding-btn-secondary" id="join-household-toggle">
-    🔑 Skriv inn invitasjonskode
-  </button>
-
-  <div class="onboarding-code-area" id="join-code-area">
-    <input class="onboarding-input" id="join-code-input" type="text" placeholder="F.EKS. GRØNN-ELEFANT-42" maxlength="20" />
-    <button class="onboarding-btn onboarding-btn-primary" id="join-household-btn">Bli med</button>
-  </div>
-
-  <div class="household-code-box" id="new-household-box" style="display:none">
-    <div class="household-code-label">Din husholdningskode</div>
-    <div class="household-code" id="new-household-code">...</div>
-    <div class="household-code-sub">Del denne koden med de du vil handle med</div>
-    <button class="copy-code-btn" id="copy-code-btn">📋 Kopier kode</button>
-    <div style="margin-top:1rem">
-      <button class="onboarding-btn onboarding-btn-primary" id="start-app-btn" style="max-width:100%">Start appen →</button>
-    </div>
-  </div>
-</div>
-
 <!-- APP -->
 <div id="app-screen" style="display:none">
   <header>
@@ -346,21 +283,6 @@
       </div>
     </div>
   </main>
-</div>
-
-<!-- HOUSEHOLD INFO POPUP -->
-<div class="household-info-popup" id="household-popup">
-  <div class="household-info-box">
-    <div class="household-info-title">Din husholdning</div>
-    <div class="household-code-display">
-      <div class="household-code-display-label">Invitasjonskode</div>
-      <div class="household-code-display-code" id="popup-household-code">...</div>
-    </div>
-    <p style="font-size:13px;color:var(--ink2);margin-bottom:1rem;text-align:center">Del denne koden med alle som skal handle med deg</p>
-    <button class="household-action-btn" id="popup-copy-btn">📋 Kopier kode</button>
-    <button class="household-action-btn" id="popup-switch-btn" style="color:var(--danger);border-color:var(--danger)">🔄 Bytt til annen husholdning</button>
-    <button class="household-close-btn" id="popup-close-btn">Lukk</button>
-  </div>
 </div>
 
 <!-- EDIT MODAL -->
@@ -475,15 +397,7 @@
   let unsubscribeList = null;
   let currentItems = [];
   let editingItemId = null;
-  let LIST_ID = null; // settes etter husholdning er valgt
-
-  // Generer en minneverdig husholdningskode
-  function generateHouseholdCode() {
-    const adj = ["GRØNN","BLÅ","RØD","GULL","SØLV","HVIT","GLAD","RASK","STERK","LITEN"];
-    const noun = ["ELEFANT","LØVE","TIGER","BJØRN","ULV","ØRN","HAI","PANDA","KOALA","PINGVIN"];
-    const num = Math.floor(Math.random() * 90) + 10;
-    return `${adj[Math.floor(Math.random()*adj.length)]}-${noun[Math.floor(Math.random()*noun.length)]}-${num}`;
-  }
+  const LIST_ID = "hjem";
 
   // AUTH
   document.getElementById("google-login-btn").addEventListener("click", async () => {
@@ -931,14 +845,16 @@
         <div class="history-card-header">
           <div>
             <div class="history-date">${trip.date}</div>
+            ${trip.butikk ? `<div style="font-size:11px;color:var(--ink3);margin-top:2px">${trip.butikk}</div>` : ""}
           </div>
           <div style="display:flex;align-items:center;gap:8px">
+            ${trip.total ? `<span style="font-size:13px;font-weight:500;color:var(--accent)">${trip.total} kr</span>` : ""}
             <span class="history-count">${trip.items?.length || 0} varer</span>
             <span class="history-chevron">›</span>
           </div>
         </div>
         <div class="history-items">
-          ${(trip.items||[]).map(i=>`<span class="history-item-chip">${i.name} ${i.qty>1?i.qty+' '+i.unit:''}</span>`).join("")}
+          ${(trip.items||[]).map(i=>`<span class="history-item-chip">${i.name}${i.price ? " · " + i.price + " kr" : ""}${i.qty>1?" "+i.qty+" "+i.unit:""}</span>`).join("")}
         </div>
       </div>`).join("");
   }
@@ -1239,6 +1155,8 @@
 
   // RECEIPT SCANNING
   let scannedReceipt = [];
+  let scannedDate = null;
+  let scannedButikk = null;
 
   document.getElementById("receipt-btn").addEventListener("click", () => {
     document.getElementById("receipt-input").click();
@@ -1269,14 +1187,17 @@
 
       const mediaType = file.type || "image/jpeg";
 
-      const response = await fetch("/.netlify/functions/scan", {
+      const response = await fetch("/functions/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: base64, mediaType, type: "receipt" })
       });
 
+      if (!response.ok) throw new Error("Server feil: " + response.status);
       const parsed = await response.json();
       scannedReceipt = parsed.varer || [];
+      scannedDate = parsed.dato || null;
+      scannedButikk = parsed.butikk || null;
 
       if (scannedReceipt.length === 0) {
         area.innerHTML = `<div class="receipt-scanning">Fant ingen varer. Prøv et klarere bilde.</div>`;
@@ -1303,14 +1224,41 @@
 
   document.getElementById("receipt-confirm-btn").addEventListener("click", async () => {
     const checked = scannedReceipt.filter((_, i) => document.getElementById(`rc-${i}`)?.checked);
+    
+    // Oppdater priser i historikk
     checked.forEach(v => {
       if (!purchaseHistory[v.navn]) purchaseHistory[v.navn] = { lastBought: null, intervals: [], partners: {} };
       purchaseHistory[v.navn].lastPrice = v.pris;
+      // Oppdater lastBought basert på kvitteringsdato
+      if (scannedDate) {
+        purchaseHistory[v.navn].lastBought = new Date(scannedDate).getTime();
+      } else {
+        purchaseHistory[v.navn].lastBought = Date.now();
+      }
     });
     await savePurchaseHistory();
+
+    // Lagre som handletur i historikk
+    const dateStr = scannedDate 
+      ? new Date(scannedDate).toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" })
+      : new Date().toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" });
+    
+    const total = checked.reduce((sum, v) => sum + (v.pris || 0), 0);
+    
+    const historyRef = collection(db, "lists", LIST_ID, "history");
+    await addDoc(historyRef, {
+      date: dateStr,
+      timestamp: scannedDate ? new Date(scannedDate).getTime() : Date.now(),
+      butikk: scannedButikk || "Ukjent butikk",
+      total: Math.round(total * 100) / 100,
+      items: checked.map(v => ({ name: v.navn, qty: 1, unit: "stk", price: v.pris })),
+      source: "kvittering"
+    });
+
     document.getElementById("receipt-preview").classList.remove("open");
     renderPriceSummary();
-    alert(`✅ Oppdaterte priser for ${checked.length} varer!`);
+    loadHistory();
+    alert(`✅ Lagret handletur med ${checked.length} varer${scannedDate ? " fra " + dateStr : ""}!`);
   });
 
   document.getElementById("receipt-cancel-btn").addEventListener("click", () => {
