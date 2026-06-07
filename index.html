@@ -569,7 +569,7 @@
   let selectedMonthKey = null;
   let editingHistoryTripId = null;
   let editingHistoryItemIndex = null;
-  let LIST_ID = "hjem";
+  let LIST_ID = null;
 
   // AUTH
   document.getElementById("google-login-btn").addEventListener("click", async () => {
@@ -578,17 +578,58 @@
   });
   document.getElementById("signout-btn").addEventListener("click", () => signOut(auth));
 
+  async function createUniqueHouseholdForUser(user) {
+    let code = "";
+    let exists = true;
+    let attempts = 0;
+
+    while (exists && attempts < 10) {
+      code = generateCode();
+      const householdSnap = await getDoc(doc(db, "households", code));
+      exists = householdSnap.exists();
+      attempts++;
+    }
+
+    if (!code) code = user.uid;
+
+    await setDoc(doc(db, "households", code), {
+      createdAt: Date.now(),
+      createdBy: user.uid,
+      members: [user.uid]
+    }, { merge: true });
+
+    await setDoc(doc(db, "users", user.uid), {
+      householdId: code,
+      displayName: user.displayName || "",
+      email: user.email || "",
+      createdAt: Date.now()
+    }, { merge: true });
+
+    return code;
+  }
+
+  async function getOrCreateUserHousehold(user) {
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists() && userSnap.data().householdId) {
+      return userSnap.data().householdId;
+    }
+
+    return await createUniqueHouseholdForUser(user);
+  }
+
   onAuthStateChanged(auth, async (user) => {
     document.getElementById("loading").style.display = "none";
     if (user) {
       currentUser = user;
-      // Last husholdnings-ID fra brukerprofil
       try {
-        const userSnap = await getDoc(doc(db, "users", user.uid));
-        if (userSnap.exists() && userSnap.data().householdId) {
-          LIST_ID = userSnap.data().householdId;
-        }
-      } catch(e) {}
+        LIST_ID = await getOrCreateUserHousehold(user);
+      } catch(e) {
+        console.error("Kunne ikke opprette eller hente husholdning", e);
+        alert("Kunne ikke hente husholdning. Prøv å logge inn på nytt.");
+        return;
+      }
       document.getElementById("login-screen").style.display = "none";
       document.getElementById("app-screen").style.display = "flex";
       const initials = user.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
@@ -599,6 +640,7 @@
       loadHistory();
     } else {
       currentUser = null;
+      LIST_ID = null;
       document.getElementById("login-screen").style.display = "flex";
       document.getElementById("app-screen").style.display = "none";
       if (unsubscribeList) unsubscribeList();
