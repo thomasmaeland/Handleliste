@@ -36,13 +36,6 @@
     .signout-btn { background:none; border:none; font-size:12px; color:var(--ink3); cursor:pointer; padding:4px 8px; border-radius:6px; }
     .signout-btn:hover { color:var(--danger); }
 
-
-    /* HOUSEHOLD SWITCHER */
-    .household-switcher { display:none; align-items:center; gap:8px; margin-bottom:.75rem; }
-    .household-select { flex:1; border:1.5px solid var(--border); border-radius:10px; padding:8px 10px; background:var(--bg); color:var(--ink); font-family:'DM Sans',sans-serif; font-size:13px; outline:none; }
-    .household-select:focus { border-color:var(--accent); background:white; }
-    .household-label { font-size:11px; color:var(--ink3); white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
-
     /* NAV TABS */
     .nav-tabs { display:flex; gap:4px; margin-bottom:.75rem; }
     .nav-tab { flex:1; background:none; border:1px solid var(--border); border-radius:8px; padding:7px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500; color:var(--ink2); cursor:pointer; transition:all .15s; }
@@ -254,10 +247,6 @@
         <button class="signout-btn" id="signout-btn">Logg ut</button>
       </div>
     </div>
-    <div class="household-switcher" id="household-switcher">
-      <span class="household-label">Liste</span>
-      <select class="household-select" id="household-select" title="Velg handleliste"></select>
-    </div>
     <div class="nav-tabs">
       <button class="nav-tab active" id="tab-list" onclick="showTab('list')">🛒 Liste</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">📋 Historikk</button>
@@ -346,7 +335,7 @@
 <div class="share-modal-overlay" id="share-modal">
   <div class="share-modal">
     <div class="share-modal-title">Del husholdning</div>
-    <div class="share-modal-sub">Del koden med de du vil handle med. Du kan også bli med i flere lister og bytte mellom dem.</div>
+    <div class="share-modal-sub">Del koden med de du vil handle med</div>
     <div class="share-code-box">
       <div class="share-code-label">Din husholdningskode</div>
       <div class="share-code-value" id="share-code-value">...</div>
@@ -589,16 +578,6 @@
   });
   document.getElementById("signout-btn").addEventListener("click", () => signOut(auth));
 
-  function normalizeHouseholdCode(raw) {
-    const value = String(raw || "").trim();
-    if (!value) return "";
-    return value.toLowerCase() === "hjem" ? "hjem" : value.toUpperCase();
-  }
-
-  function uniqueHouseholds(list) {
-    return [...new Set((list || []).map(normalizeHouseholdCode).filter(Boolean))];
-  }
-
   async function createUniqueHouseholdForUser(user) {
     let code = "";
     let exists = true;
@@ -619,11 +598,8 @@
       members: [user.uid]
     }, { merge: true });
 
-    userHouseholds = uniqueHouseholds([code]);
     await setDoc(doc(db, "users", user.uid), {
-      householdId: code,              // bakoverkompatibilitet
-      activeHouseholdId: code,        // ny aktiv liste
-      householdIds: userHouseholds,   // flere lister bruker kan bla mellom
+      householdId: code,
       displayName: user.displayName || "",
       email: user.email || "",
       createdAt: Date.now()
@@ -672,88 +648,19 @@
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
 
-    if (userSnap.exists()) {
-      const data = userSnap.data();
-      const legacyCode = normalizeHouseholdCode(data.householdId);
-      const activeCode = normalizeHouseholdCode(data.activeHouseholdId || data.householdId);
-      userHouseholds = uniqueHouseholds([...(data.householdIds || []), legacyCode, activeCode]);
+    if (userSnap.exists() && userSnap.data().householdId) {
+      const code = userSnap.data().householdId;
 
-      if (userHouseholds.length > 0) {
-        const code = activeCode || userHouseholds[0];
-
-        // Støtte for gammel struktur, f.eks. lists/hjem uten households/hjem
-        for (const householdCode of userHouseholds) {
-          if (await legacyListExists(householdCode)) {
-            await ensureHouseholdDocument(householdCode, user);
-          }
-        }
-
-        await setDoc(userRef, {
-          householdId: code,              // behold for gammel kode
-          activeHouseholdId: code,
-          householdIds: userHouseholds,
-          displayName: user.displayName || data.displayName || "",
-          email: user.email || data.email || ""
-        }, { merge: true });
-
-        return code;
+      // Støtte for gammel struktur, f.eks. lists/hjem uten households/hjem
+      if (await legacyListExists(code)) {
+        await ensureHouseholdDocument(code, user);
       }
+
+      return code;
     }
 
     return await createUniqueHouseholdForUser(user);
   }
-
-
-  function renderHouseholdSwitcher() {
-    const wrapper = document.getElementById("household-switcher");
-    const select = document.getElementById("household-select");
-    if (!wrapper || !select) return;
-
-    const households = uniqueHouseholds(userHouseholds.length ? userHouseholds : [LIST_ID]);
-    userHouseholds = households;
-
-    if (households.length <= 1) {
-      wrapper.style.display = "none";
-      return;
-    }
-
-    wrapper.style.display = "flex";
-    select.innerHTML = households.map(code => `<option value="${code}">${code}</option>`).join("");
-    select.value = LIST_ID;
-  }
-
-  async function saveActiveHousehold(code) {
-    if (!currentUser || !code) return;
-    await setDoc(doc(db, "users", currentUser.uid), {
-      householdId: code,
-      activeHouseholdId: code,
-      householdIds: userHouseholds,
-      displayName: currentUser.displayName || "",
-      email: currentUser.email || ""
-    }, { merge: true });
-  }
-
-  async function switchHousehold(code) {
-    code = normalizeHouseholdCode(code);
-    if (!code || code === LIST_ID) return;
-    LIST_ID = code;
-    userHouseholds = uniqueHouseholds([...userHouseholds, code]);
-    await ensureHouseholdDocument(code, currentUser);
-    await saveActiveHousehold(code);
-
-    if (unsubscribeList) unsubscribeList();
-    purchaseHistory = {};
-    currentItems = [];
-    await loadPurchaseHistory();
-    startListeningWithPrice();
-    renderSuggestions();
-    loadHistory();
-    renderHouseholdSwitcher();
-  }
-
-  document.getElementById("household-select")?.addEventListener("change", async (e) => {
-    await switchHousehold(e.target.value);
-  });
 
   onAuthStateChanged(auth, async (user) => {
     document.getElementById("loading").style.display = "none";
@@ -770,7 +677,6 @@
       document.getElementById("app-screen").style.display = "flex";
       const initials = user.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
       document.getElementById("user-avatar").textContent = initials;
-      renderHouseholdSwitcher();
       await loadPurchaseHistory();
       startListeningWithPrice();
       renderSuggestions();
@@ -778,8 +684,6 @@
     } else {
       currentUser = null;
       LIST_ID = null;
-      userHouseholds = [];
-      renderHouseholdSwitcher();
       document.getElementById("login-screen").style.display = "flex";
       document.getElementById("app-screen").style.display = "none";
       if (unsubscribeList) unsubscribeList();
@@ -1649,7 +1553,8 @@
 
   document.getElementById("share-join-btn").addEventListener("click", async () => {
     const input = document.getElementById("share-join-input");
-    const code = normalizeHouseholdCode(input.value);
+    const rawCode = input.value.trim();
+    const code = rawCode.toLowerCase() === "hjem" ? "hjem" : rawCode.toUpperCase();
     if (!code) return;
 
     try {
@@ -1683,26 +1588,19 @@
         }
       }
 
-      // Legg listen til brukerens listevelger og bytt til den
-      userHouseholds = uniqueHouseholds([...userHouseholds, code]);
+      // Oppdater brukerens husholdning
       await setDoc(doc(db, "users", currentUser.uid), {
         householdId: code,
-        activeHouseholdId: code,
-        householdIds: userHouseholds,
-        displayName: currentUser.displayName || "",
-        email: currentUser.email || ""
+        displayName: currentUser.displayName || ""
       }, { merge: true });
 
       // Bytt til ny liste
       LIST_ID = code;
       if (unsubscribeList) unsubscribeList();
-      purchaseHistory = {};
-      currentItems = [];
       await loadPurchaseHistory();
       startListeningWithPrice();
       renderSuggestions();
       loadHistory();
-      renderHouseholdSwitcher();
 
       document.getElementById("share-modal").classList.remove("open");
       input.value = "";
