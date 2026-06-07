@@ -477,7 +477,28 @@
         LIST_ID = userSnap.data().householdId;
         startApp();
       } else {
-        // Ny bruker — vis onboarding
+        // Sjekk om brukeren har gammel data under "hjem"
+        try {
+          const oldListRef = collection(db, "lists", "hjem", "items");
+          const oldSnap = await getDocs(oldListRef);
+          if (!oldSnap.empty) {
+            // Migrer til "hjem" som husholdning
+            await setDoc(doc(db, "households", "hjem"), {
+              createdBy: user.uid,
+              createdAt: Date.now(),
+              members: [user.uid],
+              migrated: true
+            }, { merge: true });
+            await setDoc(doc(db, "users", user.uid), {
+              householdId: "hjem",
+              displayName: user.displayName || ""
+            });
+            LIST_ID = "hjem";
+            startApp();
+            return;
+          }
+        } catch(e) {}
+        // Ny bruker uten data — vis onboarding
         document.getElementById("login-screen").style.display = "none";
         document.getElementById("onboarding-screen").style.display = "flex";
       }
