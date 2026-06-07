@@ -782,10 +782,30 @@
     // Lagre snapshot til historikk
     const dateStr = new Date().toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" });
     const historyRef = collection(db, "lists", LIST_ID, "history");
+    const categoryTotals = {};
+    let total = 0;
+
+    doneItems.forEach(i => {
+      const cat = i.cat || "annet";
+      const price = (i.price || estimatePrice(i.name) || 0);
+      const lineTotal = price * (i.qty || 1);
+
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + lineTotal;
+      total += lineTotal;
+    });
+
     await addDoc(historyRef, {
       date: dateStr,
       timestamp: Date.now(),
-      items: doneItems.map(i => ({ name: i.name, qty: i.qty||1, unit: i.unit||"stk" }))
+      total: Math.round(total),
+      categoryTotals,
+      items: doneItems.map(i => ({
+        name: i.name,
+        qty: i.qty || 1,
+        unit: i.unit || "stk",
+        cat: i.cat || "annet",
+        price: i.price || estimatePrice(i.name) || 0
+      }))
     });
 
     // Slett avkryssede
@@ -829,6 +849,16 @@
         </div>
         <div class="history-items">
           ${(trip.items||[]).map(i=>`<span class="history-item-chip">${i.name}${i.price ? " · " + i.price + " kr" : ""}${i.qty>1?" "+i.qty+" "+i.unit:""}</span>`).join("")}
+          ${trip.categoryTotals ? `
+            <div style="width:100%;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+              ${Object.entries(trip.categoryTotals).map(([cat,total]) =>
+                `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0">
+                  <span>${CAT_LABELS[cat] || cat}</span>
+                  <strong>${Math.round(total)} kr</strong>
+                </div>`
+              ).join("")}
+            </div>
+          ` : ""}
         </div>
       </div>`).join("");
   }
