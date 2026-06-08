@@ -4,19 +4,32 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Handleliste</title>
-  <meta name="theme-color" content="#2d6a4f" />
+  <meta name="theme-color" content="#080d14" id="theme-color-meta" />
   <link rel="manifest" href="manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* LYST TEMA (standard) */
     :root {
       --bg: #f7f5f0; --surface: #fff; --ink: #1c1c1e; --ink2: #6b6b6b; --ink3: #aeaead;
       --accent: #2d6a4f; --accent-light: #d8f3dc; --accent2: #e07a2f;
       --danger: #c0392b; --border: #e8e4dc; --radius: 14px;
       --shadow: 0 2px 12px rgba(0,0,0,0.07);
+      --gold: #a07828; --gold-light: #8a6520; --gold-dim: #fdf3e0; --border-gold: rgba(160,120,40,0.2);
     }
-    body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); min-height:100dvh; max-width:480px; margin:0 auto; }
+
+    /* MØRKT TEMA */
+    body.dark {
+      --bg: #080d14; --surface: #0d1520; --ink: #e6edf8; --ink2: #7a94b0; --ink3: #3d5570;
+      --accent: #1a56db; --accent-light: #0f2a5c; --accent2: #f59e0b;
+      --danger: #ef4444; --border: rgba(255,255,255,0.06); --radius: 14px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.4);
+      --gold: #c9a84c; --gold-light: #f0d080; --gold-dim: #1e1608; --border-gold: rgba(201,168,76,0.2);
+    }
+
+    body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); min-height:100dvh; max-width:480px; margin:0 auto; transition: background .25s, color .25s; }
 
     /* LOGIN */
     #login-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:2rem; gap:2rem; }
@@ -28,13 +41,30 @@
 
     /* APP */
     #app-screen { display:none; flex-direction:column; min-height:100dvh; }
-    header { background:var(--surface); border-bottom:1px solid var(--border); padding:1rem 1.25rem .75rem; position:sticky; top:0; z-index:10; }
+    header { background:var(--surface); border-bottom:1px solid var(--border); padding:1rem 1.25rem .75rem; position:sticky; top:0; z-index:10; transition:background .25s; }
+    body.dark header::after { content:''; display:block; position:absolute; bottom:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent); opacity:.3; pointer-events:none; }
     .header-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
     .app-title { font-family:'DM Serif Display',serif; font-size:1.5rem; color:var(--ink); }
-    .user-area { display:flex; align-items:center; gap:8px; }
-    .avatar { width:32px; height:32px; border-radius:50%; background:var(--accent-light); color:var(--accent); font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1.5px solid var(--accent); }
+    .user-area { display:flex; align-items:center; gap:8px; position:relative; }
+    .avatar { width:32px; height:32px; border-radius:50%; background:var(--accent-light); color:var(--accent); font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1.5px solid var(--accent); transition:background .25s, color .25s, border-color .25s; user-select:none; }
+    body.dark .avatar { background:var(--gold-dim); color:var(--gold); border-color:var(--border-gold); }
     .signout-btn { background:none; border:none; font-size:12px; color:var(--ink3); cursor:pointer; padding:4px 8px; border-radius:6px; }
     .signout-btn:hover { color:var(--danger); }
+
+    /* THEME DROPDOWN */
+    .theme-dropdown { display:none; position:absolute; top:40px; right:0; background:var(--surface); border:1px solid var(--border-gold,var(--border)); border-radius:12px; overflow:hidden; min-width:170px; z-index:200; box-shadow:0 8px 32px rgba(0,0,0,.25); }
+    body.dark .theme-dropdown { box-shadow:0 8px 32px rgba(0,0,0,.6); }
+    .theme-dropdown.open { display:block; }
+    .theme-opt { display:flex; align-items:center; gap:10px; padding:11px 16px; font-size:13px; color:var(--ink2); cursor:pointer; background:none; border:none; width:100%; text-align:left; font-family:'DM Sans',sans-serif; transition:background .1s; }
+    .theme-opt:hover { background:var(--accent-light); color:var(--ink); }
+    .theme-opt.active { color:var(--gold); font-weight:500; }
+    .theme-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .dot-dark { background:#1a2a40; border:1px solid #3d5570; }
+    .dot-light { background:#f5f7fa; border:1px solid #c8d4e0; }
+    .theme-divider { height:1px; background:var(--border); margin:2px 0; }
+    .theme-opt-share { color:var(--accent); }
+    .theme-opt-danger { color:var(--danger) !important; }
+    .theme-opt-danger:hover { color:var(--danger) !important; }
 
     /* NAV TABS */
     .nav-tabs { display:flex; gap:4px; margin-bottom:.75rem; }
@@ -273,8 +303,15 @@
     <div class="header-top">
       <div class="app-title">Handleliste</div>
       <div class="user-area">
-        <div class="avatar" id="user-avatar" onclick="openShareModal()" style="cursor:pointer" title="Del husholdning">?</div>
-        <button class="signout-btn" id="signout-btn">Logg ut</button>
+        <div class="avatar" id="user-avatar" onclick="toggleThemeDropdown()" title="Innstillinger">?</div>
+        <div class="theme-dropdown" id="theme-dropdown">
+          <button class="theme-opt" id="opt-dark" onclick="setTheme('dark')"><span class="theme-dot dot-dark"></span> Mørkt tema</button>
+          <button class="theme-opt active" id="opt-light" onclick="setTheme('light')"><span class="theme-dot dot-light"></span> Lyst tema</button>
+          <div class="theme-divider"></div>
+          <button class="theme-opt theme-opt-share" onclick="closeThemeDropdown(); openShareModal()">↗ Del husholdning</button>
+          <div class="theme-divider"></div>
+          <button class="theme-opt theme-opt-danger" id="signout-btn">Logg ut</button>
+        </div>
       </div>
     </div>
     <div class="nav-tabs">
@@ -2518,6 +2555,45 @@
       renderPriceSummary();
     });
   }
+
+  // TEMA
+  function applyTheme(theme) {
+    if (theme === 'dark') {
+      document.body.classList.add('dark');
+      document.getElementById('opt-dark').classList.add('active');
+      document.getElementById('opt-light').classList.remove('active');
+      document.getElementById('theme-color-meta').setAttribute('content', '#080d14');
+    } else {
+      document.body.classList.remove('dark');
+      document.getElementById('opt-light').classList.add('active');
+      document.getElementById('opt-dark').classList.remove('active');
+      document.getElementById('theme-color-meta').setAttribute('content', '#2d6a4f');
+    }
+    localStorage.setItem('hl-theme', theme);
+  }
+
+  window.setTheme = (theme) => {
+    applyTheme(theme);
+    closeThemeDropdown();
+  };
+
+  window.toggleThemeDropdown = () => {
+    document.getElementById('theme-dropdown').classList.toggle('open');
+  };
+
+  window.closeThemeDropdown = () => {
+    document.getElementById('theme-dropdown').classList.remove('open');
+  };
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.user-area')) {
+      closeThemeDropdown();
+    }
+  });
+
+  // Bruk lagret tema ved oppstart
+  const savedTheme = localStorage.getItem('hl-theme') || 'dark';
+  applyTheme(savedTheme);
 
 </script>
 </body>
