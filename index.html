@@ -2606,6 +2606,38 @@
   applyTheme(localStorage.getItem('hl-theme') || 'light');
   applyFontSize(localStorage.getItem('hl-fontsize') || 'normal');
 
+  // PRISOPPSUMMERING
+  function renderPriceSummary() {
+    const active = currentItems.filter(i => !i.done);
+    const el = document.getElementById("price-summary");
+    const totalEl = document.getElementById("price-total");
+    const subEl = document.getElementById("price-sub");
+    if (!el || !totalEl) return;
+
+    if (active.length === 0) { el.style.display = "none"; return; }
+
+    let total = 0;
+    let withPrice = 0;
+    active.forEach(item => {
+      const p = item.price || estimatePrice(item.name);
+      if (p) {
+        total += p * (item.qty || 1);
+        withPrice++;
+      }
+    });
+
+    if (total === 0) { el.style.display = "none"; return; }
+
+    el.style.display = "flex";
+    totalEl.textContent = Math.round(total) + " kr";
+    if (subEl) {
+      const missing = active.length - withPrice;
+      subEl.textContent = missing > 0
+        ? `${active.length} varer · ${missing} uten pris`
+        : `${active.length} varer`;
+    }
+  }
+
   // Hook price summary into list updates
   const _origSnap = startListening;
   function startListeningWithPrice() {
