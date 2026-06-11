@@ -38,20 +38,28 @@ Svar KUN med gyldig JSON, ingen annen tekst:
       "pris": 19.90
     },
     {
-      "navn": "Cola",
-      "linje": "6 STK COLA 1,5L 89,00",
+      "navn": "Cola Zero",
+      "linje": "6BX COLA ZERO 1,5L 87,00",
       "antall": 6,
       "enhet": "stk",
-      "stkpris": 14.83,
-      "pris": 89.00
+      "stkpris": 14.50,
+      "pris": 87.00
     },
     {
-      "navn": "Egg",
-      "linje": "1 PK EGG 12 STK 39,90",
+      "navn": "Hamburger",
+      "linje": "BURGER 2X180G 49,00",
       "antall": 1,
       "enhet": "pk",
-      "stkpris": 39.90,
-      "pris": 39.90
+      "stkpris": 49.00,
+      "pris": 49.00
+    },
+    {
+      "navn": "Løk",
+      "linje": "LOK 0,532 KG 12,90",
+      "antall": 0.532,
+      "enhet": "kg",
+      "stkpris": 24.25,
+      "pris": 12.90
     }
   ]
 }
@@ -60,10 +68,13 @@ Regler:
 - "linje": hele varelinjen slik den står på kvitteringen
 - "pris": total linjesum for varen (det beløpet som trekkes fra totalen)
 - "stkpris": pris per enhet (pris / antall)
-- "antall": tallet FØR varenavnet er alltid antallet du kjøpte. "6 STK COLA" → antall=6, "2 X MELK" → antall=2, "3 PK YOGHURT" → antall=3, "0,846 KG BANAN" → antall=0.846. Hvis linjen starter med tall+enhet er det antallet, ikke en beskrivelse av pakningsstørrelse.
-- "enhet": stk, kg, g, l, dl eller pk. Bruk pk kun hvis det er en pakke med flere enheter inni (f.eks. egg, wienerbrød).
+- "antall": skill nøye mellom antall kjøpt og pakningsbeskrivelse:
+  - Tall FØR varenavnet = antall kjøpt: "6 STK COLA" → antall=6, "2 X MELK" → antall=2, "6BX COLA ZERO" → antall=6, "0,846 KG BANAN" → antall=0.846
+  - Tall INNE I varenavnet = pakningsbeskrivelse, antall kjøpt = 1: "BURGER 2X180G" → antall=1, "EGG 12STK" → antall=1, "COLA 6PK" → antall=1
+  - BX betyr boks, samme som STK
+- "enhet": stk, kg, g, l, dl eller pk
 - "total": kvitteringens totalbeløp (TOTALT / Å BETALE / SUM)
-- "navn": kort norsk varenavn (TINE LETTMELK 1L → Melk, NORVEGIA 500G → Ost, MILLS MAJONES → Majones, COCA COLA 1,5L → Cola)
+- "navn": kort norsk varenavn med korrekt norsk stavemåte og æøå. lok → Løk, brod → Brød, ostehøvel → Ostehøvel. Behold kjente produktnavn eksakt: Cola Zero (ikke Cero), Pepsi Max, Kvikk Lunsj, Grandiosa.
 - "dato": YYYY-MM-DD format
 - "butikk": butikknavnet fra kvitteringen
 - IKKE ta med: rabatter, bonuspoeng, poser, pant, gebyrer, betalingslinjer, kortinfo`
