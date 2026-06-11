@@ -415,7 +415,6 @@ export const PRODUCTS = [
   { navn: "Nesespray", ikon: "💊", kat: "hygiene", alias: ["nesespray","otrivin","rhinomer","nasonex"] },
   { navn: "Øyedråper", ikon: "💊", kat: "hygiene", alias: ["øyedråper","visine","systane","optrex"] },
   { navn: "Vitaminer", ikon: "💊", kat: "hygiene", alias: ["multivitamin","vitaminc","vitamin d","omega 3","tran","vitalipid"] },
-  { navn: "Kondomer", ikon: "💊", kat: "hygiene", alias: ["kondom","durex","rfsu","trojan"] },
   { navn: "Barberskum dame", ikon: "🧴", kat: "hygiene", alias: ["barbergelé","epilering","veet","nair"] },
   { navn: "Hårfarge", ikon: "🎨", kat: "hygiene", alias: ["hårfarge","hårbleking","nice n easy","schwarzkopf"] },
   { navn: "Neglefjerner", ikon: "💅", kat: "hygiene", alias: ["neglelakkfjerner","aceton","nail polish remover"] },
