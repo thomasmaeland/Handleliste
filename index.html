@@ -273,6 +273,16 @@
     .modal-save { flex:1; background:var(--accent); color:white; border:none; border-radius:10px; padding:12px; font-size:14px; font-weight:500; cursor:pointer; }
     .modal-delete { background:var(--danger); color:white; border:none; border-radius:10px; padding:12px 16px; font-size:14px; font-weight:500; cursor:pointer; }
     .modal-cancel { background:none; border:1px solid var(--border); color:var(--ink2); border-radius:10px; padding:12px 16px; font-size:14px; cursor:pointer; }
+
+    /* SWIPE */
+    .swipe-wrapper { position:relative; overflow:hidden; border-radius:var(--radius); }
+    .swipe-bg { position:absolute; inset:0; display:flex; align-items:center; border-radius:var(--radius); transition:opacity .15s; opacity:0; pointer-events:none; }
+    .swipe-bg-done { background:#27ae60; justify-content:flex-start; padding-left:18px; }
+    .swipe-bg-delete { background:var(--danger); justify-content:flex-end; padding-right:18px; }
+    .swipe-bg-icon { color:white; font-size:20px; }
+    .swipe-inner { position:relative; transition:transform .2s ease; touch-action:pan-y; will-change:transform; }
+    .swipe-wrapper.swiping .swipe-inner { transition:none; }
+    .swipe-wrapper.snap-back .swipe-inner { transition:transform .25s ease; }
   </style>
 </head>
 <body>
@@ -1178,19 +1188,24 @@
     const lineTotal = price ? (price * qty) : null;
     const priceStr = lineTotal ? `· ${lineTotal % 1 === 0 ? lineTotal : lineTotal.toFixed(0)} kr` : "";
     const detail = `${qty} ${unit} ${priceStr}`;
-    return `<div class="item ${item.done?'done':''}" id="item-${item.id}">
-      <button class="check-btn" onclick="toggleItem('${item.id}',${item.done})">${item.done?"✓":""}</button>
-      <div class="item-main" onclick="openEdit('${item.id}')" style="cursor:pointer">
-        <div class="item-name">${item.name}</div>
-        <div class="item-detail">${detail}</div>
+    return `<div class="swipe-wrapper" id="swipe-${item.id}">
+      <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
+      <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
+      <div class="swipe-inner">
+        <div class="item ${item.done?'done':''}" id="item-${item.id}">
+          <button class="check-btn" onclick="toggleItem('${item.id}',${item.done})">${item.done?"✓":""}</button>
+          <div class="item-main" onclick="openEdit('${item.id}')" style="cursor:pointer">
+            <div class="item-name">${item.name}</div>
+            <div class="item-detail">${detail}</div>
+          </div>
+          ${initials ? `<span class="by-whom">${initials}</span>` : ""}
+          <div class="qty-wrap">
+            <button class="qty-btn" onclick="changeQty('${item.id}',${qty},-1)">−</button>
+            <span class="qty-num">${qty}</span>
+            <button class="qty-btn" onclick="changeQty('${item.id}',${qty},1)">+</button>
+          </div>
+        </div>
       </div>
-      ${initials ? `<span class="by-whom">${initials}</span>` : ""}
-      <div class="qty-wrap">
-        <button class="qty-btn" onclick="changeQty('${item.id}',${qty},-1)">−</button>
-        <span class="qty-num">${qty}</span>
-        <button class="qty-btn" onclick="changeQty('${item.id}',${qty},1)">+</button>
-      </div>
-      <button class="delete-btn" onclick="deleteItem('${item.id}')">×</button>
     </div>`;
   }
 
@@ -2356,6 +2371,7 @@
       familyBoardItems = [];
       snapshot.forEach(d => familyBoardItems.push({ id:d.id, ...d.data() }));
       renderFamilyBoard();
+      requestAnimationFrame(attachSwipeToTasks);
     });
   }
 
@@ -2399,22 +2415,27 @@
   function renderTaskCard(task) {
     const recText = recurrenceLabel(task.recurrence);
     const reminderText = task.reminder?.enabled ? `Varsel ${task.reminder.minutesBefore} min før` : "";
-    return `<div class="board-card ${task.completed ? "done" : ""}">
-      <button class="board-check" onclick="toggleBoardTask('${task.id}', ${!!task.completed})">${task.completed ? "✓" : ""}</button>
-      <div class="board-main">
-        <div class="board-title">${taskTypeIcon(task.type)} ${escapeHtml(task.title)}</div>
-        <div class="board-meta">
-          ${escapeHtml(formatTaskDate(task))}
-          ${task.assignedTo ? ` · Ansvarlig: ${escapeHtml(task.assignedTo)}` : ""}
-          ${task.relatedPerson ? ` · Gjelder: ${escapeHtml(task.relatedPerson)}` : ""}
-        </div>
-        <div>
-          <span class="board-pill">${escapeHtml(taskTypeLabel(task.type))}</span>
-          ${recText ? `<span class="board-pill">🔁 ${escapeHtml(recText)}</span>` : ""}
-          ${reminderText ? `<span class="board-pill">🔔 ${escapeHtml(reminderText)}</span>` : ""}
+    return `<div class="swipe-wrapper" id="swipe-task-${task.id}">
+      <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
+      <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
+      <div class="swipe-inner">
+        <div class="board-card ${task.completed ? "done" : ""}">
+          <button class="board-check" onclick="toggleBoardTask('${task.id}', ${!!task.completed})">${task.completed ? "✓" : ""}</button>
+          <div class="board-main">
+            <div class="board-title">${taskTypeIcon(task.type)} ${escapeHtml(task.title)}</div>
+            <div class="board-meta">
+              ${escapeHtml(formatTaskDate(task))}
+              ${task.assignedTo ? ` · Ansvarlig: ${escapeHtml(task.assignedTo)}` : ""}
+              ${task.relatedPerson ? ` · Gjelder: ${escapeHtml(task.relatedPerson)}` : ""}
+            </div>
+            <div>
+              <span class="board-pill">${escapeHtml(taskTypeLabel(task.type))}</span>
+              ${recText ? `<span class="board-pill">🔁 ${escapeHtml(recText)}</span>` : ""}
+              ${reminderText ? `<span class="board-pill">🔔 ${escapeHtml(reminderText)}</span>` : ""}
+            </div>
+          </div>
         </div>
       </div>
-      <button class="board-delete" onclick="deleteBoardTask('${task.id}')">×</button>
     </div>`;
   }
 
@@ -2557,7 +2578,6 @@
   };
 
   window.deleteBoardTask = async (id) => {
-    if (!confirm("Slette denne fra familietavlen?")) return;
     await deleteDoc(doc(db, "lists", LIST_ID, "tasks", id));
   };
 
@@ -2638,6 +2658,95 @@
     }
   }
 
+  // ── SWIPE LOGIC ──────────────────────────────────────────────────────────
+  // Sveip høyre = hake av / fullført   Sveip venstre = slett
+  const SWIPE_THRESHOLD = 80; // px før action trigges
+
+  function initSwipe(wrapper, onDone, onDelete) {
+    const inner = wrapper.querySelector(".swipe-inner");
+    const bgDone = wrapper.querySelector(".swipe-bg-done");
+    const bgDel  = wrapper.querySelector(".swipe-bg-delete");
+    let startX = 0, startY = 0, dx = 0, dragging = false, locked = false;
+
+    function pointerStart(e) {
+      if (locked) return;
+      const t = e.touches ? e.touches[0] : e;
+      startX = t.clientX; startY = t.clientY; dx = 0; dragging = true;
+      wrapper.classList.add("swiping");
+    }
+    function pointerMove(e) {
+      if (!dragging || locked) return;
+      const t = e.touches ? e.touches[0] : e;
+      const curDx = t.clientX - startX;
+      const curDy = t.clientY - startY;
+      if (Math.abs(curDy) > Math.abs(curDx) + 5) { dragging = false; return; }
+      dx = curDx;
+      inner.style.transform = `translateX(${dx}px)`;
+      if (dx > 0) {
+        bgDone.style.opacity = Math.min(1, dx / SWIPE_THRESHOLD);
+        bgDel.style.opacity  = 0;
+      } else {
+        bgDel.style.opacity  = Math.min(1, -dx / SWIPE_THRESHOLD);
+        bgDone.style.opacity = 0;
+      }
+      if (e.cancelable) e.preventDefault();
+    }
+    function pointerEnd() {
+      if (!dragging || locked) return;
+      dragging = false;
+      wrapper.classList.remove("swiping");
+      if (dx > SWIPE_THRESHOLD) {
+        locked = true;
+        inner.style.transform = `translateX(${wrapper.offsetWidth}px)`;
+        wrapper.classList.add("snap-back");
+        setTimeout(() => { onDone(); }, 300);
+      } else if (dx < -SWIPE_THRESHOLD) {
+        locked = true;
+        inner.style.transform = `translateX(-${wrapper.offsetWidth}px)`;
+        wrapper.classList.add("snap-back");
+        setTimeout(() => { onDelete(); }, 300);
+      } else {
+        wrapper.classList.add("snap-back");
+        inner.style.transform = "";
+        bgDone.style.opacity = 0; bgDel.style.opacity = 0;
+        setTimeout(() => wrapper.classList.remove("snap-back"), 250);
+      }
+    }
+    inner.addEventListener("touchstart", pointerStart, { passive: true });
+    inner.addEventListener("touchmove",  pointerMove,  { passive: false });
+    inner.addEventListener("touchend",   pointerEnd);
+    inner.addEventListener("mousedown",  pointerStart);
+    window.addEventListener("mousemove", (e) => { if (dragging) pointerMove(e); });
+    window.addEventListener("mouseup",   (e) => { if (dragging) pointerEnd(e); });
+  }
+
+  function attachSwipeToItems() {
+    currentItems.forEach(item => {
+      const wrapper = document.getElementById(`swipe-${item.id}`);
+      if (!wrapper || wrapper._swipeInit) return;
+      wrapper._swipeInit = true;
+      initSwipe(
+        wrapper,
+        () => toggleItem(item.id, item.done),   // sveip høyre → handlet
+        () => deleteItem(item.id)                // sveip venstre → slett
+      );
+    });
+  }
+
+  function attachSwipeToTasks() {
+    familyBoardItems.forEach(task => {
+      const wrapper = document.getElementById(`swipe-task-${task.id}`);
+      if (!wrapper || wrapper._swipeInit) return;
+      wrapper._swipeInit = true;
+      initSwipe(
+        wrapper,
+        () => toggleBoardTask(task.id, task.completed),  // sveip høyre → fullført
+        () => deleteBoardTask(task.id)                   // sveip venstre → slett
+      );
+    });
+  }
+  // ── END SWIPE ─────────────────────────────────────────────────────────────
+
   // Hook price summary into list updates
   const _origSnap = startListening;
   function startListeningWithPrice() {
@@ -2648,6 +2757,7 @@
       renderList(currentItems);
       renderSuggestions();
       renderPriceSummary();
+      requestAnimationFrame(attachSwipeToItems);
     });
   }
 
