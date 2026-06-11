@@ -276,13 +276,20 @@
 
     /* SWIPE */
     .swipe-wrapper { position:relative; overflow:hidden; border-radius:var(--radius); }
-    .swipe-bg { position:absolute; inset:0; display:flex; align-items:center; border-radius:var(--radius); transition:opacity .15s; opacity:0; pointer-events:none; }
-    .swipe-bg-done { background:#27ae60; justify-content:flex-start; padding-left:18px; }
-    .swipe-bg-delete { background:var(--danger); justify-content:flex-end; padding-right:18px; }
-    .swipe-bg-icon { color:white; font-size:20px; }
-    .swipe-inner { position:relative; transition:transform .2s ease; touch-action:pan-y; will-change:transform; }
+    .swipe-bg { position:absolute; inset:0; display:flex; align-items:center; border-radius:var(--radius); transition:opacity .2s; opacity:0; pointer-events:none; }
+    .swipe-bg-done { background:#27ae60; justify-content:flex-start; padding-left:22px; }
+    .swipe-bg-delete { background:var(--danger); justify-content:flex-end; padding-right:22px; }
+    .swipe-bg-icon { color:white; font-size:22px; font-weight:600; }
+    .swipe-inner { position:relative; transition:transform .35s cubic-bezier(.25,.46,.45,.94); touch-action:pan-y; will-change:transform; }
     .swipe-wrapper.swiping .swipe-inner { transition:none; }
-    .swipe-wrapper.snap-back .swipe-inner { transition:transform .25s ease; }
+    .swipe-wrapper.snap-back .swipe-inner { transition:transform .4s cubic-bezier(.25,.46,.45,.94); }
+    .swipe-wrapper.committing .swipe-inner { transition:transform .45s cubic-bezier(.55,0,1,.6); }
+
+    /* UNDO TOAST */
+    #undo-toast { position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(20px); background:#1c1c1e; color:white; border-radius:12px; padding:12px 16px; display:flex; align-items:center; gap:14px; font-size:14px; box-shadow:0 4px 20px rgba(0,0,0,.35); z-index:500; opacity:0; transition:opacity .25s, transform .25s; pointer-events:none; white-space:nowrap; }
+    #undo-toast.show { opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+    #undo-toast-btn { background:none; border:none; color:#4fc3f7; font-size:14px; font-weight:600; cursor:pointer; padding:0; font-family:inherit; }
+    #undo-toast-bar { position:absolute; bottom:0; left:0; height:3px; background:#4fc3f7; border-radius:0 0 12px 12px; width:100%; transform-origin:left; }
   </style>
 </head>
 <body>
@@ -309,6 +316,13 @@
 </div>
 
 <!-- APP -->
+<!-- UNDO TOAST -->
+<div id="undo-toast">
+  <span id="undo-toast-msg">Vare slettet</span>
+  <button id="undo-toast-btn" onclick="undoLastAction()">Angre</button>
+  <div id="undo-toast-bar"></div>
+</div>
+
 <div id="app-screen" style="display:none">
   <header>
     <div class="header-top">
@@ -2660,64 +2674,123 @@
 
   // ── SWIPE LOGIC ──────────────────────────────────────────────────────────
   // Sveip høyre = hake av / fullført   Sveip venstre = slett
-  const SWIPE_THRESHOLD = 80; // px før action trigges
+  const SWIPE_THRESHOLD = 90;   // px for å trigge action
+  const SWIPE_COMMIT_AT = 140;  // px for å "flyge" ut av skjermen
+
+  // Undo-system
+  let undoTimer = null;
+  let undoBarAnim = null;
+  let pendingUndo = null; // { type, id, data, execute }
+
+  function showUndoToast(msg, undoFn) {
+    if (undoTimer) { clearTimeout(undoTimer); cancelAnimationFrame(undoBarAnim); }
+    pendingUndo = undoFn;
+    const toast = document.getElementById("undo-toast");
+    const msgEl = document.getElementById("undo-toast-msg");
+    const bar   = document.getElementById("undo-toast-bar");
+    msgEl.textContent = msg;
+    bar.style.transition = "none";
+    bar.style.transform = "scaleX(1)";
+    toast.classList.add("show");
+
+    // Krympe progress-bar over 4 sek
+    requestAnimationFrame(() => {
+      bar.style.transition = "transform 4s linear";
+      bar.style.transform = "scaleX(0)";
+    });
+
+    undoTimer = setTimeout(() => {
+      toast.classList.remove("show");
+      pendingUndo = null;
+    }, 4000);
+  }
+
+  window.undoLastAction = () => {
+    if (!pendingUndo) return;
+    clearTimeout(undoTimer);
+    pendingUndo();
+    pendingUndo = null;
+    document.getElementById("undo-toast").classList.remove("show");
+  };
 
   function initSwipe(wrapper, onDone, onDelete) {
     const inner = wrapper.querySelector(".swipe-inner");
     const bgDone = wrapper.querySelector(".swipe-bg-done");
     const bgDel  = wrapper.querySelector(".swipe-bg-delete");
     let startX = 0, startY = 0, dx = 0, dragging = false, locked = false;
+    let axisDecided = false;
 
     function pointerStart(e) {
       if (locked) return;
       const t = e.touches ? e.touches[0] : e;
-      startX = t.clientX; startY = t.clientY; dx = 0; dragging = true;
+      startX = t.clientX; startY = t.clientY;
+      dx = 0; dragging = true; axisDecided = false;
       wrapper.classList.add("swiping");
     }
+
     function pointerMove(e) {
       if (!dragging || locked) return;
       const t = e.touches ? e.touches[0] : e;
       const curDx = t.clientX - startX;
       const curDy = t.clientY - startY;
-      if (Math.abs(curDy) > Math.abs(curDx) + 5) { dragging = false; return; }
+
+      if (!axisDecided) {
+        if (Math.abs(curDy) > Math.abs(curDx) + 6) { dragging = false; wrapper.classList.remove("swiping"); return; }
+        if (Math.abs(curDx) > 6) axisDecided = true;
+        else return;
+      }
+
       dx = curDx;
-      inner.style.transform = `translateX(${dx}px)`;
-      if (dx > 0) {
-        bgDone.style.opacity = Math.min(1, dx / SWIPE_THRESHOLD);
+      // Rubber-band resistance beyond threshold
+      const raw = dx;
+      const sign = raw > 0 ? 1 : -1;
+      const abs  = Math.abs(raw);
+      const disp = abs < SWIPE_THRESHOLD
+        ? abs
+        : SWIPE_THRESHOLD + (abs - SWIPE_THRESHOLD) * 0.4;
+      inner.style.transform = `translateX(${sign * disp}px)`;
+
+      const progress = Math.min(1, abs / SWIPE_THRESHOLD);
+      if (raw > 0) {
+        bgDone.style.opacity = progress;
         bgDel.style.opacity  = 0;
       } else {
-        bgDel.style.opacity  = Math.min(1, -dx / SWIPE_THRESHOLD);
+        bgDel.style.opacity  = progress;
         bgDone.style.opacity = 0;
       }
       if (e.cancelable) e.preventDefault();
     }
+
     function pointerEnd() {
       if (!dragging || locked) return;
       dragging = false;
       wrapper.classList.remove("swiping");
-      if (dx > SWIPE_THRESHOLD) {
+      const absX = Math.abs(dx);
+
+      if (absX > SWIPE_THRESHOLD) {
         locked = true;
-        inner.style.transform = `translateX(${wrapper.offsetWidth}px)`;
-        wrapper.classList.add("snap-back");
-        setTimeout(() => { onDone(); }, 300);
-      } else if (dx < -SWIPE_THRESHOLD) {
-        locked = true;
-        inner.style.transform = `translateX(-${wrapper.offsetWidth}px)`;
-        wrapper.classList.add("snap-back");
-        setTimeout(() => { onDelete(); }, 300);
+        // Fly out — overshoot exit
+        const exitDist = dx > 0 ? wrapper.offsetWidth + 40 : -(wrapper.offsetWidth + 40);
+        wrapper.classList.add("committing");
+        inner.style.transform = `translateX(${exitDist}px)`;
+        setTimeout(() => {
+          if (dx > 0) onDone(); else onDelete();
+        }, 380);
       } else {
+        // Snap back with bounce
         wrapper.classList.add("snap-back");
         inner.style.transform = "";
         bgDone.style.opacity = 0; bgDel.style.opacity = 0;
-        setTimeout(() => wrapper.classList.remove("snap-back"), 250);
+        setTimeout(() => wrapper.classList.remove("snap-back"), 400);
       }
     }
+
     inner.addEventListener("touchstart", pointerStart, { passive: true });
     inner.addEventListener("touchmove",  pointerMove,  { passive: false });
     inner.addEventListener("touchend",   pointerEnd);
     inner.addEventListener("mousedown",  pointerStart);
     window.addEventListener("mousemove", (e) => { if (dragging) pointerMove(e); });
-    window.addEventListener("mouseup",   (e) => { if (dragging) pointerEnd(e); });
+    window.addEventListener("mouseup",   () => { if (dragging) pointerEnd(); });
   }
 
   function attachSwipeToItems() {
@@ -2727,8 +2800,30 @@
       wrapper._swipeInit = true;
       initSwipe(
         wrapper,
-        () => toggleItem(item.id, item.done),   // sveip høyre → handlet
-        () => deleteItem(item.id)                // sveip venstre → slett
+        async () => {
+          // Sveip høyre → hake av, med undo
+          const wasDone = item.done;
+          await toggleItem(item.id, wasDone);
+          if (!wasDone) {
+            showUndoToast(`${item.name} merket som handlet`, async () => {
+              await toggleItem(item.id, true); // angre → sett tilbake til ikke-handlet
+            });
+          }
+        },
+        async () => {
+          // Sveip venstre → slett, med undo
+          const snapshot = { ...item };
+          await deleteItem(item.id);
+          showUndoToast(`${item.name} slettet`, async () => {
+            await addDoc(collection(db, "lists", LIST_ID, "items"), {
+              name: snapshot.name, done: false,
+              qty: snapshot.qty || 1, unit: snapshot.unit || "stk",
+              cat: snapshot.cat || "annet",
+              createdAt: Date.now(),
+              addedBy: snapshot.addedBy || ""
+            });
+          });
+        }
       );
     });
   }
@@ -2740,8 +2835,32 @@
       wrapper._swipeInit = true;
       initSwipe(
         wrapper,
-        () => toggleBoardTask(task.id, task.completed),  // sveip høyre → fullført
-        () => deleteBoardTask(task.id)                   // sveip venstre → slett
+        async () => {
+          await toggleBoardTask(task.id, task.completed);
+          if (!task.completed) {
+            showUndoToast(`${task.title} fullført`, async () => {
+              await toggleBoardTask(task.id, true);
+            });
+          }
+        },
+        async () => {
+          const snapshot = { ...task };
+          await deleteBoardTask(task.id);
+          showUndoToast(`${task.title} slettet`, async () => {
+            await addDoc(collection(db, "lists", LIST_ID, "tasks"), {
+              title: snapshot.title, type: snapshot.type || "task",
+              assignedTo: snapshot.assignedTo || "",
+              relatedPerson: snapshot.relatedPerson || "",
+              dueDate: snapshot.dueDate || "", dueTime: snapshot.dueTime || "",
+              completed: false,
+              recurrence: snapshot.recurrence || { enabled: false, frequency: "none", interval: 1, weekdays: [] },
+              reminder: snapshot.reminder || { enabled: false, minutesBefore: null },
+              notification: snapshot.notification || { enabled: false, minutesBefore: null, pushReady: false },
+              createdBy: snapshot.createdBy || "", createdByName: snapshot.createdByName || "",
+              createdAt: Date.now(), updatedAt: Date.now()
+            });
+          });
+        }
       );
     });
   }
