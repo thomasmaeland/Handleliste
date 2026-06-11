@@ -345,6 +345,22 @@
   <div id="undo-toast-bar"></div>
 </div>
 
+<!-- HANDLEMODUS OVERLAY -->
+<div class="shop-overlay" id="shop-overlay">
+  <div class="shop-header">
+    <div>
+      <div class="shop-header-title">🛒 Handler nå</div>
+      <div class="shop-header-sub" id="shop-header-sub">0 varer igjen</div>
+    </div>
+    <button class="shop-close-btn" onclick="closeShoppingMode()">✕ Avslutt</button>
+  </div>
+  <div class="shop-body" id="shop-body"></div>
+  <div class="shop-footer">
+    <div class="shop-footer-left" id="shop-footer-left">Estimert total</div>
+    <div class="shop-footer-total" id="shop-footer-total">0 kr</div>
+  </div>
+</div>
+
 <div id="app-screen" style="display:none">
   <header>
     <div class="header-top">
@@ -382,6 +398,10 @@
   <main>
     <!-- LIST TAB -->
     <div id="list-screen">
+      <button class="list-action-btn" id="shop-mode-btn" onclick="openShoppingMode()" style="margin-bottom:1rem;background:var(--accent);border-color:var(--accent);color:white;font-size:14px;padding:13px 18px;justify-content:flex-start;gap:10px;width:100%">
+        <span style="font-size:18px">🛒</span> Start handel
+        <span style="font-size:11px;opacity:.75;margin-left:auto">fullskjerm</span>
+      </button>
       <button class="smart-list-btn" id="smart-list-btn">
         <span class="btn-icon">✨</span>
         Fyll liste automatisk
@@ -391,10 +411,6 @@
         <div class="smart-preview-title" id="smart-preview-title"></div>
         <div class="smart-preview-items" id="smart-preview-items"></div>
         <div class="smart-preview-actions">
-          <button class="list-action-btn" id="shop-mode-btn" onclick="openShoppingMode()" style="margin-bottom:1rem;background:var(--accent);border-color:var(--accent);color:white;font-size:14px;padding:13px 18px;justify-content:flex-start;gap:10px">
-        <span style="font-size:18px">🛒</span> Start handel
-        <span style="font-size:11px;opacity:.75;margin-left:auto">fullskjerm</span>
-      </button>
           <button class="smart-confirm-btn" id="smart-confirm-btn">Legg alle til listen</button>
           <button class="smart-cancel-btn" id="smart-cancel-btn">Avbryt</button>
         </div>
@@ -404,22 +420,6 @@
         <button class="list-action-btn" id="share-list-btn" type="button">↗ Del handleliste</button>
       </div>
 
-<!-- HANDLEMODUS OVERLAY -->
-<div class="shop-overlay" id="shop-overlay">
-  <div class="shop-header">
-    <div>
-      <div class="shop-header-title">🛒 Handler nå</div>
-      <div class="shop-header-sub" id="shop-header-sub">0 varer igjen</div>
-    </div>
-    <button class="shop-close-btn" onclick="closeShoppingMode()">✕ Avslutt</button>
-  </div>
-  <div class="shop-body" id="shop-body"></div>
-  <div class="shop-footer">
-    <div class="shop-footer-left" id="shop-footer-left">Estimert total</div>
-    <div class="shop-footer-total" id="shop-footer-total">0 kr</div>
-  </div>
-</div>
-      
       <!-- PRICE SUMMARY -->
       <div class="price-summary" id="price-summary" style="display:none">
         <div>
@@ -439,6 +439,7 @@
       <div class="receipt-preview" id="receipt-preview">
         <div class="receipt-preview-title" id="receipt-preview-title">Skanner kvittering...</div>
         <div id="receipt-items-area"></div>
+        <div class="smart-preview-actions" id="receipt-actions" style="display:none">
           <button class="smart-confirm-btn" id="receipt-confirm-btn">Lagre kvittering</button>
           <button class="smart-cancel-btn" id="receipt-cancel-btn">Avbryt</button>
         </div>
@@ -2917,9 +2918,7 @@
       renderList(currentItems);
       renderSuggestions();
       renderPriceSummary();
-      renderPriceSummary();
-      if (document.getElementById("shop-overlay")?.classList.contains("open")) renderShoppingMode();  // ← ny linje
-      requestAnimationFrame(attachSwipeToItems);
+      if (document.getElementById("shop-overlay")?.classList.contains("open")) renderShoppingMode();
       requestAnimationFrame(attachSwipeToItems);
     });
   }
