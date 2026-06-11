@@ -36,6 +36,22 @@ Svar KUN med gyldig JSON, ingen annen tekst:
       "enhet": "kg",
       "stkpris": 23.52,
       "pris": 19.90
+    },
+    {
+      "navn": "Cola",
+      "linje": "6 STK COLA 1,5L 89,00",
+      "antall": 6,
+      "enhet": "stk",
+      "stkpris": 14.83,
+      "pris": 89.00
+    },
+    {
+      "navn": "Egg",
+      "linje": "1 PK EGG 12 STK 39,90",
+      "antall": 1,
+      "enhet": "pk",
+      "stkpris": 39.90,
+      "pris": 39.90
     }
   ]
 }
@@ -44,10 +60,10 @@ Regler:
 - "linje": hele varelinjen slik den står på kvitteringen
 - "pris": total linjesum for varen (det beløpet som trekkes fra totalen)
 - "stkpris": pris per enhet (pris / antall)
-- "antall": les fra linjen — f.eks. "2 X" → 2, "3 STK" → 3, "0,846 KG" → 0.846
-- "enhet": stk, kg, g, l, dl eller pk
+- "antall": tallet FØR varenavnet er alltid antallet du kjøpte. "6 STK COLA" → antall=6, "2 X MELK" → antall=2, "3 PK YOGHURT" → antall=3, "0,846 KG BANAN" → antall=0.846. Hvis linjen starter med tall+enhet er det antallet, ikke en beskrivelse av pakningsstørrelse.
+- "enhet": stk, kg, g, l, dl eller pk. Bruk pk kun hvis det er en pakke med flere enheter inni (f.eks. egg, wienerbrød).
 - "total": kvitteringens totalbeløp (TOTALT / Å BETALE / SUM)
-- "navn": kort norsk varenavn (TINE LETTMELK 1L → Melk, NORVEGIA 500G → Ost, MILLS MAJONES → Majones)
+- "navn": kort norsk varenavn (TINE LETTMELK 1L → Melk, NORVEGIA 500G → Ost, MILLS MAJONES → Majones, COCA COLA 1,5L → Cola)
 - "dato": YYYY-MM-DD format
 - "butikk": butikknavnet fra kvitteringen
 - IKKE ta med: rabatter, bonuspoeng, poser, pant, gebyrer, betalingslinjer, kortinfo`
