@@ -2975,32 +2975,36 @@ function renderShoppingMode() {
     groups[cat].push(item);
   });
 
+  function renderShopItem(item) {
+    const qty = item.qty || 1;
+    const unit = item.unit || "stk";
+    const price = item.price || estimatePrice(item.name);
+    const lineTotal = price ? Math.round(price * qty) : null;
+    const addedBy = item.addedBy ? item.addedBy.split(" ")[0] : null;
+    const detailParts = [];
+    if (qty > 1 || unit !== "stk") detailParts.push(`${qty} ${unit}`);
+    if (lineTotal) detailParts.push(`${lineTotal} kr`);
+    if (addedBy) detailParts.push(`↑ ${addedBy}`);
+    const detail = detailParts.join(" · ");
+    return `<div class="shop-item ${item.done ? "done" : ""}" onclick="toggleShoppingModeItem('${item.id}', ${item.done})">
+      <div class="shop-checkbox">${item.done ? "✓" : ""}</div>
+      <div style="flex:1">
+        <div class="shop-item-name">${item.name}</div>
+        ${detail ? `<div class="shop-item-detail">${detail}</div>` : ""}
+      </div>
+    </div>`;
+  }
+
   let html = "";
   CAT_ORDER.forEach(cat => {
     if (!groups[cat]) return;
     html += `<div class="shop-cat-label">${CAT_LABELS[cat]}</div>`;
-    groups[cat].forEach(item => {
-      const qty = item.qty || 1;
-      const unit = item.unit || "stk";
-      const detail = qty > 1 || unit !== "stk" ? `${qty} ${unit}` : "";
-      html += `<div class="shop-item ${item.done ? "done" : ""}" onclick="toggleShoppingModeItem('${item.id}', ${item.done})">
-        <div class="shop-checkbox">${item.done ? "✓" : ""}</div>
-        <div style="flex:1">
-          <div class="shop-item-name">${item.name}</div>
-          ${detail ? `<div class="shop-item-detail">${detail}</div>` : ""}
-        </div>
-      </div>`;
-    });
+    groups[cat].forEach(item => { html += renderShopItem(item); });
   });
 
   if (done.length > 0) {
     html += `<div class="shop-cat-label" style="margin-top:1.5rem">✓ Lagt i kurven (${done.length})</div>`;
-    done.forEach(item => {
-      html += `<div class="shop-item done" onclick="toggleShoppingModeItem('${item.id}', ${item.done})">
-        <div class="shop-checkbox">✓</div>
-        <div style="flex:1"><div class="shop-item-name">${item.name}</div></div>
-      </div>`;
-    });
+    done.forEach(item => { html += renderShopItem(item); });
   }
 
   body.innerHTML = html || `<div class="empty-state"><div class="big">✅</div><p>Alt er handlet!</p></div>`;
