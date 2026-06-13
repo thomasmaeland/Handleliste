@@ -587,7 +587,7 @@
       <span style="font-size:13px;color:var(--ink3);margin-left:4px">kr</span>
     </div>
     <div class="modal-actions">
-      <button class="modal-delete" id="modal-delete">Slett</button>
+     <button class="modal-delete" id="modal-delete">Slett fra liste</button>
       <button class="modal-save" id="modal-save">Lagre</button>
       <button class="modal-cancel" id="modal-cancel">Avbryt</button>
     </div>
@@ -1199,6 +1199,7 @@
 
   window.addFromSuggestion = async (navn, ikon) => { await addItem(`${ikon} ${navn}`); };
 window.fjernFraHistorikk = async (navn) => {
+  if (!confirm(`Slette "${navn}" permanent fra historikken?`)) return;
   delete purchaseHistory[navn];
   await savePurchaseHistory();
   renderSuggestions();
