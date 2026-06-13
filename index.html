@@ -1791,9 +1791,9 @@
     }
     preview.classList.add("open");
   });
-
-  document.getElementById("smart-confirm-btn").addEventListener("click", async () => {
-    for (const navn of smartListItems) {
+document.getElementById("smart-confirm-btn").addEventListener("click", async () => {
+  const valgte = [...document.querySelectorAll(".smart-item-check:checked")].map(cb => cb.dataset.navn);
+  for (const navn of valgte) {
       const basis = BASISVARER.find(v=>v.navn===navn);
       await addItem(basis?.ikon ? `${basis.ikon} ${navn}` : navn, basis?.cat);
     }
