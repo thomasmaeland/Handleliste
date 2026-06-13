@@ -1970,7 +1970,12 @@ const all = [];
     list.innerHTML = candidates.map(name => {
       const basis = BASISVARER.find(v=>v.navn===name);
       const icon = basis?.ikon || (purchaseHistory[name] ? "🕐" : "");
-      const sub = purchaseHistory[name] ? "kjøpt før" : "";
+     const h = purchaseHistory[name];
+let sub = h ? "kjøpt før" : "";
+if (h?.priserPerButikk) {
+  const entries = Object.entries(h.priserPerButikk).sort((a,b) => a[1]-b[1]);
+  if (entries.length > 0) sub = entries.map(([b,p]) => `${b.split(' ')[0]} ${p} kr`).join(' · ');
+}
       return `<div class="autocomplete-item" data-name="${name}" onclick="selectAc('${name}')">
         ${icon?`<span>${icon}</span>`:""}${name}
         ${sub?`<span class="ac-sub">${sub}</span>`:""}
