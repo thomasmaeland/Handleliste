@@ -2420,9 +2420,12 @@ if (h?.priserPerButikk) {
       // Husk enhetspris hvis vi har antall, ellers bruk linjesummen
 h.lastPrice = v.stkpris || v.pris || null;
 h.lastReceiptLine = v.linje || "";
-if (scannedButikk && h.lastPrice) {
+if (scannedButikk && (v.stkpris || v.pris)) {
   h.priserPerButikk = h.priserPerButikk || {};
-  h.priserPerButikk[scannedButikk] = h.lastPrice;
+  const eksisterende = Array.isArray(h.priserPerButikk[scannedButikk])
+    ? h.priserPerButikk[scannedButikk] : [];
+  eksisterende.push({ pris: v.stkpris || v.pris, enhet: v.enhet || "stk", dato: purchaseTimestamp });
+  h.priserPerButikk[scannedButikk] = eksisterende.slice(-10);
 }
       h.lastQty = v.antall || 1;
       h.lastUnit = v.enhet || "stk";
