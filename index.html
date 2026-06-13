@@ -2029,9 +2029,15 @@ const all = [];
       const icon = basis?.ikon || (purchaseHistory[name] ? "🕐" : "");
      const h = purchaseHistory[name];
 let sub = h ? "kjøpt før" : "";
+
 if (h?.priserPerButikk) {
-  const entries = Object.entries(h.priserPerButikk).sort((a,b) => a[1]-b[1]);
-  if (entries.length > 0) sub = entries.map(([b,p]) => `${b.split(' ')[0]} ${p} kr`).join(' · ');
+  const entries = Object.entries(h.priserPerButikk)
+    .map(([b, data]) => {
+      const e = Array.isArray(data) ? data[data.length - 1] : { pris: data, enhet: "stk" };
+      return [b, e.pris, e.enhet || "stk"];
+    })
+    .sort((a,b) => a[1]-b[1]);
+  if (entries.length > 0) sub = entries.map(([b,p,e]) => `${b.split(' ')[0]} ${p} kr/${e}`).join(' · ');
 }
       return `<div class="autocomplete-item" data-name="${name}" onclick="selectAc('${name}')">
         ${icon?`<span>${icon}</span>`:""}${name}
