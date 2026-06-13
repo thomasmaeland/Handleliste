@@ -411,7 +411,7 @@
         <div class="smart-preview-title" id="smart-preview-title"></div>
         <div class="smart-preview-items" id="smart-preview-items"></div>
         <div class="smart-preview-actions">
-          <button class="smart-confirm-btn" id="smart-confirm-btn">Legg alle til listen</button>
+          <button class="smart-confirm-btn" id="smart-confirm-btn">Legg til valgte</button>
           <button class="smart-cancel-btn" id="smart-cancel-btn">Avbryt</button>
         </div>
       </div>
@@ -1781,9 +1781,12 @@
     } else {
       previewTitle.textContent = `Vi tror dere trenger ${items.length} varer:`;
       previewItems.innerHTML = items.map(navn => {
-        const b = BASISVARER.find(v=>v.navn===navn);
-        return `<div class="smart-preview-item">${b?.ikon||"🛒"} ${navn}</div>`;
-      }).join("");
+  const b = BASISVARER.find(v=>v.navn===navn);
+  return `<label class="smart-preview-item">
+    <input type="checkbox" class="smart-item-check" data-navn="${escapeHtml(navn)}" checked>
+    ${b?.ikon||"🛒"} ${escapeHtml(navn)}
+  </label>`;
+}).join("");
       actions.style.display = "flex";
     }
     preview.classList.add("open");
