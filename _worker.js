@@ -74,7 +74,7 @@ Regler:
   - BX betyr boks, samme som STK
 - "enhet": stk, kg, g, l, dl eller pk
 - "total": kvitteringens totalbeløp (TOTALT / Å BETALE / SUM)
-- "navn": kort norsk varenavn med korrekt norsk stavemåte og æøå. lok → Løk, brod → Brød, ostehøvel → Ostehøvel. Behold kjente produktnavn eksakt: Cola Zero (ikke Cero), Pepsi Max, Kvikk Lunsj, Grandiosa.
+- "navn": nøyaktig varenavn slik det fremgår av kvitteringen, med korrekt norsk stavemåte og æøå. lok → Løk, brod → Brød. IKKE forkorte eller forenkle: jordbærsorbet forblir jordbærsorbet, helfet kulturmelk forblir helfet kulturmelk, appelsinjuice forblir appelsinjuice. Behold kjente produktnavn eksakt: Cola Zero, Pepsi Max, Kvikk Lunsj, Grandiosa.
 - "dato": YYYY-MM-DD format
 - "butikk": butikknavnet fra kvitteringen
 - IKKE ta med: rabatter, bonuspoeng, poser, pant, gebyrer, betalingslinjer, kortinfo`
