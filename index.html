@@ -1766,6 +1766,13 @@
       editingHistoryItemIndex = null;
     }
   });
+  window.toggleTools = () => {
+    const panel = document.getElementById("tools-panel");
+    const chevron = document.getElementById("tools-chevron");
+    const open = panel.style.display === "none";
+    panel.style.display = open ? "block" : "none";
+    chevron.style.transform = open ? "rotate(90deg)" : "";
+  };
   window.scanReceiptForTrip = (tripId) => {
   scanningForTripId = tripId;
   showTab('list');
@@ -2339,7 +2346,8 @@ if (h?.priserPerButikk) {
     }
   });
 
-  document.getElementById("receipt-btn").addEventListener("click", () => {
+ document.getElementById("receipt-btn").addEventListener("click", () => {
+    showTab('list');
     document.getElementById("receipt-input").click();
   });
 
