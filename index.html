@@ -2358,8 +2358,12 @@ const all = [];
       }
 
       // Husk enhetspris hvis vi har antall, ellers bruk linjesummen
-      h.lastPrice = v.stkpris || v.pris || null;
-      h.lastReceiptLine = v.linje || "";
+h.lastPrice = v.stkpris || v.pris || null;
+h.lastReceiptLine = v.linje || "";
+if (scannedButikk && h.lastPrice) {
+  h.priserPerButikk = h.priserPerButikk || {};
+  h.priserPerButikk[scannedButikk] = h.lastPrice;
+}
       h.lastQty = v.antall || 1;
       h.lastUnit = v.enhet || "stk";
       h.lastBought = purchaseTimestamp;
