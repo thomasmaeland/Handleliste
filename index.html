@@ -1192,12 +1192,17 @@
       return `<button class="chip" onclick="addFromSuggestion('${s.navn}','${s.ikon}')">
         <span>${s.ikon}</span>${s.navn}
         <span class="chip-days" style="background:${bg};color:${tc}">${s.label}</span>
+        <span onclick="event.stopPropagation(); fjernFraHistorikk('${escapeJsString(s.navn)}')" style="margin-left:4px;opacity:.5;font-size:14px;line-height:1">×</span>
       </button>`;
     }).join("");
   }
 
   window.addFromSuggestion = async (navn, ikon) => { await addItem(`${ikon} ${navn}`); };
-
+window.fjernFraHistorikk = async (navn) => {
+  delete purchaseHistory[navn];
+  await savePurchaseHistory();
+  renderSuggestions();
+};
   // LIST
   function startListening() {
     const q = query(collection(db, "lists", LIST_ID, "items"), orderBy("createdAt","asc"));
