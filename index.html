@@ -1808,10 +1808,12 @@ function buildStoreComparison() {
     const h = purchaseHistory[cleanName(item.name)];
     if (!h?.priserPerButikk) return;
     withData++;
-    Object.entries(h.priserPerButikk).forEach(([butikk, pris]) => {
-      storeTotals[butikk] = (storeTotals[butikk] || 0) + pris * (item.qty || 1);
-      storeCounts[butikk] = (storeCounts[butikk] || 0) + 1;
-    });
+Object.entries(h.priserPerButikk).forEach(([butikk, data]) => {
+  const entry = Array.isArray(data) ? data[data.length - 1] : { pris: data };
+  storeTotals[butikk] = (storeTotals[butikk] || 0) + entry.pris * (item.qty || 1);
+  storeCounts[butikk] = (storeCounts[butikk] || 0) + 1;
+});
+  
   });
   const stores = Object.entries(storeTotals)
     .sort((a,b) => a[1]-b[1])
