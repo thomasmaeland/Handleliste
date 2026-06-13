@@ -1079,6 +1079,26 @@
     return Math.round(h.intervals.reduce((a,b)=>a+b,0) / h.intervals.length);
   }
 
+  async function cleanupPurchaseHistoryDuplicates() {
+  const seen = {};
+  Object.entries(purchaseHistory).forEach(([key, val]) => {
+    const norm = key.toLowerCase().trim();
+    if (!seen[norm]) {
+      seen[norm] = { key, val };
+    } else {
+      // Behold den med nyest lastBought
+      if ((val.lastBought || 0) > (seen[norm].val.lastBought || 0)) {
+        seen[norm] = { key, val };
+      }
+    }
+  });
+  const antallFør = Object.keys(purchaseHistory).length;
+  const cleaned = {};
+  Object.values(seen).forEach(({ key, val }) => cleaned[key] = val);
+  if (Object.keys(cleaned).length === antallFør) return;
+  purchaseHistory = cleaned;
+  await savePurchaseHistory();
+}
   function cleanName(name) {
     return name.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27FF}\s]+/u, "").trim();
   }
@@ -1897,8 +1917,10 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
       LIST_ID = code;
       if (unsubscribeList) unsubscribeList();
       if (unsubscribeTasks) unsubscribeTasks();
+      
       await loadPurchaseHistory();
-      startListeningWithPrice();
+await cleanupPurchaseHistoryDuplicates();
+startListeningWithPrice();
       startListeningTasks();
       renderSuggestions();
       loadHistory();
