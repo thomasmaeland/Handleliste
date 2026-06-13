@@ -2093,7 +2093,7 @@
     // Prøv å matche mot produktdatabasen for bedre navn, ikon og kategori
     const rawName = cleanName(name || lineText || "Ukjent vare");
     const dbMatch = matchProduct(lineText || name || "");
-    const resolvedName = dbMatch ? dbMatch.navn : rawName;
+    const resolvedName = rawName;
     const resolvedCat = item.cat || item.kategori || item.category
       || (dbMatch ? dbMatch.kat : null)
       || guessCategory(rawName)
