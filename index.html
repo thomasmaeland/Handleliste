@@ -1924,8 +1924,13 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
   function getAcCandidates(q) {
     if (!q || q.length < 1) return [];
     const ql = q.toLowerCase();
-    const fromHistory = Object.keys(purchaseHistory);
-    const all = [...new Set([...fromHistory, ...AC_SOURCES])];
+ const fromHistory = Object.keys(purchaseHistory);
+const seen = new Set();
+const all = [];
+[...fromHistory, ...AC_SOURCES].forEach(n => {
+  const norm = n.toLowerCase().trim();
+  if (!seen.has(norm)) { seen.add(norm); all.push(n); }
+});
     return all.filter(n => n.toLowerCase().startsWith(ql) || n.toLowerCase().includes(ql))
       .sort((a,b) => {
         const aS = a.toLowerCase().startsWith(ql) ? 0 : 1;
