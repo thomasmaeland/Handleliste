@@ -1799,6 +1799,50 @@
 
   let smartListItems = [];
 
+function buildStoreComparison() {
+  const activeItems = currentItems.filter(i => !i.done);
+  if (activeItems.length === 0) return { stores: [], withData: 0, total: 0 };
+  const storeTotals = {}, storeCounts = {};
+  let withData = 0;
+  activeItems.forEach(item => {
+    const h = purchaseHistory[cleanName(item.name)];
+    if (!h?.priserPerButikk) return;
+    withData++;
+    Object.entries(h.priserPerButikk).forEach(([butikk, pris]) => {
+      storeTotals[butikk] = (storeTotals[butikk] || 0) + pris * (item.qty || 1);
+      storeCounts[butikk] = (storeCounts[butikk] || 0) + 1;
+    });
+  });
+  const stores = Object.entries(storeTotals)
+    .sort((a,b) => a[1]-b[1])
+    .map(([butikk, total], i) => ({ butikk, total: Math.round(total), ikon: ["🥇","🥈","🥉"][i] || "🏪" }));
+  return { stores, withData, total: activeItems.length };
+}
+
+document.getElementById("store-compare-btn").addEventListener("click", () => {
+  const preview = document.getElementById("store-compare-preview");
+  if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
+  const { stores, withData, total } = buildStoreComparison();
+  const title = document.getElementById("store-compare-title");
+  const area = document.getElementById("store-compare-items");
+  if (stores.length === 0) {
+    title.textContent = "Ikke nok prisdata ennå";
+    area.innerHTML = `<p class="smart-thin-msg">Scan kvitteringer fra ulike butikker først 🏪</p>`;
+  } else {
+    title.textContent = `Estimert pris basert på ${withData} av ${total} varer:`;
+    area.innerHTML = stores.map(s => `
+      <div class="smart-preview-item" style="justify-content:space-between">
+        <span>${s.ikon} ${escapeHtml(s.butikk)}</span>
+        <strong style="color:var(--accent)">~${s.total} kr</strong>
+      </div>`).join("");
+  }
+  preview.classList.add("open");
+});
+
+document.getElementById("store-compare-cancel").addEventListener("click", () => {
+  document.getElementById("store-compare-preview").classList.remove("open");
+});
+  
   document.getElementById("smart-list-btn").addEventListener("click", () => {
     const preview = document.getElementById("smart-preview");
     if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
