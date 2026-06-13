@@ -1626,6 +1626,7 @@
           <div style="display:flex;align-items:center;gap:8px">
             ${trip.total ? `<span style="font-size:13px;font-weight:500;color:var(--accent)">${trip.total} kr</span>` : ""}
             <span class="history-count">${trip.items?.length || 0} varer</span>
+            <button class="scan-trip-btn" onclick="event.stopPropagation(); scanReceiptForTrip('${trip.id}')" title="Scan kvittering for denne turen">📷</button> 
             <button class="delete-btn" onclick="event.stopPropagation(); deleteHistory('${trip.id}')" title="Slett handletur">×</button>
             <span class="history-chevron">›</span>
           </div>
@@ -1727,6 +1728,10 @@
       editingHistoryItemIndex = null;
     }
   });
+  window.scanReceiptForTrip = (tripId) => {
+  scanningForTripId = tripId;
+  document.getElementById("receipt-input").click();
+};
 
   window.toggleHistoryCard = (id) => {
     document.getElementById(`hcard-${id}`).classList.toggle("open");
@@ -2032,7 +2037,8 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
   let scannedDate = null;
   let scannedButikk = null;
   let scannedTotal = null;
-  let receiptEditingIndex = null;
+  let receiptEditingIndex = null; 
+  let scanningForTripId = null;
 
   function parseNumber(value, fallback = null) {
     if (value === null || value === undefined || value === "") return fallback;
@@ -2395,7 +2401,25 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
       return;
     }
 
-    await addDoc(historyRef, {
+    if (scanningForTripId) {
+  await updateDoc(doc(db, "lists", LIST_ID, "history", scanningForTripId), {
+    butikk: scannedButikk || "Ukjent butikk",
+    total: roundedTotal,
+    scannedItemsTotal: Math.round(allScannedTotal * 100) / 100,
+    categoryTotals,
+    items: receiptItems,
+    source: "kvittering",
+    updatedAt: Date.now()
+  });
+  scanningForTripId = null;
+  document.getElementById("receipt-preview").classList.remove("open");
+  renderPriceSummary();
+  loadHistory();
+  alert(`✅ Historikkturen er oppdatert med kvitteringsdata.`);
+  return;
+}
+
+await addDoc(historyRef, {
       date: dateStr,
       timestamp: receiptTimestamp,
       butikk: scannedButikk || "Ukjent butikk",
