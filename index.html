@@ -1056,10 +1056,39 @@
     document.getElementById("pakke-tour-desc").textContent = tour.beskrivelse || "";
 
     const personSelect = document.getElementById("pakke-person-select");
-    personSelect.innerHTML = '<option value="">Velg person...</option>';
-    (tour.persons || []).forEach(p => {
-      personSelect.innerHTML += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`;
-    });
+    const updatePersonDropdown = () => {
+      personSelect.innerHTML = '<option value="">Velg person...</option>';
+      (tour.persons || []).forEach(p => {
+        personSelect.innerHTML += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`;
+      });
+    };
+    updatePersonDropdown();
+
+    // Make add-person area visible
+    document.getElementById("pakke-new-person-area").style.display = "block";
+
+    // Handle adding new person
+    const addPersonBtn = document.getElementById("pakke-new-person-btn");
+    const addPersonInput = document.getElementById("pakke-new-person-input");
+    
+    const handleAddPerson = async () => {
+      const navn = addPersonInput.value.trim();
+      if (!navn) return;
+      if ((tour.persons || []).includes(navn)) {
+        alert(navn + " er allerede med!");
+        return;
+      }
+      tour.persons = (tour.persons || []).concat(navn);
+      await updateDoc(doc(db, "lists", LIST_ID, "packlists", tourId), { persons: tour.persons });
+      addPersonInput.value = "";
+      updatePersonDropdown();
+      addPersonInput.focus();
+    };
+
+    addPersonBtn.onclick = handleAddPerson;
+    addPersonInput.onkeydown = (e) => {
+      if (e.key === "Enter") handleAddPerson();
+    };
 
     startListeningPackItems(tourId);
   };
