@@ -527,20 +527,80 @@
 
     <!-- PAKKELISTE TAB -->
     <div id="pakke-screen" style="display:none">
-      <select class="modal-select" id="pakke-cat-input" style="margin-bottom:.75rem;width:100%">
-        <option value="klar">👕 Klær</option>
-        <option value="toalett">🧴 Toalettsaker</option>
-        <option value="dokumenter">📄 Dokumenter</option>
-        <option value="elektronikk">🔌 Elektronikk</option>
-        <option value="barn">🧸 Barn</option>
-        <option value="diverse" selected>📦 Diverse</option>
-      </select>
-      <div class="add-form" style="margin-bottom:1rem">
-        <input class="add-input" id="pakke-input" type="text" placeholder="Hva skal pakkes?" autocomplete="off" />
-        <button class="add-btn" id="pakke-add-btn" type="button">+</button>
+      <!-- Tours List View -->
+      <div id="pakke-tours-view">
+        <button class="list-action-btn" id="pakke-new-tour-btn" style="margin-bottom:1rem">
+          <span class="btn-icon">🧳</span>
+          Ny tur
+        </button>
+        <div id="pakke-tours-list">
+          <div class="empty-state"><div class="big">🧳</div><p>Ingen turer ennå</p></div>
+        </div>
       </div>
-      <div id="pakke-list">
-        <div class="empty-state"><div class="big">🧳</div><p>Pakkelista er tom</p></div>
+
+      <!-- Tour Detail View -->
+      <div id="pakke-detail-view" style="display:none">
+        <button class="list-action-btn" id="pakke-back-btn" style="margin-bottom:1rem;color:var(--ink3)">
+          <span>‹ Tilbake</span>
+        </button>
+        <div id="pakke-tour-header" style="margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+          <div style="font-family:'DM Serif Display',serif;font-size:1.2rem;margin-bottom:.25rem" id="pakke-tour-title">—</div>
+          <div style="font-size:12px;color:var(--ink3)" id="pakke-tour-date">—</div>
+          <div style="font-size:13px;color:var(--ink2);margin-top:.5rem" id="pakke-tour-desc">—</div>
+        </div>
+
+        <select class="modal-select" id="pakke-person-select" style="margin-bottom:1rem;width:100%">
+          <option value="">Velg person...</option>
+        </select>
+
+        <div style="display:none;margin-bottom:1rem;padding:1rem;background:var(--accent-light);border-radius:var(--radius)" id="pakke-new-person-area">
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:.5rem">Legg til ny person</div>
+          <div class="add-form">
+            <input class="add-input" id="pakke-new-person-input" type="text" placeholder="Navn" autocomplete="off" />
+            <button class="add-btn" id="pakke-new-person-btn" type="button">+</button>
+          </div>
+        </div>
+
+        <div id="pakke-items-area">
+          <select class="modal-select" id="pakke-cat-input" style="margin-bottom:.75rem;width:100%">
+            <option value="klar">👕 Klær</option>
+            <option value="toalett">🧴 Toalettsaker</option>
+            <option value="dokumenter">📄 Dokumenter</option>
+            <option value="elektronikk">🔌 Elektronikk</option>
+            <option value="barn">🧸 Barn</option>
+            <option value="diverse" selected>📦 Diverse</option>
+          </select>
+          <div class="add-form" style="margin-bottom:1rem">
+            <input class="add-input" id="pakke-item-input" type="text" placeholder="Hva skal pakkes?" autocomplete="off" />
+            <button class="add-btn" id="pakke-item-add-btn" type="button">+</button>
+          </div>
+          <div id="pakke-items-list">
+            <div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg person først</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW TOUR MODAL -->
+    <div class="modal-overlay" id="pakke-tour-modal">
+      <div class="modal">
+        <div class="modal-title">Ny tur</div>
+        <div class="modal-row">
+          <label class="modal-label">Navn</label>
+          <input class="modal-input" id="pakke-modal-name" type="text" placeholder="f.eks. Sommerferie" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Dato</label>
+          <input class="modal-input" id="pakke-modal-date" type="date" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Beskrivelse</label>
+          <input class="modal-input" id="pakke-modal-desc" type="text" placeholder="f.eks. Spania, 14 dager" />
+        </div>
+        <div style="display:flex;gap:8px;margin-top:1rem">
+          <button class="modal-input" id="pakke-modal-create" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
+          <button class="modal-input" id="pakke-modal-cancel" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
+        </div>
       </div>
     </div>
   </main>
@@ -913,7 +973,7 @@
       await loadPurchaseHistory();
       startListeningWithPrice();
       startListeningTasks();
-      startListeningPack();
+      startListeningPackTours();
       renderSuggestions();
       loadHistory();
     } else {
@@ -924,7 +984,8 @@
       if (unsubscribeList) unsubscribeList();
       if (unsubscribeTasks) unsubscribeTasks();
       if (unsubscribeTasks) unsubscribeTasks();
-      if (unsubscribePack) unsubscribePack();
+      if (unsubscribeTours) unsubscribeTours();
+      if (unsubscribePackItems) unsubscribePackItems();
     }
   });
   // TABS
@@ -940,34 +1001,114 @@
     document.getElementById("add-form-area").style.display = tab === "list" ? "flex" : "none";
   };
 
-  // PAKKELISTE
+  // PAKKELISTE - TOUR MANAGEMENT
   const PACK_CAT_ORDER = ["klar","toalett","dokumenter","elektronikk","barn","diverse"];
   const PACK_CAT_LABELS = {
     "klar":"👕 Klær","toalett":"🧴 Toalettsaker","dokumenter":"📄 Dokumenter",
     "elektronikk":"🔌 Elektronikk","barn":"🧸 Barn","diverse":"📦 Diverse"
   };
-  let packItems = [];
-  let unsubscribePack = null;
 
-  function startListeningPack() {
-    if (unsubscribePack) unsubscribePack();
-    const q = query(collection(db, "lists", LIST_ID, "packing"), orderBy("createdAt"));
-    unsubscribePack = onSnapshot(q, (snap) => {
-      packItems = [];
-      snap.forEach(d => packItems.push({ id: d.id, ...d.data() }));
-      renderPackList();
+  let packTours = [];
+  let unsubscribeTours = null;
+  let currentTourId = null;
+  let currentPerson = null;
+  let packItems = [];
+  let unsubscribePackItems = null;
+
+  function startListeningPackTours() {
+    if (unsubscribeTours) unsubscribeTours();
+    const q = query(collection(db, "lists", LIST_ID, "packlists"), orderBy("startDato", "desc"));
+    unsubscribeTours = onSnapshot(q, (snap) => {
+      packTours = [];
+      snap.forEach(d => packTours.push({ id: d.id, ...d.data() }));
+      renderPackToursView();
     });
   }
 
-  function renderPackList() {
-    const container = document.getElementById("pakke-list");
+  function renderPackToursView() {
+    const container = document.getElementById("pakke-tours-list");
     if (!container) return;
-    if (packItems.length === 0) {
-      container.innerHTML = `<div class="empty-state"><div class="big">🧳</div><p>Pakkelista er tom</p></div>`;
+    if (packTours.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="big">🧳</div><p>Ingen turer ennå</p></div>`;
+      return;
+    }
+    container.innerHTML = packTours.map(tour => `
+      <div class="item" style="cursor:pointer;margin-bottom:8px" onclick="openPackTourDetail('${tour.id}')">
+        <div class="item-main">
+          <div class="item-name">${escapeHtml(tour.turNavn)}</div>
+          <div class="item-detail">${tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : ""} · ${(tour.persons || []).length} personer</div>
+        </div>
+        <span style="color:var(--ink3)">›</span>
+      </div>
+    `).join("");
+  }
+
+  window.openPackTourDetail = (tourId) => {
+    currentTourId = tourId;
+    currentPerson = null;
+    const tour = packTours.find(t => t.id === tourId);
+    if (!tour) return;
+
+    document.getElementById("pakke-tours-view").style.display = "none";
+    document.getElementById("pakke-detail-view").style.display = "block";
+    document.getElementById("pakke-tour-title").textContent = tour.turNavn;
+    document.getElementById("pakke-tour-date").textContent = tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : "";
+    document.getElementById("pakke-tour-desc").textContent = tour.beskrivelse || "";
+
+    const personSelect = document.getElementById("pakke-person-select");
+    personSelect.innerHTML = '<option value="">Velg person...</option>';
+    (tour.persons || []).forEach(p => {
+      personSelect.innerHTML += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`;
+    });
+
+    startListeningPackItems(tourId);
+  };
+
+  document.getElementById("pakke-back-btn").addEventListener("click", () => {
+    currentTourId = null;
+    currentPerson = null;
+    if (unsubscribePackItems) unsubscribePackItems();
+    document.getElementById("pakke-tours-view").style.display = "block";
+    document.getElementById("pakke-detail-view").style.display = "none";
+  });
+
+  document.getElementById("pakke-person-select").addEventListener("change", async (e) => {
+    const person = e.target.value.trim();
+    if (!person) {
+      currentPerson = null;
+      document.getElementById("pakke-items-area").style.display = "none";
+      return;
+    }
+    currentPerson = person;
+    document.getElementById("pakke-items-area").style.display = "block";
+    document.getElementById("pakke-item-input").focus();
+  });
+
+  function startListeningPackItems(tourId) {
+    if (unsubscribePackItems) unsubscribePackItems();
+    if (!tourId) return;
+    const q = query(collection(db, "lists", LIST_ID, "packlists", tourId, "items"), orderBy("createdAt"));
+    unsubscribePackItems = onSnapshot(q, (snap) => {
+      packItems = [];
+      snap.forEach(d => packItems.push({ id: d.id, ...d.data() }));
+      renderPackItems();
+    });
+  }
+
+  function renderPackItems() {
+    const container = document.getElementById("pakke-items-list");
+    if (!container) return;
+    if (!currentPerson) {
+      container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg person først</p></div>`;
+      return;
+    }
+    const personItems = packItems.filter(it => it.person === currentPerson);
+    if (personItems.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Ingen items for ${escapeHtml(currentPerson)}</p></div>`;
       return;
     }
     const groups = {};
-    packItems.forEach(it => {
+    personItems.forEach(it => {
       const cat = it.cat || "diverse";
       (groups[cat] = groups[cat] || []).push(it);
     });
@@ -977,29 +1118,33 @@
       groups[cat].forEach(it => {
         html += `
           <div class="item ${it.done ? "done" : ""}" style="margin-bottom:6px">
-            <button class="check-btn" onclick="togglePack('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
-            <div class="item-main"><div class="item-name">${escapeHtml(it.name)}</div></div>
-            <button class="delete-btn" onclick="deletePack('${it.id}')" title="Fjern">×</button>
+            <button class="check-btn" onclick="togglePackItem('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
+            <div class="item-main"><div class="item-name">${escapeHtml(it.navn)}</div></div>
+            <button class="delete-btn" onclick="deletePackItem('${it.id}')" title="Fjern">×</button>
           </div>`;
       });
     });
     container.innerHTML = html;
   }
 
-  window.togglePack = async (id, done) => {
-    await updateDoc(doc(db, "lists", LIST_ID, "packing", id), { done: !done });
+  window.togglePackItem = async (id, done) => {
+    if (!currentTourId) return;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), { done: !done });
   };
 
-  window.deletePack = async (id) => {
-    await deleteDoc(doc(db, "lists", LIST_ID, "packing", id));
+  window.deletePackItem = async (id) => {
+    if (!currentTourId) return;
+    await deleteDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id));
   };
 
-  document.getElementById("pakke-add-btn").addEventListener("click", async () => {
-    const input = document.getElementById("pakke-input");
-    const name = input.value.trim();
-    if (!name) return;
-    await addDoc(collection(db, "lists", LIST_ID, "packing"), {
-      name,
+  document.getElementById("pakke-item-add-btn").addEventListener("click", async () => {
+    if (!currentTourId || !currentPerson) return;
+    const input = document.getElementById("pakke-item-input");
+    const navn = input.value.trim();
+    if (!navn) return;
+    await addDoc(collection(db, "lists", LIST_ID, "packlists", currentTourId, "items"), {
+      navn,
+      person: currentPerson,
       cat: document.getElementById("pakke-cat-input").value || "diverse",
       done: false,
       createdAt: Date.now(),
@@ -1009,9 +1154,46 @@
     input.focus();
   });
 
-  document.getElementById("pakke-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("pakke-add-btn").click();
+  document.getElementById("pakke-item-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("pakke-item-add-btn").click();
   });
+
+  // NEW TOUR MODAL
+  document.getElementById("pakke-new-tour-btn").addEventListener("click", () => {
+    document.getElementById("pakke-tour-modal").classList.add("open");
+  });
+
+  document.getElementById("pakke-modal-cancel").addEventListener("click", () => {
+    document.getElementById("pakke-tour-modal").classList.remove("open");
+  });
+
+  document.getElementById("pakke-tour-modal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) document.getElementById("pakke-tour-modal").classList.remove("open");
+  });
+
+  document.getElementById("pakke-modal-create").addEventListener("click", async () => {
+    const turNavn = document.getElementById("pakke-modal-name").value.trim();
+    const startDato = document.getElementById("pakke-modal-date").value;
+    const beskrivelse = document.getElementById("pakke-modal-desc").value.trim();
+    if (!turNavn) return;
+    await addDoc(collection(db, "lists", LIST_ID, "packlists"), {
+      turNavn,
+      startDato: startDato ? new Date(startDato).getTime() : null,
+      beskrivelse,
+      persons: [],
+      createdAt: Date.now(),
+      createdBy: currentUser?.uid || ""
+    });
+    document.getElementById("pakke-modal-name").value = "";
+    document.getElementById("pakke-modal-date").value = "";
+    document.getElementById("pakke-modal-desc").value = "";
+    document.getElementById("pakke-tour-modal").classList.remove("open");
+  });
+
+  // Add .open class styling for modal (if not exists)
+  const style = document.createElement("style");
+  style.textContent = `.modal-overlay.open { display:flex !important; }`;
+  document.head.appendChild(style);
 
 
   function formatShoppingListForShare() {
@@ -2100,7 +2282,7 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
 await cleanupPurchaseHistoryDuplicates();
 startListeningWithPrice();
       startListeningTasks();
-      startListeningPack();
+      startListeningPackTours();
       renderSuggestions();
       loadHistory();
 
