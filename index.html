@@ -387,6 +387,7 @@
       <button class="nav-tab active" id="tab-list" onclick="showTab('list')">🛒 Liste</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">📋 Historikk</button>
       <button class="nav-tab" id="tab-board" onclick="showTab('board')">👨‍👩‍👧‍👦 Tavle</button>
+      <button class="nav-tab" id="tab-pakke" onclick="showTab('pakke')">🧳 Pakke</button>
     </div>
     <div class="add-form" id="add-form-area">
       <input class="add-input" id="new-item-input" type="text" placeholder="Legg til vare..." autocomplete="off" />
@@ -521,6 +522,25 @@
       </div>
       <div id="board-content">
         <div class="board-empty">Ingen oppgaver ennå</div>
+      </div>
+    </div>
+
+    <!-- PAKKELISTE TAB -->
+    <div id="pakke-screen" style="display:none">
+      <select class="modal-select" id="pakke-cat-input" style="margin-bottom:.75rem;width:100%">
+        <option value="klar">👕 Klær</option>
+        <option value="toalett">🧴 Toalettsaker</option>
+        <option value="dokumenter">📄 Dokumenter</option>
+        <option value="elektronikk">🔌 Elektronikk</option>
+        <option value="barn">🧸 Barn</option>
+        <option value="diverse" selected>📦 Diverse</option>
+      </select>
+      <div class="add-form" style="margin-bottom:1rem">
+        <input class="add-input" id="pakke-input" type="text" placeholder="Hva skal pakkes?" autocomplete="off" />
+        <button class="add-btn" id="pakke-add-btn" type="button">+</button>
+      </div>
+      <div id="pakke-list">
+        <div class="empty-state"><div class="big">🧳</div><p>Pakkelista er tom</p></div>
       </div>
     </div>
   </main>
@@ -893,6 +913,7 @@
       await loadPurchaseHistory();
       startListeningWithPrice();
       startListeningTasks();
+      startListeningPack();
       renderSuggestions();
       loadHistory();
     } else {
@@ -903,6 +924,7 @@
       if (unsubscribeList) unsubscribeList();
       if (unsubscribeTasks) unsubscribeTasks();
       if (unsubscribeTasks) unsubscribeTasks();
+      if (unsubscribePack) unsubscribePack();
     }
   });
   // TABS
@@ -910,11 +932,86 @@
     document.getElementById("tab-list").classList.toggle("active", tab === "list");
     document.getElementById("tab-history").classList.toggle("active", tab === "history");
     document.getElementById("tab-board").classList.toggle("active", tab === "board");
+    document.getElementById("tab-pakke").classList.toggle("active", tab === "pakke");
     document.getElementById("list-screen").style.display = tab === "list" ? "block" : "none";
     document.getElementById("history-screen").style.display = tab === "history" ? "block" : "none";
     document.getElementById("board-screen").style.display = tab === "board" ? "block" : "none";
+    document.getElementById("pakke-screen").style.display = tab === "pakke" ? "block" : "none";
     document.getElementById("add-form-area").style.display = tab === "list" ? "flex" : "none";
   };
+
+  // PAKKELISTE
+  const PACK_CAT_ORDER = ["klar","toalett","dokumenter","elektronikk","barn","diverse"];
+  const PACK_CAT_LABELS = {
+    "klar":"👕 Klær","toalett":"🧴 Toalettsaker","dokumenter":"📄 Dokumenter",
+    "elektronikk":"🔌 Elektronikk","barn":"🧸 Barn","diverse":"📦 Diverse"
+  };
+  let packItems = [];
+  let unsubscribePack = null;
+
+  function startListeningPack() {
+    if (unsubscribePack) unsubscribePack();
+    const q = query(collection(db, "lists", LIST_ID, "packing"), orderBy("createdAt"));
+    unsubscribePack = onSnapshot(q, (snap) => {
+      packItems = [];
+      snap.forEach(d => packItems.push({ id: d.id, ...d.data() }));
+      renderPackList();
+    });
+  }
+
+  function renderPackList() {
+    const container = document.getElementById("pakke-list");
+    if (!container) return;
+    if (packItems.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="big">🧳</div><p>Pakkelista er tom</p></div>`;
+      return;
+    }
+    const groups = {};
+    packItems.forEach(it => {
+      const cat = it.cat || "diverse";
+      (groups[cat] = groups[cat] || []).push(it);
+    });
+    let html = "";
+    PACK_CAT_ORDER.filter(c => groups[c] && groups[c].length).forEach(cat => {
+      html += `<div class="section-label" style="margin:.75rem 0 .35rem">${PACK_CAT_LABELS[cat]}</div>`;
+      groups[cat].forEach(it => {
+        html += `
+          <div class="item ${it.done ? "done" : ""}" style="margin-bottom:6px">
+            <button class="check-btn" onclick="togglePack('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
+            <div class="item-main"><div class="item-name">${escapeHtml(it.name)}</div></div>
+            <button class="delete-btn" onclick="deletePack('${it.id}')" title="Fjern">×</button>
+          </div>`;
+      });
+    });
+    container.innerHTML = html;
+  }
+
+  window.togglePack = async (id, done) => {
+    await updateDoc(doc(db, "lists", LIST_ID, "packing", id), { done: !done });
+  };
+
+  window.deletePack = async (id) => {
+    await deleteDoc(doc(db, "lists", LIST_ID, "packing", id));
+  };
+
+  document.getElementById("pakke-add-btn").addEventListener("click", async () => {
+    const input = document.getElementById("pakke-input");
+    const name = input.value.trim();
+    if (!name) return;
+    await addDoc(collection(db, "lists", LIST_ID, "packing"), {
+      name,
+      cat: document.getElementById("pakke-cat-input").value || "diverse",
+      done: false,
+      createdAt: Date.now(),
+      addedBy: currentUser?.displayName || ""
+    });
+    input.value = "";
+    input.focus();
+  });
+
+  document.getElementById("pakke-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("pakke-add-btn").click();
+  });
 
 
   function formatShoppingListForShare() {
@@ -2003,6 +2100,7 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
 await cleanupPurchaseHistoryDuplicates();
 startListeningWithPrice();
       startListeningTasks();
+      startListeningPack();
       renderSuggestions();
       loadHistory();
 
