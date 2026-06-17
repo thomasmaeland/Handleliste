@@ -2953,7 +2953,7 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
       const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=shared:${currentListId}`;
       document.getElementById("invite-link-input").value = inviteUrl;
       
-      // Generer QR-kode med kun koden (kort som mulig)
+      // Generer QR-kode med kun koden (kort som mulig) - LOW error correction
       const qrText = currentListId;
       const qrContainer = document.getElementById("qr-code-container");
       qrContainer.innerHTML = ""; // Tøm tidligere QR
@@ -2963,11 +2963,13 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
           width: 150,
           height: 150,
           colorDark: "#1c1c1e",
-          colorLight: "#ffffff"
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.L  // Lavest error correction
         });
       } catch(e) {
         console.error("QR-kode feil:", e);
-        qrContainer.innerHTML = `<div style="font-size:12px;color:var(--ink3);padding:20px;text-align:center">QR kunne ikke<br>genereres</div>`;
+        // Fallback: vis bare teksten
+        qrContainer.innerHTML = `<div style="font-size:13px;color:var(--ink);padding:20px;text-align:center;font-weight:500;font-family:monospace">${escapeHtml(qrText)}</div>`;
       }
       
       document.getElementById("invite-modal").classList.add("open");
