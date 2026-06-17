@@ -1299,29 +1299,28 @@
     const code = generateCode();
 
     try {
-      // Opprett delt liste-metadata (uten å trigge access-regler)
-      await setDoc(doc(db, "sharedLists", code), {
-        createdAt: Date.now(),
-        name: name.trim(),
-        createdBy: currentUser?.uid
-      });
-
-      // Opprett tom liste i lists/{code} (vil nå fungere fordi vi er medlem av sharedLists)
-      await setDoc(doc(db, "lists", code, "meta", "info"), {
-        createdAt: Date.now(),
-        isShared: true,
-        name: name.trim()
-      });
-
-      // Legg til i brukerens sharedListIds
+      // Legg til i brukerens sharedListIds FØRST
       const userRef = doc(db, "users", currentUser?.uid);
       const userSnap = await getDoc(userRef);
       let sharedIds = userSnap.data()?.sharedListIds || [];
       if (!sharedIds.includes(code)) {
         sharedIds.push(code);
       }
-
       await updateDoc(userRef, { sharedListIds: sharedIds });
+
+      // Nå opprett delt liste-metadata
+      await setDoc(doc(db, "sharedLists", code), {
+        createdAt: Date.now(),
+        name: name.trim(),
+        createdBy: currentUser?.uid
+      });
+
+      // Opprett tom liste i lists/{code}
+      await setDoc(doc(db, "lists", code, "meta", "info"), {
+        createdAt: Date.now(),
+        isShared: true,
+        name: name.trim()
+      });
 
       // Reload og velg ny liste
       await loadUserHouseholds(currentUser);
@@ -1332,7 +1331,7 @@
       document.getElementById("create-shared-list-modal").classList.remove("open");
     } catch(e) {
       console.error("Feil ved opprettelse av delt liste:", e);
-      alert("Kunne ikke opprette delt liste. Sjekk konsollen.");
+      alert("Kunne ikke opprette delt liste: " + e.message);
     }
   }
 
