@@ -1003,7 +1003,14 @@
 
     // Eksisterende bruker
     const data = userSnap.data();
-    const ids = data.householdIds || (data.householdId ? [data.householdId] : []);
+    let ids = data.householdIds || [];
+    
+    // Hvis bruker har gammel struktur (householdId), konvertér
+    if (!Array.isArray(ids) && data.householdId) {
+      ids = [data.householdId];
+      // Oppdater til ny struktur
+      await updateDoc(userRef, { householdIds: ids });
+    }
     
     userHouseholds = ids.map(id => ({ id, name: id }));
     
@@ -1129,8 +1136,19 @@
     // Legg til i brukerens householdIds
     const userRef = doc(db, "users", currentUser?.uid);
     const userSnap = await getDoc(userRef);
-    const currentIds = userSnap.data()?.householdIds || [];
-    await updateDoc(userRef, { householdIds: [...currentIds, code] });
+    let currentIds = userSnap.data()?.householdIds || [];
+    
+    // Hvis bruker har gammel struktur, konvertér den
+    if (!Array.isArray(currentIds) && userSnap.data()?.householdId) {
+      currentIds = [userSnap.data().householdId];
+    }
+    
+    // Legg til ny kode
+    if (!currentIds.includes(code)) {
+      currentIds.push(code);
+    }
+    
+    await updateDoc(userRef, { householdIds: currentIds });
     
     // Oppdater liste-velgeren
     await loadUserHouseholds(currentUser);
