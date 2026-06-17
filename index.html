@@ -366,6 +366,8 @@
     <div class="header-top">
       <div class="app-title">Handleliste</div>
       <div class="user-area">
+        <button id="invite-btn" class="list-action-btn" style="padding:6px 12px;font-size:12px;margin-right:8px" onclick="openInviteModal()">👥 Inviter</button>
+        <button class="list-action-btn" style="padding:6px 12px;font-size:12px;margin-right:8px" onclick="openShareModal()">↗ Del</button>
         <div class="avatar" id="user-avatar" onclick="toggleSettingsDropdown()" title="Innstillinger">?</div>
         <div class="settings-dropdown" id="settings-dropdown">
           <div class="dd-section-label">Tema</div>
@@ -387,7 +389,7 @@
       <select id="list-selector" class="modal-select" style="flex:1;height:36px" onchange="changeList(this.value)">
         <option value="">Velg liste...</option>
       </select>
-      <button id="invite-btn" class="list-action-btn" style="padding:6px 12px;font-size:12px" onclick="openInviteModal()">👥 Inviter</button>
+      <button id="new-list-btn" class="list-action-btn" style="padding:6px 12px;font-size:12px" onclick="openNewListModal()">+ Ny liste</button>
     </div>
     <div class="nav-tabs">
       <button class="nav-tab active" id="tab-list" onclick="showTab('list')">🛒 Liste</button>
@@ -642,6 +644,21 @@
     <div style="display:flex;gap:8px;margin-top:1rem">
       <button class="modal-input" id="invite-send-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Inviter</button>
       <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('invite-modal').classList.remove('open')">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW LIST MODAL -->
+<div class="modal-overlay" id="new-list-modal">
+  <div class="modal">
+    <div class="modal-title">Ny liste</div>
+    <div class="modal-row">
+      <label class="modal-label">Navn (valgfritt)</label>
+      <input class="modal-input" id="new-list-name-input" type="text" placeholder="F.eks. Sommerferie, Hyttetur" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1rem">
+      <button class="modal-input" id="new-list-create-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
+      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('new-list-modal').classList.remove('open')">Avbryt</button>
     </div>
   </div>
 </div>
@@ -1052,6 +1069,60 @@
 
   document.getElementById("invite-name-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("invite-send-btn").click();
+  });
+
+  window.openNewListModal = () => {
+    document.getElementById("new-list-modal").classList.add("open");
+    document.getElementById("new-list-name-input").value = "";
+    document.getElementById("new-list-name-input").focus();
+  };
+
+  async function createNewList(customName) {
+    const code = generateCode();
+    const name = customName.trim() || code;
+    
+    // Opprett household
+    await setDoc(doc(db, "households", code), {
+      createdAt: Date.now(),
+      createdBy: currentUser?.uid || "",
+      members: [currentUser?.uid || ""]
+    });
+    
+    // Opprett tom liste
+    await setDoc(doc(db, "lists", code, "meta", "info"), { createdAt: Date.now() });
+    
+    // Legg til i brukerens householdIds
+    const userRef = doc(db, "users", currentUser?.uid);
+    const userSnap = await getDoc(userRef);
+    const currentIds = userSnap.data()?.householdIds || [];
+    await updateDoc(userRef, { householdIds: [...currentIds, code] });
+    
+    // Oppdater liste-velgeren
+    await loadUserHouseholds(currentUser);
+    const selector = document.getElementById("list-selector");
+    selector.innerHTML = '<option value="">Velg liste...</option>';
+    userHouseholds.forEach(h => {
+      selector.innerHTML += `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
+    });
+    selector.value = code;
+    
+    currentListId = code;
+    LIST_ID = code;
+    startListeningWithPrice();
+    startListeningTasks();
+    startListeningPackTours();
+    loadHistory();
+    
+    document.getElementById("new-list-modal").classList.remove("open");
+  }
+
+  document.getElementById("new-list-create-btn").addEventListener("click", async () => {
+    const name = document.getElementById("new-list-name-input").value;
+    await createNewList(name);
+  });
+
+  document.getElementById("new-list-name-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("new-list-create-btn").click();
   });
 
   onAuthStateChanged(auth, async (user) => {
