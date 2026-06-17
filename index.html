@@ -1204,8 +1204,10 @@
     panel.style.display = "block";
     
     if (currentListType === "private") {
-      // Private liste - alltid din egen
-      content.innerHTML = `<strong>${escapeHtml(currentListId === "MIN_HUSHOLDNING" ? "Min husholdning" : currentListId)}</strong>`;
+      // Private liste - hent navn fra userHouseholds
+      const household = userHouseholds.find(h => h.id === currentListId);
+      const listName = household?.name || "Min husholdning";
+      content.innerHTML = `<strong>${escapeHtml(listName)}</strong>`;
       shareBtn.textContent = "👥 Del husholdning";
     } else if (currentListType === "shared") {
       // Delt liste - hent hvem som opprettet
