@@ -383,6 +383,12 @@
         </div>
       </div>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:1rem;align-items:center">
+      <select id="list-selector" class="modal-select" style="flex:1;height:36px" onchange="changeList(this.value)">
+        <option value="">Velg liste...</option>
+      </select>
+      <button id="invite-btn" class="list-action-btn" style="padding:6px 12px;font-size:12px" onclick="openInviteModal()">👥 Inviter</button>
+    </div>
     <div class="nav-tabs">
       <button class="nav-tab active" id="tab-list" onclick="showTab('list')">🛒 Liste</button>
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">📋 Historikk</button>
@@ -622,6 +628,21 @@
       <button class="share-join-btn" id="share-join-btn">Bli med</button>
     </div>
     <button class="share-close-btn" id="share-close-btn">Lukk</button>
+  </div>
+</div>
+
+<!-- INVITE MODAL -->
+<div class="modal-overlay" id="invite-modal">
+  <div class="modal">
+    <div class="modal-title">Inviter til liste</div>
+    <div class="modal-row">
+      <label class="modal-label">Navn (e-post valgfritt)</label>
+      <input class="modal-input" id="invite-name-input" type="text" placeholder="F.eks. Ola Nordmann" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1rem">
+      <button class="modal-input" id="invite-send-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Inviter</button>
+      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('invite-modal').classList.remove('open')">Avbryt</button>
+    </div>
   </div>
 </div>
 
@@ -937,33 +958,122 @@
     }
   }
 
-  async function getOrCreateUserHousehold(user) {
+  let currentListId = null;
+  let userHouseholds = []; // Array av {id, name, members}
+
+  async function loadUserHouseholds(user) {
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
-
-    if (userSnap.exists() && userSnap.data().householdId) {
-      const code = userSnap.data().householdId;
-
-      // Støtte for gammel struktur, f.eks. lists/hjem uten households/hjem
-      if (await legacyListExists(code)) {
-        await ensureHouseholdDocument(code, user);
-      }
-
+    
+    if (!userSnap.exists()) {
+      // Ny bruker – opprett
+      const code = generateCode();
+      await setDoc(userRef, {
+        uid: user.uid,
+        displayName: user.displayName,
+        email: user.email,
+        householdIds: [code],
+        createdAt: Date.now()
+      });
+      await setDoc(doc(db, "lists", code, "meta", "info"), { createdAt: Date.now() });
+      await setDoc(doc(db, "households", code), {
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        members: [user.uid]
+      });
+      userHouseholds = [{ id: code, name: code }];
+      currentListId = code;
       return code;
     }
 
-    return await createUniqueHouseholdForUser(user);
+    // Eksisterende bruker
+    const data = userSnap.data();
+    const ids = data.householdIds || (data.householdId ? [data.householdId] : []);
+    
+    userHouseholds = ids.map(id => ({ id, name: id }));
+    
+    if (userHouseholds.length === 0) {
+      const code = generateCode();
+      await updateDoc(userRef, { householdIds: [code] });
+      await setDoc(doc(db, "households", code), {
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        members: [user.uid]
+      });
+      userHouseholds = [{ id: code, name: code }];
+      currentListId = code;
+      return code;
+    }
+
+    currentListId = userHouseholds[0].id;
+    return currentListId;
   }
+
+  window.changeList = (id) => {
+    if (!id) return;
+    currentListId = id;
+    LIST_ID = id;
+    startListeningWithPrice();
+    startListeningTasks();
+    startListeningPackTours();
+    loadHistory();
+  };
+
+  window.openInviteModal = () => {
+    if (!currentListId) {
+      alert("Velg en liste først");
+      return;
+    }
+    document.getElementById("invite-modal").classList.add("open");
+    document.getElementById("invite-name-input").value = "";
+    document.getElementById("invite-name-input").focus();
+  };
+
+  async function inviteToList(name) {
+    if (!currentListId || !name.trim()) return;
+    
+    // I praksis: send en tekstmelding/e-post, eller generer en join-link
+    // For nå: lag en invite-post i Firestore som de kan akseptere
+    const inviteRef = doc(db, "lists", currentListId, "meta", "invites", Date.now().toString());
+    await setDoc(inviteRef, {
+      name: name.trim(),
+      createdAt: Date.now(),
+      createdBy: currentUser?.uid || ""
+    });
+    
+    alert(`Invitasjon opprettet for ${name}. De må bli med via koden: ${currentListId}`);
+    document.getElementById("invite-modal").classList.remove("open");
+  }
+
+  document.getElementById("invite-send-btn").addEventListener("click", async () => {
+    const name = document.getElementById("invite-name-input").value;
+    await inviteToList(name);
+  });
+
+  document.getElementById("invite-name-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("invite-send-btn").click();
+  });
 
   onAuthStateChanged(auth, async (user) => {
     document.getElementById("loading").style.display = "none";
     if (user) {
       currentUser = user;
       try {
-        LIST_ID = await getOrCreateUserHousehold(user);
+        const firstListId = await loadUserHouseholds(user);
+        LIST_ID = firstListId;
+        
+        // Populate list selector
+        const selector = document.getElementById("list-selector");
+        selector.innerHTML = '<option value="">Velg liste...</option>';
+        userHouseholds.forEach(h => {
+          selector.innerHTML += `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
+        });
+        if (userHouseholds.length > 0) {
+          selector.value = userHouseholds[0].id;
+        }
       } catch(e) {
-        console.error("Kunne ikke opprette eller hente husholdning", e);
-        alert("Kunne ikke hente husholdning. Prøv å logge inn på nytt.");
+        console.error("Kunne ikke hente husholdninger", e);
+        alert("Kunne ikke hente husholdninger. Prøv å logge inn på nytt.");
         return;
       }
       document.getElementById("login-screen").style.display = "none";
