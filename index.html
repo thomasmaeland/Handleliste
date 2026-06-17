@@ -366,8 +366,6 @@
     <div class="header-top">
       <div class="app-title">Handleliste</div>
       <div class="user-area">
-        <button id="invite-btn" class="list-action-btn" style="padding:6px 12px;font-size:12px;margin-right:8px" onclick="openInviteModal()">👥 Inviter</button>
-        <button class="list-action-btn" style="padding:6px 12px;font-size:12px;margin-right:8px" onclick="openShareModal()">↗ Del</button>
         <div class="avatar" id="user-avatar" onclick="toggleSettingsDropdown()" title="Innstillinger">?</div>
         <div class="settings-dropdown" id="settings-dropdown">
           <div class="dd-section-label">Tema</div>
@@ -379,17 +377,19 @@
           <button class="dd-opt" id="opt-stor" onclick="setFontSize('stor')">Aa Stor</button>
           <button class="dd-opt" id="opt-xl" onclick="setFontSize('xl')">Aa Ekstra stor</button>
           <div class="dd-divider"></div>
+          <div class="dd-section-label">Lister</div>
+          <select id="list-selector-menu" class="dd-opt" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--ink);cursor:pointer" onchange="changeList(this.value)">
+            <option value="">Velg liste...</option>
+          </select>
+          <button class="dd-opt" onclick="closeSettingsDropdown(); openNewListModal()">+ Ny liste</button>
+          <button class="dd-opt" onclick="closeSettingsDropdown(); openInviteModal()">👥 Inviter</button>
+          <button class="dd-opt dd-opt-danger" onclick="closeSettingsDropdown(); deleteCurrentList()">🗑 Slett liste</button>
+          <div class="dd-divider"></div>
           <button class="dd-opt dd-opt-share" onclick="closeSettingsDropdown(); openShareModal()">↗ Del husholdning</button>
           <div class="dd-divider"></div>
           <button class="dd-opt dd-opt-danger" id="signout-btn">Logg ut</button>
         </div>
       </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:1rem;align-items:center">
-      <select id="list-selector" class="modal-select" style="flex:1;height:36px" onchange="changeList(this.value)">
-        <option value="">Velg liste...</option>
-      </select>
-      <button id="new-list-btn" class="list-action-btn" style="padding:6px 12px;font-size:12px" onclick="openNewListModal()">+ Ny liste</button>
     </div>
     <div class="nav-tabs">
       <button class="nav-tab active" id="tab-list" onclick="showTab('list')">🛒 Liste</button>
@@ -1038,6 +1038,51 @@
     loadHistory();
   };
 
+  window.deleteCurrentList = async () => {
+    if (!currentListId) return;
+    if (!confirm(`Slette listen "${currentListId}"? Dette kan ikke angres.`)) return;
+    
+    try {
+      // Fjern listen fra brukerens householdIds
+      const userRef = doc(db, "users", currentUser?.uid);
+      const userSnap = await getDoc(userRef);
+      let ids = userSnap.data()?.householdIds || [];
+      ids = ids.filter(id => id !== currentListId);
+      
+      if (ids.length === 0) {
+        alert("Du må ha minst en liste!");
+        return;
+      }
+      
+      await updateDoc(userRef, { householdIds: ids });
+      
+      // Reload households og velg første liste
+      await loadUserHouseholds(currentUser);
+      updateListSelector();
+      const firstId = userHouseholds[0]?.id;
+      if (firstId) {
+        changeList(firstId);
+      }
+      
+      alert("Liste slettet!");
+    } catch(e) {
+      console.error("Feil ved sletting av liste:", e);
+      alert("Kunne ikke slette listen");
+    }
+  };
+
+  function updateListSelector() {
+    const selector = document.getElementById("list-selector-menu");
+    if (!selector) return;
+    selector.innerHTML = '<option value="">Velg liste...</option>';
+    userHouseholds.forEach(h => {
+      selector.innerHTML += `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
+    });
+    if (currentListId) {
+      selector.value = currentListId;
+    }
+  }
+
   window.openInviteModal = () => {
     if (!currentListId) {
       alert("Velg en liste først");
@@ -1092,11 +1137,7 @@
       
       // Reload householdIds
       await loadUserHouseholds(currentUser);
-      const selector = document.getElementById("list-selector");
-      selector.innerHTML = '<option value="">Velg liste...</option>';
-      userHouseholds.forEach(h => {
-        selector.innerHTML += `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
-      });
+      updateListSelector();
       
       // Velg den nye listen
       selector.value = inviteCode;
@@ -1149,12 +1190,7 @@
     
     // Oppdater liste-velgeren
     await loadUserHouseholds(currentUser);
-    const selector = document.getElementById("list-selector");
-    selector.innerHTML = '<option value="">Velg liste...</option>';
-    userHouseholds.forEach(h => {
-      selector.innerHTML += `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
-    });
-    selector.value = code;
+    updateListSelector();
     
     currentListId = code;
     LIST_ID = code;
@@ -1182,16 +1218,7 @@
       try {
         const firstListId = await loadUserHouseholds(user);
         LIST_ID = firstListId;
-        
-        // Populate list selector
-        const selector = document.getElementById("list-selector");
-        selector.innerHTML = '<option value="">Velg liste...</option>';
-        userHouseholds.forEach(h => {
-          selector.innerHTML += `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
-        });
-        if (userHouseholds.length > 0) {
-          selector.value = userHouseholds[0].id;
-        }
+        updateListSelector();
       } catch(e) {
         console.error("Kunne ikke hente husholdninger", e);
         alert("Kunne ikke hente husholdninger. Prøv å logge inn på nytt.");
