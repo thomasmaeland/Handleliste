@@ -1662,12 +1662,15 @@
         const sharedIds = userSnap.data()?.sharedListIds || [];
         if (sharedIds.includes(code)) return;
         
+        // Bruk displayName eller email for medlemsnavn
+        const invitedMemberName = currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker";
+        
         // Legg bruker til medlemmer i sharedLists (som objekt {uid: name})
         const sharedListDoc = await getDoc(doc(db, "sharedLists", code));
         if (sharedListDoc.exists()) {
           const members = sharedListDoc.data().members || {};
           if (!members[currentUser.uid]) {
-            members[currentUser.uid] = currentUser.displayName || "Bruker";
+            members[currentUser.uid] = invitedMemberName;
             await updateDoc(doc(db, "sharedLists", code), { members });
           }
         }
@@ -1767,6 +1770,12 @@
 
     try {
       console.log("currentUser.uid:", currentUser.uid);
+      console.log("currentUser.displayName:", currentUser.displayName);
+      console.log("currentUser.email:", currentUser.email);
+      
+      // Bruk displayName eller email for medlemsnavn
+      const memberName = currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker";
+      
       console.log("1. Legger bruker til sharedListIds...");
       // Legg til i brukerens sharedListIds FØRST
       const userRef = doc(db, "users", currentUser.uid);
@@ -1784,7 +1793,7 @@
         name: name.trim(),
         createdBy: currentUser.uid,
         members: {
-          [currentUser.uid]: currentUser.displayName || "Bruker"  // {uid: name}
+          [currentUser.uid]: memberName  // Bruk memberName som er displayName eller email
         }
       });
       console.log("✓ sharedLists dokument opprettet");
