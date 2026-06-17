@@ -1023,13 +1023,38 @@
       await setDoc(doc(db, "households", code), {
         createdAt: Date.now(),
         createdBy: user.uid,
-        members: [user.uid]
+        members: [user.uid],
+        name: "Min husholdning"
       });
-      await setDoc(doc(db, "lists", code, "meta", "info"), { createdAt: Date.now() });
+      await setDoc(doc(db, "lists", code, "meta", "info"), { 
+        createdAt: Date.now(),
+        name: "Min husholdning"
+      });
     }
     
-    userHouseholds = privateIds.map(id => ({ id, name: id, type: "private" }));
-    userSharedLists = sharedIds.map(id => ({ id, name: id, type: "shared" }));
+    // Hent navn på private lister
+    userHouseholds = [];
+    for (const id of privateIds) {
+      try {
+        const householdSnap = await getDoc(doc(db, "households", id));
+        const name = householdSnap.data()?.name || "Min husholdning";
+        userHouseholds.push({ id, name, type: "private" });
+      } catch(e) {
+        userHouseholds.push({ id, name: "Min husholdning", type: "private" });
+      }
+    }
+    
+    // Hent navn på delte lister
+    userSharedLists = [];
+    for (const id of sharedIds) {
+      try {
+        const metaSnap = await getDoc(doc(db, "lists", id, "meta", "info"));
+        const name = metaSnap.data()?.name || id;
+        userSharedLists.push({ id, name, type: "shared" });
+      } catch(e) {
+        userSharedLists.push({ id, name: id, type: "shared" });
+      }
+    }
     
     currentListId = userHouseholds[0]?.id || null;
     currentListType = currentListId ? "private" : null;
@@ -1201,11 +1226,15 @@
     await setDoc(doc(db, "households", code), {
       createdAt: Date.now(),
       createdBy: currentUser?.uid || "",
-      members: [currentUser?.uid || ""]
+      members: [currentUser?.uid || ""],
+      name: "Min husholdning"  // Privat liste får fast navn
     });
     
     // Opprett tom liste
-    await setDoc(doc(db, "lists", code, "meta", "info"), { createdAt: Date.now() });
+    await setDoc(doc(db, "lists", code, "meta", "info"), { 
+      createdAt: Date.now(),
+      name: "Min husholdning"
+    });
     
     // Legg til i brukerens householdIds
     const userRef = doc(db, "users", currentUser?.uid);
@@ -1229,6 +1258,7 @@
     updateListSelector();
     
     currentListId = code;
+    currentListType = "private";
     LIST_ID = code;
     startListeningWithPrice();
     startListeningTasks();
