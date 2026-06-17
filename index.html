@@ -1498,12 +1498,8 @@
         delete members[memberUid];  // Fjern medlem
         await updateDoc(sharedListRef, { members });
         
-        // Fjern fra brukerens sharedListIds
-        const userRef = doc(db, "users", memberUid);
-        const userSnap = await getDoc(userRef);
-        let sharedIds = userSnap.data()?.sharedListIds || [];
-        sharedIds = sharedIds.filter(id => id !== listId);
-        await updateDoc(userRef, { sharedListIds: sharedIds });
+        // NB: Vi kan ikke oppdatere andre brukeres dokument direkte.
+        // Medlemmet fjernes fra members-listen, og mister tilgang.
         
         alert(`${memberName} ble fjernet fra listen`);
         updateListInfoPanel();
