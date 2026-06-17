@@ -1164,6 +1164,16 @@
     if (currentListId && currentListType) {
       selector.value = `${currentListType}:${currentListId}`;
     }
+    
+    // Re-attach event listener (innerHTML removes it)
+    selector.removeEventListener("change", handleListChange);
+    selector.addEventListener("change", handleListChange);
+  }
+  
+  function handleListChange(e) {
+    const value = e.target.value;
+    console.log("Dropdown endret til:", value);
+    changeList(value);
   }
 
   window.openInviteModal = () => {
