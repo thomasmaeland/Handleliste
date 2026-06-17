@@ -387,10 +387,7 @@
           </div>
           <button class="dd-opt" onclick="closeSettingsDropdown(); openNewListModal()">+ Ny liste</button>
           <button class="dd-opt" onclick="closeSettingsDropdown(); openCreateSharedListModal()">+ Delt handleliste</button>
-          <button class="dd-opt" onclick="closeSettingsDropdown(); openInviteModal()">👥 Inviter</button>
-          <button class="dd-opt dd-opt-danger" onclick="closeSettingsDropdown(); deleteCurrentList()">🗑 Slett liste</button>
-          <div class="dd-divider"></div>
-          <button class="dd-opt dd-opt-share" onclick="closeSettingsDropdown(); openShareModal()">↗ Del husholdning</button>
+          <button class="dd-opt" id="share-btn" onclick="closeSettingsDropdown(); openShareModal()">👥 Del</button>
           <div class="dd-divider"></div>
           <button class="dd-opt dd-opt-danger" id="signout-btn">Logg ut</button>
         </div>
@@ -1197,9 +1194,11 @@
   async function updateListInfoPanel() {
     const panel = document.getElementById("list-info-panel");
     const content = document.getElementById("list-info-content");
+    const shareBtn = document.getElementById("share-btn");
     
     if (!currentListId || !currentListType) {
       panel.style.display = "none";
+      shareBtn.textContent = "👥 Del";
       return;
     }
     
@@ -1207,7 +1206,8 @@
     
     if (currentListType === "private") {
       // Private liste - alltid din egen
-      content.innerHTML = `<strong>${escapeHtml(currentListId === "MIN_HUSHOLDNING" ? "Min husholdning (kan ikke slettes)" : currentListId)}</strong>`;
+      content.innerHTML = `<strong>${escapeHtml(currentListId === "MIN_HUSHOLDNING" ? "Min husholdning" : currentListId)}</strong>`;
+      shareBtn.textContent = "👥 Del husholdning";
     } else if (currentListType === "shared") {
       // Delt liste - hent hvem som opprettet
       try {
@@ -1227,10 +1227,13 @@
           } else {
             content.innerHTML += `<br><button class="dd-opt dd-opt-danger" style="margin-top:8px;width:100%" onclick="closeSettingsDropdown(); openLeaveListModal('shared', '${escapeHtml(currentListId)}')">👋 Forlat liste</button>`;
           }
+          
+          shareBtn.textContent = "👥 Del liste";
         }
       } catch (error) {
         console.error("Feil ved henting av liste-info:", error);
         content.innerHTML = "<em>Kunne ikke laste liste-info</em>";
+        shareBtn.textContent = "👥 Del";
       }
     }
   }
@@ -2857,15 +2860,27 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
   }
 
   window.openShareModal = async () => {
-    // Finn eller lag husholdningskode for denne brukeren
-    const userRef = doc(db, "users", currentUser.uid);
-    const userSnap = await getDoc(userRef);
-    let code = LIST_ID;
-    if (userSnap.exists() && userSnap.data().householdId) {
-      code = userSnap.data().householdId;
+    if (!currentListId || !currentListType) {
+      alert("Velg en liste først");
+      return;
     }
-    document.getElementById("share-code-value").textContent = code;
-    document.getElementById("share-modal").classList.add("open");
+
+    if (currentListType === "private") {
+      // Privat liste - vis household code
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      let code = currentListId;
+      if (userSnap.exists() && userSnap.data().householdIds && userSnap.data().householdIds.length > 0) {
+        code = userSnap.data().householdIds[0]; // Bruk første private liste
+      }
+      document.getElementById("share-code-value").textContent = code;
+      document.getElementById("share-modal").classList.add("open");
+    } else if (currentListType === "shared") {
+      // Delt liste - vis invite link
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=shared:${currentListId}`;
+      document.getElementById("invite-link-input").value = inviteUrl;
+      document.getElementById("invite-modal").classList.add("open");
+    }
   };
 
   document.getElementById("share-close-btn").addEventListener("click", () => {
