@@ -642,7 +642,7 @@
 <div class="modal-overlay" id="invite-modal">
   <div class="modal">
     <div class="modal-title">Del liste</div>
-    <div style="font-size:12px;color:var(--ink3);margin-bottom:1rem">Del denne linken eller skann QR-koden med venner.</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:1rem">Scan QR-koden med venner, eller del linken nedenfor.</div>
     
     <!-- QR Code -->
     <div style="text-align:center;margin-bottom:1rem;padding:12px;background:var(--bg);border-radius:8px">
@@ -2953,16 +2953,22 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
       const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=shared:${currentListId}`;
       document.getElementById("invite-link-input").value = inviteUrl;
       
-      // Generer QR-kode
+      // Generer QR-kode med kort kode (ikke full URL som er for lang)
+      const qrText = `shared:${currentListId}`;
       const qrContainer = document.getElementById("qr-code-container");
       qrContainer.innerHTML = ""; // Tøm tidligere QR
-      new QRCode(qrContainer, {
-        text: inviteUrl,
-        width: 150,
-        height: 150,
-        colorDark: "#1c1c1e",
-        colorLight: "#ffffff"
-      });
+      try {
+        new QRCode(qrContainer, {
+          text: qrText,
+          width: 150,
+          height: 150,
+          colorDark: "#1c1c1e",
+          colorLight: "#ffffff"
+        });
+      } catch(e) {
+        console.error("QR-kode feil:", e);
+        qrContainer.innerHTML = `<div style="font-size:12px;color:var(--ink3)">QR kunne ikke genereres</div>`;
+      }
       
       document.getElementById("invite-modal").classList.add("open");
     }
