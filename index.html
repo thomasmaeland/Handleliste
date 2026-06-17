@@ -636,15 +636,13 @@
 <!-- INVITE MODAL -->
 <div class="modal-overlay" id="invite-modal">
   <div class="modal">
-    <div class="modal-title">Inviter til liste</div>
-    <div class="modal-row">
-      <label class="modal-label">Navn (e-post valgfritt)</label>
-      <input class="modal-input" id="invite-name-input" type="text" placeholder="F.eks. Ola Nordmann" />
+    <div class="modal-title">Del liste</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:1rem">Del denne linken med venner. De blir automatisk medlem når de klikker.</div>
+    <div style="background:var(--bg);padding:12px;border-radius:8px;margin-bottom:1rem;word-break:break-all">
+      <input class="modal-input" id="invite-link-input" type="text" readonly style="border:none;background:transparent;padding:0;font-size:12px" />
     </div>
-    <div style="display:flex;gap:8px;margin-top:1rem">
-      <button class="modal-input" id="invite-send-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Inviter</button>
-      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('invite-modal').classList.remove('open')">Avbryt</button>
-    </div>
+    <button class="modal-input" style="width:100%;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px;margin-bottom:8px" onclick="copyInviteLink()">📋 Kopier link</button>
+    <button class="modal-input" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('invite-modal').classList.remove('open')">Lukk</button>
   </div>
 </div>
 
@@ -1041,35 +1039,72 @@
       alert("Velg en liste først");
       return;
     }
+    const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${currentListId}`;
+    document.getElementById("invite-link-input").value = inviteUrl;
     document.getElementById("invite-modal").classList.add("open");
-    document.getElementById("invite-name-input").value = "";
-    document.getElementById("invite-name-input").focus();
   };
 
-  async function inviteToList(name) {
-    if (!currentListId || !name.trim()) return;
+  window.copyInviteLink = () => {
+    const input = document.getElementById("invite-link-input");
+    input.select();
+    document.execCommand("copy");
+    alert("Link kopiert!");
+  };
+
+  async function handleInviteParameter() {
+    const params = new URLSearchParams(window.location.search);
+    const inviteCode = params.get("invite");
     
-    // I praksis: send en tekstmelding/e-post, eller generer en join-link
-    // For nå: lag en invite-post i Firestore som de kan akseptere
-    const inviteRef = doc(db, "lists", currentListId, "meta", "invites", Date.now().toString());
-    await setDoc(inviteRef, {
-      name: name.trim(),
-      createdAt: Date.now(),
-      createdBy: currentUser?.uid || ""
-    });
+    if (!inviteCode || !currentUser) return;
     
-    alert(`Invitasjon opprettet for ${name}. De må bli med via koden: ${currentListId}`);
-    document.getElementById("invite-modal").classList.remove("open");
+    try {
+      // Sjekk at husholdningen finnes
+      const householdSnap = await getDoc(doc(db, "households", inviteCode));
+      if (!householdSnap.exists()) {
+        alert("Invitasjons-koden er ugyldig");
+        return;
+      }
+      
+      // Hent brukerens householdIds
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      const currentIds = userSnap.data()?.householdIds || [];
+      
+      // Hvis bruker allerede er medlem, gjør ingenting
+      if (currentIds.includes(inviteCode)) {
+        return;
+      }
+      
+      // Legg bruker til husholdningen
+      const household = householdSnap.data();
+      const newMembers = (household.members || []);
+      if (!newMembers.includes(currentUser.uid)) {
+        newMembers.push(currentUser.uid);
+        await updateDoc(doc(db, "households", inviteCode), { members: newMembers });
+      }
+      
+      // Legg husholdningen til brukerens liste
+      await updateDoc(userRef, { householdIds: [...currentIds, inviteCode] });
+      
+      // Reload householdIds
+      await loadUserHouseholds(currentUser);
+      const selector = document.getElementById("list-selector");
+      selector.innerHTML = '<option value="">Velg liste...</option>';
+      userHouseholds.forEach(h => {
+        selector.innerHTML += `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
+      });
+      
+      // Velg den nye listen
+      selector.value = inviteCode;
+      changeList(inviteCode);
+      
+      // Fjern invite-parameter fra URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch(e) {
+      console.error("Feil ved invitasjon:", e);
+      alert("Kunne ikke bli med i listen");
+    }
   }
-
-  document.getElementById("invite-send-btn").addEventListener("click", async () => {
-    const name = document.getElementById("invite-name-input").value;
-    await inviteToList(name);
-  });
-
-  document.getElementById("invite-name-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("invite-send-btn").click();
-  });
 
   window.openNewListModal = () => {
     document.getElementById("new-list-modal").classList.add("open");
@@ -1157,6 +1192,7 @@
       startListeningPackTours();
       renderSuggestions();
       loadHistory();
+      handleInviteParameter();
     } else {
       currentUser = null;
       LIST_ID = null;
