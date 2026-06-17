@@ -1296,9 +1296,16 @@
       return;
     }
 
+    if (!currentUser) {
+      alert("Du er ikke logget inn!");
+      console.error("currentUser er null:", currentUser);
+      return;
+    }
+
     const code = generateCode();
 
     try {
+      console.log("currentUser.uid:", currentUser.uid);
       console.log("1. Legger bruker til sharedListIds...");
       // Legg til i brukerens sharedListIds FØRST
       const userRef = doc(db, "users", currentUser.uid);
@@ -1336,7 +1343,6 @@
     } catch(e) {
       console.error("Feil ved opprettelse av delt liste:", e);
       console.error("Feiltype:", e.code);
-      console.error("Fullstendig feil:", e);
       alert("Feil: " + e.message);
     }
   }
