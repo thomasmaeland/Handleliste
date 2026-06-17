@@ -980,53 +980,50 @@
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
     
-    if (!userSnap.exists()) {
-      // Ny bruker – opprett
+    let ids = [];
+    
+    if (userSnap.exists()) {
+      const data = userSnap.data();
+      
+      // Hent householdIds (ny struktur)
+      if (Array.isArray(data.householdIds)) {
+        ids = [...data.householdIds];
+      }
+      
+      // Legg til householdId (gammel struktur) hvis den ikke allerede finnes
+      if (data.householdId && !ids.includes(data.householdId)) {
+        ids.push(data.householdId);
+        // Oppdater bruker til ny struktur
+        await updateDoc(userRef, { householdIds: ids });
+      }
+    }
+    
+    // Hvis ingen lister, opprett en ny
+    if (ids.length === 0) {
       const code = generateCode();
-      await setDoc(userRef, {
-        uid: user.uid,
-        displayName: user.displayName,
-        email: user.email,
-        householdIds: [code],
-        createdAt: Date.now()
-      });
-      await setDoc(doc(db, "lists", code, "meta", "info"), { createdAt: Date.now() });
+      ids = [code];
+      
+      if (userSnap.exists()) {
+        await updateDoc(userRef, { householdIds: ids });
+      } else {
+        await setDoc(userRef, {
+          uid: user.uid,
+          displayName: user.displayName,
+          email: user.email,
+          householdIds: ids,
+          createdAt: Date.now()
+        });
+      }
+      
       await setDoc(doc(db, "households", code), {
         createdAt: Date.now(),
         createdBy: user.uid,
         members: [user.uid]
       });
-      userHouseholds = [{ id: code, name: code }];
-      currentListId = code;
-      return code;
-    }
-
-    // Eksisterende bruker
-    const data = userSnap.data();
-    let ids = data.householdIds || [];
-    
-    // Hvis bruker har gammel struktur (householdId), konvertér
-    if (!Array.isArray(ids) && data.householdId) {
-      ids = [data.householdId];
-      // Oppdater til ny struktur
-      await updateDoc(userRef, { householdIds: ids });
+      await setDoc(doc(db, "lists", code, "meta", "info"), { createdAt: Date.now() });
     }
     
     userHouseholds = ids.map(id => ({ id, name: id }));
-    
-    if (userHouseholds.length === 0) {
-      const code = generateCode();
-      await updateDoc(userRef, { householdIds: [code] });
-      await setDoc(doc(db, "households", code), {
-        createdAt: Date.now(),
-        createdBy: user.uid,
-        members: [user.uid]
-      });
-      userHouseholds = [{ id: code, name: code }];
-      currentListId = code;
-      return code;
-    }
-
     currentListId = userHouseholds[0].id;
     return currentListId;
   }
