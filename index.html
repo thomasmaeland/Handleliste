@@ -1078,16 +1078,22 @@
   }
 
   window.changeList = (value) => {
+    console.log("changeList mottok:", value);
     if (!value) return;
     
     // Parse "private:ID" eller "shared:ID"
     const [type, id] = value.split(":");
-    if (!type || !id) return;
+    console.log("Parsed - type:", type, "id:", id);
+    if (!type || !id) {
+      console.error("Kunne ikke parse liste");
+      return;
+    }
     
     currentListType = type;
     currentListId = id;
     LIST_ID = id;
     
+    console.log("Bytter til liste:", { type, id, LIST_ID });
     startListeningWithPrice();
     startListeningTasks();
     startListeningPackTours();
