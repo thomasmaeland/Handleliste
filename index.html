@@ -1322,10 +1322,30 @@
         return;
       }
       
-      const householdMembers = householdSnap.data().members || {};  // {uid: name}
+      let householdMembers = householdSnap.data().members || {};
+      let currentMembers = {};
+      
       const sharedListRef = doc(db, "sharedLists", listId);
       const sharedListSnap = await getDoc(sharedListRef);
-      const currentMembers = sharedListSnap.data().members || {};  // {uid: name}
+      if (sharedListSnap.exists()) {
+        currentMembers = sharedListSnap.data().members || {};
+      }
+      
+      // Konvertér til objekt hvis de er arrays
+      if (Array.isArray(householdMembers)) {
+        const temp = {};
+        for (const uid of householdMembers) {
+          temp[uid] = `Medlem ${uid.slice(0,4)}...`;
+        }
+        householdMembers = temp;
+      }
+      if (Array.isArray(currentMembers)) {
+        const temp = {};
+        for (const uid of currentMembers) {
+          temp[uid] = `Medlem ${uid.slice(0,4)}...`;
+        }
+        currentMembers = temp;
+      }
       
       console.log("Husholdningsmedlemmer:", householdMembers);
       console.log("Allerede med i listen:", currentMembers);
