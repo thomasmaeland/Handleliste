@@ -1446,7 +1446,8 @@
     const btn = document.getElementById("delete-list-confirm-btn");
     
     title.textContent = "Slett liste";
-    msg.textContent = `Er du sikker på at du vil slette "${listName}"? Dette kan ikke angres.`;
+    msg.textContent = `Er du sikker på at du vil slette "${listName}"? Dette kan ikke angres.\nSkriv inn listen sitt navn nedenfor for å bekrefte:`;
+    input.style.display = "block";
     input.value = "";
     input.placeholder = `Skriv: ${listName}`;
     input.focus();
@@ -1474,6 +1475,7 @@
     
     title.textContent = "Forlat liste";
     msg.textContent = `Er du sikker på at du vil forlate "${listName}"?`;
+    input.style.display = "block";
     input.value = "";
     input.placeholder = `Skriv: ${listName}`;
     input.focus();
