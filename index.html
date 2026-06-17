@@ -1412,14 +1412,8 @@
         members[memberId] = memberName;
         await updateDoc(sharedListRef, { members });
         
-        // Legg også til liste i brukerens sharedListIds
-        const userRef = doc(db, "users", memberId);
-        const userSnap = await getDoc(userRef);
-        let sharedIds = userSnap.data()?.sharedListIds || [];
-        if (!sharedIds.includes(listId)) {
-          sharedIds.push(listId);
-          await updateDoc(userRef, { sharedListIds: sharedIds });
-        }
+        // NB: Vi kan ikke oppdatere andre brukeres dokument direkte.
+        // Katrine vil se listen neste gang hun åpner appen via invite-link.
         
         alert("Medlem lagt til!");
         document.getElementById("delete-list-modal").classList.remove("open");
