@@ -974,43 +974,48 @@
   }
 
   let currentListId = null;
-  let userHouseholds = []; // Array av {id, name, members}
+  let currentListType = null; // "private" eller "shared"
+  let userHouseholds = []; // Private lister
+  let userSharedLists = []; // Delte handlelister
 
   async function loadUserHouseholds(user) {
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
     
-    let ids = [];
+    let privateIds = [];
+    let sharedIds = [];
     
     if (userSnap.exists()) {
       const data = userSnap.data();
       
-      // Hent householdIds (ny struktur)
+      // Private lister (householdIds)
       if (Array.isArray(data.householdIds)) {
-        ids = [...data.householdIds];
+        privateIds = [...data.householdIds];
+      }
+      if (data.householdId && !privateIds.includes(data.householdId)) {
+        privateIds.push(data.householdId);
       }
       
-      // Legg til householdId (gammel struktur) hvis den ikke allerede finnes
-      if (data.householdId && !ids.includes(data.householdId)) {
-        ids.push(data.householdId);
-        // Oppdater bruker til ny struktur
-        await updateDoc(userRef, { householdIds: ids });
+      // Delte lister (sharedListIds)
+      if (Array.isArray(data.sharedListIds)) {
+        sharedIds = [...data.sharedListIds];
       }
     }
     
-    // Hvis ingen lister, opprett en ny
-    if (ids.length === 0) {
+    // Hvis ingen private lister, opprett en
+    if (privateIds.length === 0) {
       const code = generateCode();
-      ids = [code];
+      privateIds = [code];
       
       if (userSnap.exists()) {
-        await updateDoc(userRef, { householdIds: ids });
+        await updateDoc(userRef, { householdIds: privateIds });
       } else {
         await setDoc(userRef, {
           uid: user.uid,
           displayName: user.displayName,
           email: user.email,
-          householdIds: ids,
+          householdIds: privateIds,
+          sharedListIds: [],
           createdAt: Date.now()
         });
       }
@@ -1023,15 +1028,25 @@
       await setDoc(doc(db, "lists", code, "meta", "info"), { createdAt: Date.now() });
     }
     
-    userHouseholds = ids.map(id => ({ id, name: id }));
-    currentListId = userHouseholds[0].id;
+    userHouseholds = privateIds.map(id => ({ id, name: id, type: "private" }));
+    userSharedLists = sharedIds.map(id => ({ id, name: id, type: "shared" }));
+    
+    currentListId = userHouseholds[0]?.id || null;
+    currentListType = currentListId ? "private" : null;
     return currentListId;
   }
 
-  window.changeList = (id) => {
-    if (!id) return;
+  window.changeList = (value) => {
+    if (!value) return;
+    
+    // Parse "private:ID" eller "shared:ID"
+    const [type, id] = value.split(":");
+    if (!type || !id) return;
+    
+    currentListType = type;
     currentListId = id;
     LIST_ID = id;
+    
     startListeningWithPrice();
     startListeningTasks();
     startListeningPackTours();
@@ -1039,29 +1054,35 @@
   };
 
   window.deleteCurrentList = async () => {
-    if (!currentListId) return;
+    if (!currentListId || !currentListType) return;
     if (!confirm(`Slette listen "${currentListId}"? Dette kan ikke angres.`)) return;
     
     try {
-      // Fjern listen fra brukerens householdIds
       const userRef = doc(db, "users", currentUser?.uid);
       const userSnap = await getDoc(userRef);
-      let ids = userSnap.data()?.householdIds || [];
-      ids = ids.filter(id => id !== currentListId);
       
-      if (ids.length === 0) {
-        alert("Du må ha minst en liste!");
-        return;
+      if (currentListType === "private") {
+        let ids = userSnap.data()?.householdIds || [];
+        ids = ids.filter(id => id !== currentListId);
+        
+        if (ids.length === 0) {
+          alert("Du må ha minst en privat liste!");
+          return;
+        }
+        
+        await updateDoc(userRef, { householdIds: ids });
+      } else if (currentListType === "shared") {
+        let ids = userSnap.data()?.sharedListIds || [];
+        ids = ids.filter(id => id !== currentListId);
+        await updateDoc(userRef, { sharedListIds: ids });
       }
       
-      await updateDoc(userRef, { householdIds: ids });
-      
-      // Reload households og velg første liste
       await loadUserHouseholds(currentUser);
       updateListSelector();
-      const firstId = userHouseholds[0]?.id;
-      if (firstId) {
-        changeList(firstId);
+      
+      const firstPrivate = userHouseholds[0]?.id;
+      if (firstPrivate) {
+        changeList(`private:${firstPrivate}`);
       }
       
       alert("Liste slettet!");
@@ -1074,21 +1095,36 @@
   function updateListSelector() {
     const selector = document.getElementById("list-selector-menu");
     if (!selector) return;
+    
     selector.innerHTML = '<option value="">Velg liste...</option>';
-    userHouseholds.forEach(h => {
-      selector.innerHTML += `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
-    });
-    if (currentListId) {
-      selector.value = currentListId;
+    
+    if (userHouseholds.length > 0) {
+      selector.innerHTML += '<optgroup label="Private lister">';
+      userHouseholds.forEach(h => {
+        selector.innerHTML += `<option value="private:${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
+      });
+      selector.innerHTML += '</optgroup>';
+    }
+    
+    if (userSharedLists.length > 0) {
+      selector.innerHTML += '<optgroup label="Delte handlelister">';
+      userSharedLists.forEach(h => {
+        selector.innerHTML += `<option value="shared:${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
+      });
+      selector.innerHTML += '</optgroup>';
+    }
+    
+    if (currentListId && currentListType) {
+      selector.value = `${currentListType}:${currentListId}`;
     }
   }
 
   window.openInviteModal = () => {
-    if (!currentListId) {
+    if (!currentListId || !currentListType) {
       alert("Velg en liste først");
       return;
     }
-    const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${currentListId}`;
+    const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${currentListType}:${currentListId}`;
     document.getElementById("invite-link-input").value = inviteUrl;
     document.getElementById("invite-modal").classList.add("open");
   };
@@ -1102,48 +1138,48 @@
 
   async function handleInviteParameter() {
     const params = new URLSearchParams(window.location.search);
-    const inviteCode = params.get("invite");
+    const inviteParam = params.get("invite");
     
-    if (!inviteCode || !currentUser) return;
+    if (!inviteParam || !currentUser) return;
+    
+    const [type, code] = inviteParam.split(":");
+    if (!type || !code) return;
     
     try {
-      // Sjekk at husholdningen finnes
-      const householdSnap = await getDoc(doc(db, "households", inviteCode));
-      if (!householdSnap.exists()) {
-        alert("Invitasjons-koden er ugyldig");
-        return;
-      }
-      
-      // Hent brukerens householdIds
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
-      const currentIds = userSnap.data()?.householdIds || [];
       
-      // Hvis bruker allerede er medlem, gjør ingenting
-      if (currentIds.includes(inviteCode)) {
-        return;
+      if (type === "private") {
+        // Legg til privat husholdning
+        const householdSnap = await getDoc(doc(db, "households", code));
+        if (!householdSnap.exists()) {
+          alert("Invitasjons-koden er ugyldig");
+          return;
+        }
+        
+        const currentIds = userSnap.data()?.householdIds || [];
+        if (currentIds.includes(code)) return;
+        
+        // Legg bruker til medlemmer
+        const household = householdSnap.data();
+        const newMembers = (household.members || []);
+        if (!newMembers.includes(currentUser.uid)) {
+          newMembers.push(currentUser.uid);
+          await updateDoc(doc(db, "households", code), { members: newMembers });
+        }
+        
+        await updateDoc(userRef, { householdIds: [...currentIds, code] });
+      } else if (type === "shared") {
+        // Legg til delt handleliste
+        const sharedIds = userSnap.data()?.sharedListIds || [];
+        if (sharedIds.includes(code)) return;
+        
+        await updateDoc(userRef, { sharedListIds: [...sharedIds, code] });
       }
       
-      // Legg bruker til husholdningen
-      const household = householdSnap.data();
-      const newMembers = (household.members || []);
-      if (!newMembers.includes(currentUser.uid)) {
-        newMembers.push(currentUser.uid);
-        await updateDoc(doc(db, "households", inviteCode), { members: newMembers });
-      }
-      
-      // Legg husholdningen til brukerens liste
-      await updateDoc(userRef, { householdIds: [...currentIds, inviteCode] });
-      
-      // Reload householdIds
       await loadUserHouseholds(currentUser);
       updateListSelector();
-      
-      // Velg den nye listen
-      selector.value = inviteCode;
-      changeList(inviteCode);
-      
-      // Fjern invite-parameter fra URL
+      changeList(`${type}:${code}`);
       window.history.replaceState({}, document.title, window.location.pathname);
     } catch(e) {
       console.error("Feil ved invitasjon:", e);
