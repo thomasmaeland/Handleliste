@@ -1071,7 +1071,9 @@
       await setDoc(doc(db, "households", code), {
         createdAt: Date.now(),
         createdBy: user.uid,
-        members: [user.uid],
+        members: {
+          [user.uid]: user.displayName || "Bruker"  // {uid: name}
+        },
         name: "Min husholdning"
       });
       await setDoc(doc(db, "lists", code, "meta", "info"), { 
@@ -1232,20 +1234,21 @@
           const createdBy = sharedListDoc.data().createdBy;
           const currentUserId = auth.currentUser.uid;
           const isOwner = createdBy === currentUserId;
-          const members = sharedListDoc.data().members || [];
+          const members = sharedListDoc.data().members || {};  // {uid: name}
+          const memberCount = Object.keys(members).length;
           
           let html = `<strong>${escapeHtml(sharedListDoc.data().name)}</strong><br>`;
           html += `Opprettet av: ${isOwner ? "deg" : "noen andre"}`;
           
           // Vis medlemmer hvis admin
-          if (isOwner && members.length > 0) {
-            html += `<br><br><div style="font-size:12px;color:var(--ink3);margin-bottom:8px">MEDLEMMER (${members.length})</div>`;
-            for (const memberId of members) {
-              const memberName = memberId === currentUserId ? "Du" : `Medlem ${memberId.slice(0,4)}...`;
+          if (isOwner && memberCount > 0) {
+            html += `<br><br><div style="font-size:12px;color:var(--ink3);margin-bottom:8px">MEDLEMMER (${memberCount})</div>`;
+            for (const [memberId, memberName] of Object.entries(members)) {
+              const displayName = memberId === currentUserId ? "Du" : memberName;
               if (memberId !== currentUserId) {
                 html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
-                  <span style="font-size:13px">${escapeHtml(memberName)}</span>
-                  <button style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px" onclick="removeMember('${escapeHtml(currentListId)}', '${escapeHtml(memberId)}', '${escapeHtml(memberName)}')">Fjern</button>
+                  <span style="font-size:13px">${escapeHtml(displayName)}</span>
+                  <button style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px" onclick="removeMember('${escapeHtml(currentListId)}', '${escapeHtml(memberId)}', '${escapeHtml(displayName)}')">Fjern</button>
                 </div>`;
               }
             }
@@ -1319,26 +1322,26 @@
         return;
       }
       
-      const householdMembers = householdSnap.data().members || [];
+      const householdMembers = householdSnap.data().members || {};  // {uid: name}
       const sharedListRef = doc(db, "sharedLists", listId);
       const sharedListSnap = await getDoc(sharedListRef);
-      const currentMembers = sharedListSnap.data().members || [];
+      const currentMembers = sharedListSnap.data().members || {};  // {uid: name}
       
       console.log("Husholdningsmedlemmer:", householdMembers);
       console.log("Allerede med i listen:", currentMembers);
       
       // Filtrer ut medlemmer som allerede er med
-      const availableMembers = householdMembers.filter(m => !currentMembers.includes(m));
+      const availableMembers = Object.entries(householdMembers)
+        .filter(([uid]) => !currentMembers.hasOwnProperty(uid));
       
       console.log("Tilgjengelige medlemmer:", availableMembers);
       
       // Vis modal med medlemmer som kan legges til
       let memberHtml = `<div style="max-height:300px;overflow-y:auto">`;
-      for (const memberId of availableMembers) {
-        const name = `Medlem ${memberId.slice(0,4)}...`;
+      for (const [memberId, memberName] of availableMembers) {
         memberHtml += `<div style="padding:10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px">${escapeHtml(name)}</span>
-          <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}')">Legg til</button>
+          <span style="font-size:13px">${escapeHtml(memberName)}</span>
+          <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}', '${escapeHtml(memberName)}')">Legg til</button>
         </div>`;
       }
       memberHtml += `</div>`;
@@ -1369,14 +1372,14 @@
     }
   };
 
-  window.addMemberToList = async (listId, memberId) => {
+  window.addMemberToList = async (listId, memberId, memberName) => {
     try {
       const sharedListRef = doc(db, "sharedLists", listId);
       const sharedListSnap = await getDoc(sharedListRef);
-      let members = sharedListSnap.data().members || [];
+      let members = sharedListSnap.data().members || {};  // {uid: name}
       
-      if (!members.includes(memberId)) {
-        members.push(memberId);
+      if (!members[memberId]) {
+        members[memberId] = memberName;
         await updateDoc(sharedListRef, { members });
         
         // Legg også til liste i brukerens sharedListIds
@@ -1465,8 +1468,8 @@
       const sharedListDoc = await getDoc(sharedListRef);
       
       if (sharedListDoc.exists()) {
-        let members = sharedListDoc.data().members || [];
-        members = members.filter(uid => uid !== memberUid);
+        let members = sharedListDoc.data().members || {};  // members = {uid: name}
+        delete members[memberUid];  // Fjern medlem
         await updateDoc(sharedListRef, { members });
         
         // Fjern fra brukerens sharedListIds
@@ -1611,11 +1614,11 @@
         const currentIds = userSnap.data()?.householdIds || [];
         if (currentIds.includes(code)) return;
         
-        // Legg bruker til medlemmer
+        // Legg bruker til medlemmer (som objekt {uid: name})
         const household = householdSnap.data();
-        const newMembers = (household.members || []);
-        if (!newMembers.includes(currentUser.uid)) {
-          newMembers.push(currentUser.uid);
+        const newMembers = (household.members || {});
+        if (!newMembers[currentUser.uid]) {
+          newMembers[currentUser.uid] = currentUser.displayName || "Bruker";
           await updateDoc(doc(db, "households", code), { members: newMembers });
         }
         
@@ -1625,12 +1628,12 @@
         const sharedIds = userSnap.data()?.sharedListIds || [];
         if (sharedIds.includes(code)) return;
         
-        // Legg bruker til medlemmer i sharedLists
+        // Legg bruker til medlemmer i sharedLists (som objekt {uid: name})
         const sharedListDoc = await getDoc(doc(db, "sharedLists", code));
         if (sharedListDoc.exists()) {
-          const members = sharedListDoc.data().members || [];
-          if (!members.includes(currentUser.uid)) {
-            members.push(currentUser.uid);
+          const members = sharedListDoc.data().members || {};
+          if (!members[currentUser.uid]) {
+            members[currentUser.uid] = currentUser.displayName || "Bruker";
             await updateDoc(doc(db, "sharedLists", code), { members });
           }
         }
@@ -1658,11 +1661,15 @@
     const code = generateCode();
     const name = customName.trim() || code;
     
-    // Opprett household
+    // Opprett household med members som objekt {uid: name}
+    const uid = currentUser?.uid || "";
+    const displayName = currentUser?.displayName || "Bruker";
     await setDoc(doc(db, "households", code), {
       createdAt: Date.now(),
-      createdBy: currentUser?.uid || "",
-      members: [currentUser?.uid || ""],
+      createdBy: uid,
+      members: {
+        [uid]: displayName  // {uid: name}
+      },
       name: "Min husholdning"  // Privat liste får fast navn
     });
     
@@ -1742,7 +1749,9 @@
         createdAt: Date.now(),
         name: name.trim(),
         createdBy: currentUser.uid,
-        members: [currentUser.uid]  // Oppretterer er første medlem
+        members: {
+          [currentUser.uid]: currentUser.displayName || "Bruker"  // {uid: name}
+        }
       });
       console.log("✓ sharedLists dokument opprettet");
 
