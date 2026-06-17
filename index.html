@@ -1304,22 +1304,14 @@
 
   window.openAddMemberModal = async (listId) => {
     try {
-      // Hent husstandsmedlemmer
-      const currentUserHousehold = userHouseholds.find(h => h.id === currentListId || 
-        // Hvis vi er på delt liste, må vi finne husholdningen fra brukerens householdIds
-        (currentListType === "shared" && auth.currentUser.uid) 
-      );
-      
-      if (!currentUserHousehold && currentListType === "shared") {
-        // For delt liste, bruk første husholdning
-        const firstHousehold = userHouseholds[0];
-        if (!firstHousehold) {
-          alert("Kunne ikke finne dine husstandsmedlemmer");
-          return;
-        }
+      // Hent husholdningen (første private liste)
+      const household = userHouseholds[0];
+      if (!household) {
+        alert("Kunne ikke finne husholdningen");
+        return;
       }
       
-      const householdRef = doc(db, "households", currentUserHousehold?.id || userHouseholds[0]?.id);
+      const householdRef = doc(db, "households", household.id);
       const householdSnap = await getDoc(householdRef);
       
       if (!householdSnap.exists()) {
@@ -1332,20 +1324,26 @@
       const sharedListSnap = await getDoc(sharedListRef);
       const currentMembers = sharedListSnap.data().members || [];
       
+      console.log("Husholdningsmedlemmer:", householdMembers);
+      console.log("Allerede med i listen:", currentMembers);
+      
+      // Filtrer ut medlemmer som allerede er med
+      const availableMembers = householdMembers.filter(m => !currentMembers.includes(m));
+      
+      console.log("Tilgjengelige medlemmer:", availableMembers);
+      
       // Vis modal med medlemmer som kan legges til
       let memberHtml = `<div style="max-height:300px;overflow-y:auto">`;
-      for (const memberId of householdMembers) {
-        if (!currentMembers.includes(memberId)) {
-          const name = `Medlem ${memberId.slice(0,4)}...`;
-          memberHtml += `<div style="padding:10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:13px">${escapeHtml(name)}</span>
-            <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}')">Legg til</button>
-          </div>`;
-        }
+      for (const memberId of availableMembers) {
+        const name = `Medlem ${memberId.slice(0,4)}...`;
+        memberHtml += `<div style="padding:10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px">${escapeHtml(name)}</span>
+          <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}')">Legg til</button>
+        </div>`;
       }
       memberHtml += `</div>`;
       
-      if (householdMembers.filter(m => !currentMembers.includes(m)).length === 0) {
+      if (availableMembers.length === 0) {
         memberHtml = `<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">Alle husstandsmedlemmer er allerede med</div>`;
       }
       
