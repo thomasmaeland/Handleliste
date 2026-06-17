@@ -1253,6 +1253,11 @@
           
           content.innerHTML = html;
           
+          // Legg til husstandsmedlem-knapp hvis admin
+          if (isOwner) {
+            content.innerHTML += `<br><button class="dd-opt" style="margin-top:8px;width:100%;background:var(--accent-light);color:var(--accent)" onclick="closeSettingsDropdown(); openAddMemberModal('${escapeHtml(currentListId)}')">➕ Legg til medlem</button>`;
+          }
+          
           // Lag slett/forlat-knapp basert på eierskap
           if (isOwner) {
             content.innerHTML += `<br><button class="dd-opt dd-opt-danger" style="margin-top:8px;width:100%" onclick="closeSettingsDropdown(); openDeleteListModal('shared', '${escapeHtml(currentListId)}')">🗑 Slett liste</button>`;
@@ -1296,6 +1301,104 @@
       }, 500);
     }
   }
+
+  window.openAddMemberModal = async (listId) => {
+    try {
+      // Hent husstandsmedlemmer
+      const currentUserHousehold = userHouseholds.find(h => h.id === currentListId || 
+        // Hvis vi er på delt liste, må vi finne husholdningen fra brukerens householdIds
+        (currentListType === "shared" && auth.currentUser.uid) 
+      );
+      
+      if (!currentUserHousehold && currentListType === "shared") {
+        // For delt liste, bruk første husholdning
+        const firstHousehold = userHouseholds[0];
+        if (!firstHousehold) {
+          alert("Kunne ikke finne dine husstandsmedlemmer");
+          return;
+        }
+      }
+      
+      const householdRef = doc(db, "households", currentUserHousehold?.id || userHouseholds[0]?.id);
+      const householdSnap = await getDoc(householdRef);
+      
+      if (!householdSnap.exists()) {
+        alert("Kunne ikke finne husholdningen");
+        return;
+      }
+      
+      const householdMembers = householdSnap.data().members || [];
+      const sharedListRef = doc(db, "sharedLists", listId);
+      const sharedListSnap = await getDoc(sharedListRef);
+      const currentMembers = sharedListSnap.data().members || [];
+      
+      // Vis modal med medlemmer som kan legges til
+      let memberHtml = `<div style="max-height:300px;overflow-y:auto">`;
+      for (const memberId of householdMembers) {
+        if (!currentMembers.includes(memberId)) {
+          const name = `Medlem ${memberId.slice(0,4)}...`;
+          memberHtml += `<div style="padding:10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:13px">${escapeHtml(name)}</span>
+            <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}')">Legg til</button>
+          </div>`;
+        }
+      }
+      memberHtml += `</div>`;
+      
+      if (householdMembers.filter(m => !currentMembers.includes(m)).length === 0) {
+        memberHtml = `<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">Alle husstandsmedlemmer er allerede med</div>`;
+      }
+      
+      // Vis i modal
+      const modal = document.getElementById("delete-list-modal");
+      const title = document.getElementById("delete-list-modal-title");
+      const msg = document.getElementById("delete-list-modal-msg");
+      const input = document.getElementById("delete-list-confirm-input");
+      const btn = document.getElementById("delete-list-confirm-btn");
+      
+      title.textContent = "Legg til medlem";
+      msg.innerHTML = memberHtml;
+      input.style.display = "none";
+      btn.textContent = "Lukk";
+      btn.style.background = "var(--bg)";
+      btn.style.color = "var(--ink)";
+      btn.onclick = () => modal.classList.remove("open");
+      
+      modal.classList.add("open");
+    } catch(e) {
+      console.error("Feil ved åpning av legg til medlem modal:", e);
+      alert("Feil: " + e.message);
+    }
+  };
+
+  window.addMemberToList = async (listId, memberId) => {
+    try {
+      const sharedListRef = doc(db, "sharedLists", listId);
+      const sharedListSnap = await getDoc(sharedListRef);
+      let members = sharedListSnap.data().members || [];
+      
+      if (!members.includes(memberId)) {
+        members.push(memberId);
+        await updateDoc(sharedListRef, { members });
+        
+        // Legg også til liste i brukerens sharedListIds
+        const userRef = doc(db, "users", memberId);
+        const userSnap = await getDoc(userRef);
+        let sharedIds = userSnap.data()?.sharedListIds || [];
+        if (!sharedIds.includes(listId)) {
+          sharedIds.push(listId);
+          await updateDoc(userRef, { sharedListIds: sharedIds });
+        }
+        
+        alert("Medlem lagt til!");
+        document.getElementById("delete-list-modal").classList.remove("open");
+        updateListInfoPanel();
+      }
+    } catch(e) {
+      console.error("Feil ved adding medlem:", e);
+      alert("Feil: " + e.message);
+    }
+  };
 
   window.openDeleteListModal = (type, listId) => {
     const listName = type === "private" ? "Min husholdning" : (userSharedLists.find(l => l.id === listId)?.name || listId);
