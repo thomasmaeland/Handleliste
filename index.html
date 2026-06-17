@@ -1064,8 +1064,8 @@
     userSharedLists = [];
     for (const id of sharedIds) {
       try {
-        const metaSnap = await getDoc(doc(db, "lists", id, "meta", "info"));
-        const name = metaSnap.data()?.name || id;
+        const sharedSnap = await getDoc(doc(db, "sharedLists", id));
+        const name = sharedSnap.data()?.name || id;
         userSharedLists.push({ id, name, type: "shared" });
       } catch(e) {
         userSharedLists.push({ id, name: id, type: "shared" });
@@ -1299,19 +1299,27 @@
     const code = generateCode();
 
     try {
-      // Opprett delt liste
+      // Opprett delt liste-metadata (uten å trigge access-regler)
+      await setDoc(doc(db, "sharedLists", code), {
+        createdAt: Date.now(),
+        name: name.trim(),
+        createdBy: currentUser?.uid
+      });
+
+      // Opprett tom liste i lists/{code} (vil nå fungere fordi vi er medlem av sharedLists)
       await setDoc(doc(db, "lists", code, "meta", "info"), {
         createdAt: Date.now(),
         isShared: true,
-        name: name.trim(),
-        createdBy: currentUser?.uid
+        name: name.trim()
       });
 
       // Legg til i brukerens sharedListIds
       const userRef = doc(db, "users", currentUser?.uid);
       const userSnap = await getDoc(userRef);
       let sharedIds = userSnap.data()?.sharedListIds || [];
-      sharedIds.push(code);
+      if (!sharedIds.includes(code)) {
+        sharedIds.push(code);
+      }
 
       await updateDoc(userRef, { sharedListIds: sharedIds });
 
@@ -1324,7 +1332,7 @@
       document.getElementById("create-shared-list-modal").classList.remove("open");
     } catch(e) {
       console.error("Feil ved opprettelse av delt liste:", e);
-      alert("Kunne ikke opprette delt liste");
+      alert("Kunne ikke opprette delt liste. Sjekk konsollen.");
     }
   }
 
