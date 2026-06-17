@@ -382,6 +382,7 @@
             <option value="">Velg liste...</option>
           </select>
           <button class="dd-opt" onclick="closeSettingsDropdown(); openNewListModal()">+ Ny liste</button>
+          <button class="dd-opt" onclick="closeSettingsDropdown(); openCreateSharedListModal()">+ Delt handleliste</button>
           <button class="dd-opt" onclick="closeSettingsDropdown(); openInviteModal()">👥 Inviter</button>
           <button class="dd-opt dd-opt-danger" onclick="closeSettingsDropdown(); deleteCurrentList()">🗑 Slett liste</button>
           <div class="dd-divider"></div>
@@ -657,6 +658,21 @@
     <div style="display:flex;gap:8px;margin-top:1rem">
       <button class="modal-input" id="new-list-create-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
       <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('new-list-modal').classList.remove('open')">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE SHARED HANDLELISTE MODAL -->
+<div class="modal-overlay" id="create-shared-list-modal">
+  <div class="modal">
+    <div class="modal-title">Delt handleliste</div>
+    <div class="modal-row">
+      <label class="modal-label">Navn</label>
+      <input class="modal-input" id="shared-list-name-input" type="text" placeholder="F.eks. Sommerferie, Venner" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1rem">
+      <button class="modal-input" id="create-shared-list-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
+      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('create-shared-list-modal').classList.remove('open')">Avbryt</button>
     </div>
   </div>
 </div>
@@ -1268,13 +1284,57 @@
     document.getElementById("new-list-modal").classList.remove("open");
   }
 
-  document.getElementById("new-list-create-btn").addEventListener("click", async () => {
-    const name = document.getElementById("new-list-name-input").value;
-    await createNewList(name);
+  window.openCreateSharedListModal = () => {
+    document.getElementById("create-shared-list-modal").classList.add("open");
+    document.getElementById("shared-list-name-input").value = "";
+    document.getElementById("shared-list-name-input").focus();
+  };
+
+  async function createSharedList(name) {
+    if (!name.trim()) {
+      alert("Skriv inn navn på listen");
+      return;
+    }
+
+    const code = generateCode();
+
+    try {
+      // Opprett delt liste
+      await setDoc(doc(db, "lists", code, "meta", "info"), {
+        createdAt: Date.now(),
+        isShared: true,
+        name: name.trim(),
+        createdBy: currentUser?.uid
+      });
+
+      // Legg til i brukerens sharedListIds
+      const userRef = doc(db, "users", currentUser?.uid);
+      const userSnap = await getDoc(userRef);
+      let sharedIds = userSnap.data()?.sharedListIds || [];
+      sharedIds.push(code);
+
+      await updateDoc(userRef, { sharedListIds: sharedIds });
+
+      // Reload og velg ny liste
+      await loadUserHouseholds(currentUser);
+      updateListSelector();
+      changeList(`shared:${code}`);
+
+      alert(`Delt handleliste "${name}" opprettet!`);
+      document.getElementById("create-shared-list-modal").classList.remove("open");
+    } catch(e) {
+      console.error("Feil ved opprettelse av delt liste:", e);
+      alert("Kunne ikke opprette delt liste");
+    }
+  }
+
+  document.getElementById("create-shared-list-btn").addEventListener("click", async () => {
+    const name = document.getElementById("shared-list-name-input").value;
+    await createSharedList(name);
   });
 
-  document.getElementById("new-list-name-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("new-list-create-btn").click();
+  document.getElementById("shared-list-name-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("create-shared-list-btn").click();
   });
 
   onAuthStateChanged(auth, async (user) => {
