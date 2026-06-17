@@ -972,7 +972,7 @@
     await setDoc(doc(db, "households", code), {
       createdAt: Date.now(),
       createdBy: user.uid,
-      members: [user.uid]
+      members: { [user.uid]: user.displayName || user.email?.split('@')[0] || "Bruker" }
     }, { merge: true });
 
     await setDoc(doc(db, "users", user.uid), {
@@ -1009,15 +1009,25 @@
       await setDoc(householdRef, {
         createdAt: Date.now(),
         createdBy: user.uid,
-        members: [user.uid],
+        members: { [user.uid]: user.displayName || user.email?.split('@')[0] || "Bruker" },
         migratedFromLegacyList: true
       }, { merge: true });
       return;
     }
 
-    const members = householdSnap.data().members || [];
-    if (!members.includes(user.uid)) {
-      await setDoc(householdRef, { members: [...members, user.uid] }, { merge: true });
+    const members = householdSnap.data().members || {};
+    const isMap = !Array.isArray(members);
+    if (isMap) {
+      if (!members[user.uid]) {
+        members[user.uid] = user.displayName || user.email?.split('@')[0] || "Bruker";
+        await setDoc(householdRef, { members }, { merge: true });
+      }
+    } else {
+      // Migrér fra array til map
+      const newMembers = {};
+      for (const uid of members) newMembers[uid] = "Bruker";
+      newMembers[user.uid] = user.displayName || user.email?.split('@')[0] || "Bruker";
+      await setDoc(householdRef, { members: newMembers }, { merge: true });
     }
   }
 
@@ -1355,24 +1365,10 @@
         .filter(([uid]) => !currentMembers.hasOwnProperty(uid));
       
       console.log("Tilgjengelige medlemmer:", availableMembers);
-      console.log("Type av availableMembers:", typeof availableMembers, Array.isArray(availableMembers));
       
       // Vis modal med medlemmer som kan legges til
       let memberHtml = `<div style="max-height:300px;overflow-y:auto">`;
-      for (const item of availableMembers) {
-        console.log("Item:", item, typeof item);
-        let memberId, memberName;
-        
-        // Håndter både [uid, name] tuples og {uid, name} objekter
-        if (Array.isArray(item)) {
-          [memberId, memberName] = item;
-        } else if (typeof item === 'object') {
-          memberId = Object.keys(item)[0];
-          memberName = item[memberId];
-        }
-        
-        console.log("memberId:", memberId, "memberName:", memberName);
-        
+      for (const [memberId, memberName] of availableMembers) {
         memberHtml += `<div style="padding:10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
           <span style="font-size:13px">${escapeHtml(String(memberName))}</span>
           <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}', '${escapeHtml(String(memberName))}')">Legg til</button>
@@ -3172,14 +3168,21 @@ document.getElementById("smart-confirm-btn").addEventListener("click", async () 
         await setDoc(householdRef, {
           createdAt: Date.now(),
           createdBy: currentUser.uid,
-          members: [currentUser.uid],
+          members: { [currentUser.uid]: currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker" },
           migratedFromLegacyList: true
         }, { merge: true });
       } else {
         // Legg til bruker i eksisterende husholdning
-        const members = householdSnap.data().members || [];
-        if (!members.includes(currentUser.uid)) {
-          await setDoc(householdRef, { members: [...members, currentUser.uid] }, { merge: true });
+        const members = householdSnap.data().members || {};
+        if (Array.isArray(members)) {
+          // Migrér fra array til map
+          const newMembers = {};
+          for (const uid of members) newMembers[uid] = "Bruker";
+          newMembers[currentUser.uid] = currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker";
+          await setDoc(householdRef, { members: newMembers }, { merge: true });
+        } else if (!members[currentUser.uid]) {
+          members[currentUser.uid] = currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker";
+          await setDoc(householdRef, { members }, { merge: true });
         }
       }
 
