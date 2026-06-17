@@ -1355,13 +1355,27 @@
         .filter(([uid]) => !currentMembers.hasOwnProperty(uid));
       
       console.log("Tilgjengelige medlemmer:", availableMembers);
+      console.log("Type av availableMembers:", typeof availableMembers, Array.isArray(availableMembers));
       
       // Vis modal med medlemmer som kan legges til
       let memberHtml = `<div style="max-height:300px;overflow-y:auto">`;
-      for (const [memberId, memberName] of availableMembers) {
+      for (const item of availableMembers) {
+        console.log("Item:", item, typeof item);
+        let memberId, memberName;
+        
+        // Håndter både [uid, name] tuples og {uid, name} objekter
+        if (Array.isArray(item)) {
+          [memberId, memberName] = item;
+        } else if (typeof item === 'object') {
+          memberId = Object.keys(item)[0];
+          memberName = item[memberId];
+        }
+        
+        console.log("memberId:", memberId, "memberName:", memberName);
+        
         memberHtml += `<div style="padding:10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px">${escapeHtml(memberName)}</span>
-          <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}', '${escapeHtml(memberName)}')">Legg til</button>
+          <span style="font-size:13px">${escapeHtml(String(memberName))}</span>
+          <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}', '${escapeHtml(String(memberName))}')">Legg til</button>
         </div>`;
       }
       memberHtml += `</div>`;
