@@ -1131,6 +1131,7 @@
     startListeningPackTours();
     loadHistory();
     updateListInfoPanel();
+    saveLastList();  // Lagre sist brukte liste
   };
 
   window.deleteCurrentList = async () => {
@@ -1273,6 +1274,27 @@
     const value = e.target.value;
     console.log("Dropdown endret til:", value);
     changeList(value);
+  }
+
+  // Lagre sist brukte liste når den endres
+  function saveLastList() {
+    if (currentListType && currentListId) {
+      localStorage.setItem("lastListType", currentListType);
+      localStorage.setItem("lastListId", currentListId);
+    }
+  }
+
+  // Gjenoppretter sist brukte liste ved lasting
+  function restoreLastList() {
+    const savedType = localStorage.getItem("lastListType");
+    const savedId = localStorage.getItem("lastListId");
+    
+    if (savedType && savedId) {
+      // Vent litt for at listene er lastet
+      setTimeout(() => {
+        changeList(`${savedType}:${savedId}`);
+      }, 500);
+    }
   }
 
   window.openDeleteListModal = (type, listId) => {
@@ -1662,6 +1684,7 @@
         const firstListId = await loadUserHouseholds(user);
         LIST_ID = firstListId;
         updateListSelector();
+        restoreLastList();  // Gjenopprett sist brukte liste
       } catch(e) {
         console.error("Kunne ikke hente husholdninger", e);
         alert("Kunne ikke hente husholdninger. Prøv å logge inn på nytt.");
