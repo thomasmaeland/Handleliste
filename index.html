@@ -1299,28 +1299,32 @@
     const code = generateCode();
 
     try {
+      console.log("1. Legger bruker til sharedListIds...");
       // Legg til i brukerens sharedListIds FØRST
-      const userRef = doc(db, "users", currentUser?.uid);
+      const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
       let sharedIds = userSnap.data()?.sharedListIds || [];
       if (!sharedIds.includes(code)) {
         sharedIds.push(code);
       }
       await updateDoc(userRef, { sharedListIds: sharedIds });
+      console.log("✓ Bruker lagt til sharedListIds");
 
-      // Nå opprett delt liste-metadata
+      console.log("2. Oppretter sharedLists dokument...");
       await setDoc(doc(db, "sharedLists", code), {
         createdAt: Date.now(),
         name: name.trim(),
-        createdBy: currentUser?.uid
+        createdBy: currentUser.uid
       });
+      console.log("✓ sharedLists dokument opprettet");
 
-      // Opprett tom liste i lists/{code}
+      console.log("3. Oppretter lists meta dokument...");
       await setDoc(doc(db, "lists", code, "meta", "info"), {
         createdAt: Date.now(),
         isShared: true,
         name: name.trim()
       });
+      console.log("✓ lists meta dokument opprettet");
 
       // Reload og velg ny liste
       await loadUserHouseholds(currentUser);
@@ -1331,7 +1335,9 @@
       document.getElementById("create-shared-list-modal").classList.remove("open");
     } catch(e) {
       console.error("Feil ved opprettelse av delt liste:", e);
-      alert("Kunne ikke opprette delt liste: " + e.message);
+      console.error("Feiltype:", e.code);
+      console.error("Fullstendig feil:", e);
+      alert("Feil: " + e.message);
     }
   }
 
