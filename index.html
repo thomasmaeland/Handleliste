@@ -52,7 +52,9 @@
     .avatar { width:32px; height:32px; border-radius:50%; background:var(--accent-light); color:var(--accent); font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1.5px solid var(--accent); transition:background .25s, color .25s, border-color .25s; user-select:none; }
     body.dark .avatar { background:var(--gold-dim); color:var(--gold); border-color:var(--border-gold); }
 
-    /* TEMA/INNSTILLINGER DROPDOWN */
+    /* OFFLINE INDICATOR */
+    #offline-banner { display:none; background:#ff9500; color:white; padding:8px 1.25rem; text-align:center; font-size:13px; font-weight:500; }
+    #offline-banner.show { display:block; }
     .settings-dropdown { display:none; position:absolute; top:40px; right:0; background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; min-width:185px; z-index:200; box-shadow:var(--shadow); }
     .settings-dropdown.open { display:block; }
     .dd-section-label { font-size:10px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); padding:10px 14px 4px; }
@@ -362,6 +364,7 @@
 </div>
 
 <div id="app-screen" style="display:none">
+  <div id="offline-banner">📵 Du er offline – endringer synkroniseres når nett kommer tilbake</div>
   <header>
     <div class="header-top">
       <div class="app-title">Handleliste</div>
@@ -849,7 +852,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-  import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy, setDoc, getDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
   import { PRODUCTS, matchProduct, guessCategoryFromDB } from '/products.js';
 
@@ -866,6 +869,15 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
   const messagingVapidKey = "BPvPJGtqU_7ewG0u98mNnW5LJcod5vYZ88XMVZIp7nf9Tu8RWWj9vrMkX75IqssXlMMnJ7EFLPGVHgmqrkTGEi8";
+
+  // Aktiver offline persistence for Firestore
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn("Offline persistence ikke tillatt (flere tabs åpne?)");
+    } else if (err.code === 'unimplemented') {
+      console.warn("Offline persistence ikke støttet i denne nettleseren");
+    }
+  });
 
   // Kategori-rekkefølge som i butikken
   const CAT_ORDER = ["frukt-gront","meieri","brod-bakeri","kjott-fisk","tørrvarer","frysevarer","drikke","snacks","hygiene","annet"];
@@ -4118,6 +4130,43 @@ function renderShoppingMode() {
 
   body.innerHTML = html || `<div class="empty-state"><div class="big">✅</div><p>Alt er handlet!</p></div>`;
 }
+
+// Registrer Service Worker for offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').then((registration) => {
+      console.log('Service Worker registrert:', registration);
+    }).catch((error) => {
+      console.log('Service Worker registrering feilet:', error);
+    });
+  });
+}
+
+// Vis/skjul offline-banner basert på nettverkstilstand
+function updateOfflineBanner() {
+  const banner = document.getElementById('offline-banner');
+  if (!banner) return;
+  
+  if (navigator.onLine) {
+    banner.classList.remove('show');
+  } else {
+    banner.classList.add('show');
+  }
+}
+
+// Sjekk tilstand ved lasting
+updateOfflineBanner();
+
+// Lytt på online/offline events
+window.addEventListener('online', () => {
+  console.log('Du er nå online!');
+  updateOfflineBanner();
+});
+
+window.addEventListener('offline', () => {
+  console.log('Du er nå offline');
+  updateOfflineBanner();
+});
   
 </script>
 </body>
