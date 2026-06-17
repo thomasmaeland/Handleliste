@@ -1335,14 +1335,14 @@
       if (Array.isArray(householdMembers)) {
         const temp = {};
         for (const uid of householdMembers) {
-          temp[uid] = `Medlem ${uid.slice(0,4)}...`;
+          temp[uid] = `Medlem`;
         }
         householdMembers = temp;
       }
       if (Array.isArray(currentMembers)) {
         const temp = {};
         for (const uid of currentMembers) {
-          temp[uid] = `Medlem ${uid.slice(0,4)}...`;
+          temp[uid] = `Medlem`;
         }
         currentMembers = temp;
       }
