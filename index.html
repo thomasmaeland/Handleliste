@@ -1055,10 +1055,13 @@ let LIST_ID = null;
         privateIds.push(data.householdId);
       }
       
-      // Delte lister (sharedListIds)
+   // Delte lister (sharedListIds)
       if (Array.isArray(data.sharedListIds)) {
         sharedIds = [...data.sharedListIds];
       }
+
+      // Tavla bindes til den FELLES husstanden (householdId), ikke vilkårlig "første liste"
+      HOUSEHOLD_ID = data.householdId || privateIds[0] || user.uid;
     }
     
     // Hvis ingen private lister, opprett en
@@ -1824,8 +1827,7 @@ let LIST_ID = null;
       currentUser = user;
       try {
         const firstListId = await loadUserHouseholds(user);
-      LIST_ID = firstListId;
-        HOUSEHOLD_ID = firstListId;
+       LIST_ID = firstListId;
         updateListSelector();
         restoreLastList();  // Gjenopprett sist brukte liste
       } catch(e) {
