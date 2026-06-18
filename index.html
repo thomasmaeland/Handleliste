@@ -854,7 +854,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-  import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy, setDoc, getDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, where, orderBy, setDoc, getDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
   import { PRODUCTS, matchProduct, guessCategoryFromDB } from '/products.js';
 
@@ -1059,6 +1059,19 @@ let LIST_ID = null;
       if (Array.isArray(data.sharedListIds)) {
         sharedIds = [...data.sharedListIds];
       }
+
+      // Auto-oppdag delte lister der jeg er medlem, men som mangler i sharedListIds
+      try {
+        const memberSnap = await getDocs(
+          query(collection(db, "sharedLists"), where("memberUids", "array-contains", user.uid))
+        );
+        let nye = false;
+        memberSnap.forEach(d => { if (!sharedIds.includes(d.id)) { sharedIds.push(d.id); nye = true; } });
+        if (nye) await updateDoc(userRef, { sharedListIds: sharedIds });
+      } catch(e) {
+        console.warn("Kunne ikke auto-oppdage delte lister:", e);
+      }
+      
 
       // Tavla bindes til den FELLES husstanden (householdId), ikke vilkårlig "første liste"
       HOUSEHOLD_ID = data.householdId || privateIds[0] || user.uid;
@@ -1410,11 +1423,13 @@ let LIST_ID = null;
     try {
       const sharedListRef = doc(db, "sharedLists", listId);
       const sharedListSnap = await getDoc(sharedListRef);
-      let members = sharedListSnap.data().members || {};  // {uid: name}
+         let members = sharedListSnap.data().members || {};  // {uid: name}
+      let memberUids = sharedListSnap.data().memberUids || Object.keys(members);
       
       if (!members[memberId]) {
         members[memberId] = memberName;
-        await updateDoc(sharedListRef, { members });
+        if (!memberUids.includes(memberId)) memberUids.push(memberId);
+        await updateDoc(sharedListRef, { members, memberUids });
         
         // NB: Vi kan ikke oppdatere andre brukeres dokument direkte.
         // Katrine vil se listen neste gang hun åpner appen via invite-link.
@@ -1499,8 +1514,9 @@ let LIST_ID = null;
       
       if (sharedListDoc.exists()) {
         let members = sharedListDoc.data().members || {};  // members = {uid: name}
+        let memberUids = (sharedListDoc.data().memberUids || Object.keys(members)).filter(u => u !== memberUid);
         delete members[memberUid];  // Fjern medlem
-        await updateDoc(sharedListRef, { members });
+        await updateDoc(sharedListRef, { members, memberUids });
         
         // NB: Vi kan ikke oppdatere andre brukeres dokument direkte.
         // Medlemmet fjernes fra members-listen, og mister tilgang.
@@ -1660,10 +1676,12 @@ let LIST_ID = null;
         // Legg bruker til medlemmer i sharedLists (som objekt {uid: name})
         const sharedListDoc = await getDoc(doc(db, "sharedLists", code));
         if (sharedListDoc.exists()) {
-          const members = sharedListDoc.data().members || {};
+         const members = sharedListDoc.data().members || {};
+          let memberUids = sharedListDoc.data().memberUids || Object.keys(members);
           if (!members[currentUser.uid]) {
             members[currentUser.uid] = invitedMemberName;
-            await updateDoc(doc(db, "sharedLists", code), { members });
+            if (!memberUids.includes(currentUser.uid)) memberUids.push(currentUser.uid);
+            await updateDoc(doc(db, "sharedLists", code), { members, memberUids });
           }
         }
         
@@ -1785,8 +1803,9 @@ let LIST_ID = null;
         name: name.trim(),
         createdBy: currentUser.uid,
         members: {
-          [currentUser.uid]: memberName  // Bruk memberName som er displayName eller email
-        }
+          [currentUser.uid]: memberName
+        },
+        memberUids: [currentUser.uid]
       });
       console.log("✓ sharedLists dokument opprettet");
 
