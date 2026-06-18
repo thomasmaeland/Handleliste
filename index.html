@@ -1150,9 +1150,12 @@ let LIST_ID = null;
       return;
     }
     
-    currentListType = type;
+     currentListType = type;
     currentListId = id;
     LIST_ID = id;
+
+    const _sel = document.getElementById("list-selector-menu");
+    if (_sel) _sel.value = `${type}:${id}`;
     
     console.log("Bytter til liste:", { type, id, LIST_ID });
     startListeningWithPrice();
@@ -1324,11 +1327,8 @@ let LIST_ID = null;
     const savedType = localStorage.getItem("lastListType");
     const savedId = localStorage.getItem("lastListId");
     
-    if (savedType && savedId) {
-      // Vent litt for at listene er lastet
-      setTimeout(() => {
-        changeList(`${savedType}:${savedId}`);
-      }, 500);
+  if (savedType && savedId) {
+      changeList(`${savedType}:${savedId}`);
     }
   }
 
