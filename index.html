@@ -1525,8 +1525,8 @@
     try {
       if (type === "shared") {
         // Slett delt liste (kun oppretterer kan gjøre dette)
-        await deleteDoc(doc(db, "sharedLists", listId));
-        await deleteDoc(doc(db, "lists", listId, "meta", "info"));
+  await deleteDoc(doc(db, "lists", listId, "meta", "info"));
+        await deleteDoc(doc(db, "sharedLists", listId));     
         // Fjern fra alle brukeres sharedListIds... (This is complex, so we'll skip for now)
       }
       
