@@ -946,7 +946,8 @@
   let selectedMonthKey = null;
   let editingHistoryTripId = null;
   let editingHistoryItemIndex = null;
-  let LIST_ID = null;
+let LIST_ID = null;
+  let HOUSEHOLD_ID = null;   // fast husstandskode for tavla – endres ikke ved listebytte
 
   // AUTH
   document.getElementById("google-login-btn").addEventListener("click", async () => {
@@ -1823,7 +1824,8 @@
       currentUser = user;
       try {
         const firstListId = await loadUserHouseholds(user);
-        LIST_ID = firstListId;
+      LIST_ID = firstListId;
+        HOUSEHOLD_ID = firstListId;
         updateListSelector();
         restoreLastList();  // Gjenopprett sist brukte liste
       } catch(e) {
@@ -1845,6 +1847,7 @@
     } else {
       currentUser = null;
       LIST_ID = null;
+      HOUSEHOLD_ID = null;
       document.getElementById("login-screen").style.display = "flex";
       document.getElementById("app-screen").style.display = "none";
       if (unsubscribeList) unsubscribeList();
@@ -3765,10 +3768,10 @@ await addDoc(historyRef, {
 
 
   // FAMILY BOARD / TASKS
-  function startListeningTasks() {
-    if (!LIST_ID) return;
+ function startListeningTasks() {
+    if (!HOUSEHOLD_ID) return;
     if (unsubscribeTasks) unsubscribeTasks();
-    const q = query(collection(db, "lists", LIST_ID, "tasks"), orderBy("createdAt", "asc"));
+    const q = query(collection(db, "lists", HOUSEHOLD_ID, "tasks"), orderBy("createdAt", "asc"));
     unsubscribeTasks = onSnapshot(q, snapshot => {
       familyBoardItems = [];
       snapshot.forEach(d => familyBoardItems.push({ id:d.id, ...d.data() }));
@@ -3934,7 +3937,7 @@ await addDoc(historyRef, {
     const repeat = document.getElementById("board-repeat-input").value || "none";
     const reminderValue = document.getElementById("board-reminder-input").value || "none";
 
-    await addDoc(collection(db, "lists", LIST_ID, "tasks"), {
+    await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
       title,
       type,
       assignedTo,
@@ -3972,7 +3975,7 @@ await addDoc(historyRef, {
   });
 
   window.toggleBoardTask = async (id, completed) => {
-    await updateDoc(doc(db, "lists", LIST_ID, "tasks", id), {
+    await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id), {
       completed: !completed,
       completedAt: !completed ? Date.now() : null,
       updatedAt: Date.now()
@@ -3980,7 +3983,7 @@ await addDoc(historyRef, {
   };
 
   window.deleteBoardTask = async (id) => {
-    await deleteDoc(doc(db, "lists", LIST_ID, "tasks", id));
+    await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id));
   };
 
 
@@ -4235,7 +4238,7 @@ await addDoc(historyRef, {
           const snapshot = { ...task };
           await deleteBoardTask(task.id);
           showUndoToast(`${task.title} slettet`, async () => {
-            await addDoc(collection(db, "lists", LIST_ID, "tasks"), {
+            await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
               title: snapshot.title, type: snapshot.type || "task",
               assignedTo: snapshot.assignedTo || "",
               relatedPerson: snapshot.relatedPerson || "",
