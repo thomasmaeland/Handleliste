@@ -598,10 +598,12 @@
             <option value="barn">🧸 Barn</option>
             <option value="diverse" selected>📦 Diverse</option>
           </select>
-          <div class="add-form" style="margin-bottom:1rem">
+          <div class="add-form" style="margin-bottom:.5rem">
             <input class="add-input" id="pakke-item-input" type="text" placeholder="Hva skal pakkes?" autocomplete="off" />
+            <input class="add-input" id="pakke-qty-input" type="number" min="1" value="1" inputmode="numeric" style="max-width:60px;text-align:center" title="Antall" />
             <button class="add-btn" id="pakke-item-add-btn" type="button">+</button>
           </div>
+          <button class="list-action-btn" id="pakke-add-all-btn" type="button" style="width:100%;margin-bottom:1rem;font-size:13px;justify-content:center">👥 Legg til for alle på turen</button>
           <div id="pakke-items-list">
             <div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg person først</p></div>
           </div>
@@ -2055,7 +2057,7 @@ let LIST_ID = null;
         html += `
           <div class="item ${it.done ? "done" : ""}" style="margin-bottom:6px">
             <button class="check-btn" onclick="togglePackItem('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
-            <div class="item-main"><div class="item-name">${escapeHtml(it.navn)}</div></div>
+            <div class="item-main"><div class="item-name">${escapeHtml(it.navn)}${it.qty > 1 ? ` <span style="color:var(--ink3);font-size:13px">×${it.qty}</span>` : ""}</div></div>
             <button class="delete-btn" onclick="deletePackItem('${it.id}')" title="Fjern">×</button>
           </div>`;
       });
@@ -2073,24 +2075,55 @@ let LIST_ID = null;
     await deleteDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id));
   };
 
+  function readPackQty() {
+    const q = parseInt(document.getElementById("pakke-qty-input")?.value, 10);
+    return (!q || q < 1) ? 1 : q;
+  }
+
+  async function addPackItem(navn, person, cat, qty) {
+    await addDoc(collection(db, "lists", LIST_ID, "packlists", currentTourId, "items"), {
+      navn,
+      qty: qty || 1,
+      person,
+      cat: cat || "diverse",
+      done: false,
+      createdAt: Date.now(),
+      addedBy: currentUser?.displayName || ""
+    });
+  }
+
   document.getElementById("pakke-item-add-btn").addEventListener("click", async () => {
     if (!currentTourId || !currentPerson) return;
     const input = document.getElementById("pakke-item-input");
     const navn = input.value.trim();
     if (!navn) return;
-    await addDoc(collection(db, "lists", LIST_ID, "packlists", currentTourId, "items"), {
-      navn,
-      person: currentPerson,
-      cat: document.getElementById("pakke-cat-input").value || "diverse",
-      done: false,
-      createdAt: Date.now(),
-      addedBy: currentUser?.displayName || ""
-    });
+    const cat = document.getElementById("pakke-cat-input").value || "diverse";
+    await addPackItem(navn, currentPerson, cat, readPackQty());
     input.value = "";
+    document.getElementById("pakke-qty-input").value = "1";
+    input.focus();
+  });
+
+  document.getElementById("pakke-add-all-btn").addEventListener("click", async () => {
+    if (!currentTourId) return;
+    const input = document.getElementById("pakke-item-input");
+    const navn = input.value.trim();
+    if (!navn) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    const persons = (tour?.persons || []);
+    if (persons.length === 0) { alert("Legg til personer på turen først."); return; }
+    const cat = document.getElementById("pakke-cat-input").value || "diverse";
+    const qty = readPackQty();
+    for (const p of persons) await addPackItem(navn, p, cat, qty);
+    input.value = "";
+    document.getElementById("pakke-qty-input").value = "1";
     input.focus();
   });
 
   document.getElementById("pakke-item-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("pakke-item-add-btn").click();
+  });
+  document.getElementById("pakke-qty-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("pakke-item-add-btn").click();
   });
 
