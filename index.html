@@ -589,7 +589,7 @@
           </div>
         </div>
 
-        <div id="pakke-items-area">
+        <div id="pakke-items-area" style="display:none">
           <select class="modal-select" id="pakke-cat-input" style="margin-bottom:.75rem;width:100%">
             <option value="klar">👕 Klær</option>
             <option value="toalett">🧴 Toalettsaker</option>
@@ -1963,6 +1963,7 @@ let LIST_ID = null;
     document.getElementById("pakke-tour-title").textContent = tour.turNavn;
     document.getElementById("pakke-tour-date").textContent = tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : "";
     document.getElementById("pakke-tour-desc").textContent = tour.beskrivelse || "";
+    document.getElementById("pakke-items-area").style.display = "none";
 
     const personSelect = document.getElementById("pakke-person-select");
     const updatePersonDropdown = () => {
@@ -2106,18 +2107,19 @@ let LIST_ID = null;
 
   document.getElementById("pakke-add-all-btn").addEventListener("click", async () => {
     if (!currentTourId) return;
-    const input = document.getElementById("pakke-item-input");
-    const navn = input.value.trim();
-    if (!navn) return;
     const tour = packTours.find(t => t.id === currentTourId);
     const persons = (tour?.persons || []);
-    if (persons.length === 0) { alert("Legg til personer på turen først."); return; }
+    if (persons.length === 0) { alert("Legg til minst én person på turen først (i feltet 'Legg til ny person')."); return; }
+    const input = document.getElementById("pakke-item-input");
+    const navn = input.value.trim();
+    if (!navn) { alert("Skriv hva som skal pakkes i feltet 'Hva skal pakkes?' først."); input.focus(); return; }
     const cat = document.getElementById("pakke-cat-input").value || "diverse";
     const qty = readPackQty();
     for (const p of persons) await addPackItem(navn, p, cat, qty);
     input.value = "";
     document.getElementById("pakke-qty-input").value = "1";
     input.focus();
+    alert(`"${navn}" lagt til for ${persons.length} ${persons.length === 1 ? "person" : "personer"}.`);
   });
 
   document.getElementById("pakke-item-input").addEventListener("keydown", (e) => {
