@@ -1968,6 +1968,9 @@ let LIST_ID = null;
     const personSelect = document.getElementById("pakke-person-select");
     const updatePersonDropdown = () => {
       personSelect.innerHTML = '<option value="">Velg person...</option>';
+      if ((tour.persons || []).length > 0) {
+        personSelect.innerHTML += '<option value="__alle__">👥 Alle (oversikt)</option>';
+      }
       (tour.persons || []).forEach(p => {
         personSelect.innerHTML += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`;
       });
@@ -2020,7 +2023,18 @@ let LIST_ID = null;
     }
     currentPerson = person;
     document.getElementById("pakke-items-area").style.display = "block";
-    document.getElementById("pakke-item-input").focus();
+    if (person === "__alle__") {
+      // Oversiktsmodus: skjul inntasting, vis bare samlet liste
+      document.getElementById("pakke-cat-input").style.display = "none";
+      document.querySelector("#pakke-items-area .add-form").style.display = "none";
+      document.getElementById("pakke-add-all-btn").style.display = "none";
+      renderPackItems();
+    } else {
+      document.getElementById("pakke-cat-input").style.display = "";
+      document.querySelector("#pakke-items-area .add-form").style.display = "";
+      document.getElementById("pakke-add-all-btn").style.display = "";
+      document.getElementById("pakke-item-input").focus();
+    }
   });
 
   function startListeningPackItems(tourId) {
@@ -2041,6 +2055,40 @@ let LIST_ID = null;
       container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg person først</p></div>`;
       return;
     }
+
+    // Oversiktsmodus: vis alle personer med hver sin liste
+    if (currentPerson === "__alle__") {
+      const tour = packTours.find(t => t.id === currentTourId);
+      const persons = (tour?.persons || []);
+      if (persons.length === 0 || packItems.length === 0) {
+        container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Ingenting lagt til ennå</p></div>`;
+        return;
+      }
+      let html = "";
+      persons.forEach(p => {
+        const items = packItems.filter(it => it.person === p);
+        const packed = items.filter(it => it.done).length;
+        html += `<div style="margin:1rem 0 .4rem;font-family:'DM Serif Display',serif;font-size:1.05rem;display:flex;justify-content:space-between;align-items:baseline">
+          <span>${escapeHtml(p)}</span>
+          <span style="font-size:12px;color:var(--ink3)">${packed}/${items.length} pakket</span>
+        </div>`;
+        if (items.length === 0) {
+          html += `<div style="font-size:13px;color:var(--ink3);padding:2px 0 6px">Ingenting ennå</div>`;
+        } else {
+          items.forEach(it => {
+            html += `
+              <div class="item ${it.done ? "done" : ""}" style="margin-bottom:6px">
+                <button class="check-btn" onclick="togglePackItem('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
+                <div class="item-main"><div class="item-name">${escapeHtml(it.navn)}${it.qty > 1 ? ` <span style="color:var(--ink3);font-size:13px">×${it.qty}</span>` : ""}</div></div>
+                <button class="delete-btn" onclick="deletePackItem('${it.id}')" title="Fjern">×</button>
+              </div>`;
+          });
+        }
+      });
+      container.innerHTML = html;
+      return;
+    }
+
     const personItems = packItems.filter(it => it.person === currentPerson);
     if (personItems.length === 0) {
       container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Ingen items for ${escapeHtml(currentPerson)}</p></div>`;
