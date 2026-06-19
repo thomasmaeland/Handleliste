@@ -1884,6 +1884,10 @@ let LIST_ID = null;
       renderSuggestions();
       loadHistory();
       handleInviteParameter();
+      try {
+        const savedTab = localStorage.getItem("hl-active-tab");
+        if (savedTab && ["list","history","board","pakke"].includes(savedTab)) showTab(savedTab);
+      } catch(e) {}
     } else {
       currentUser = null;
       LIST_ID = null;
@@ -1908,6 +1912,7 @@ let LIST_ID = null;
     document.getElementById("board-screen").style.display = tab === "board" ? "block" : "none";
     document.getElementById("pakke-screen").style.display = tab === "pakke" ? "block" : "none";
     document.getElementById("add-form-area").style.display = tab === "list" ? "flex" : "none";
+    try { localStorage.setItem("hl-active-tab", tab); } catch(e) {}
   };
 
   // PAKKELISTE - TOUR MANAGEMENT
