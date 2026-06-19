@@ -515,8 +515,14 @@
             <option value="event">Aktivitet</option>
             <option value="reminder">Påminnelse</option>
           </select>
-          <input class="board-input" id="board-assigned-input" type="text" placeholder="Ansvarlig" />
-          <input class="board-input" id="board-person-input" type="text" placeholder="Gjelder hvem" />
+          <select class="board-select" id="board-assigned-input">
+            <option value="">Ansvarlig</option>
+          </select>
+          <select class="board-select" id="board-person-input">
+            <option value="">Gjelder hvem</option>
+          </select>
+          <input class="board-input board-full" id="board-assigned-other" type="text" placeholder="Skriv ansvarlig" style="display:none" />
+          <input class="board-input board-full" id="board-person-other" type="text" placeholder="Skriv hvem det gjelder" style="display:none" />
           <input class="board-input" id="board-date-input" type="date" />
           <input class="board-input" id="board-time-input" type="time" />
           <select class="board-select" id="board-repeat-input">
@@ -951,6 +957,7 @@
   let editingHistoryItemIndex = null;
 let LIST_ID = null;
   let HOUSEHOLD_ID = null;   // fast husstandskode for tavla – endres ikke ved listebytte
+  let boardMemberNames = [];  // navn fra husholdningen, til dropdowns på tavla
 
   // AUTH
   document.getElementById("google-login-btn").addEventListener("click", async () => {
@@ -3795,6 +3802,7 @@ await addDoc(historyRef, {
  function startListeningTasks() {
     if (!HOUSEHOLD_ID) return;
     if (unsubscribeTasks) unsubscribeTasks();
+    loadBoardMembers();
     const q = query(collection(db, "lists", HOUSEHOLD_ID, "tasks"), orderBy("createdAt", "asc"));
     unsubscribeTasks = onSnapshot(q, snapshot => {
       familyBoardItems = [];
@@ -3802,6 +3810,75 @@ await addDoc(historyRef, {
       renderFamilyBoard();
       requestAnimationFrame(attachSwipeToTasks);
     });
+  }
+
+  async function loadBoardMembers() {
+    try {
+      const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const members = hhSnap.exists() ? (hhSnap.data().members || {}) : {};
+      const names = Array.isArray(members)
+        ? []  // gammelt array-format uten navn – hopp over
+        : Object.values(members).map(n => String(n).trim()).filter(Boolean);
+      boardMemberNames = [...new Set(names)].sort((a, b) => a.localeCompare(b, "no"));
+      fillBoardMemberDropdowns();
+      if (!window._boardOtherWired) {
+        wireOtherToggle("board-assigned-input", "board-assigned-other");
+        wireOtherToggle("board-person-input", "board-person-other");
+        window._boardOtherWired = true;
+      }
+    } catch (e) {
+      console.error("Kunne ikke laste husholdningsmedlemmer:", e);
+    }
+  }
+
+  function fillBoardMemberDropdowns() {
+    [["board-assigned-input", "Ansvarlig"], ["board-person-input", "Gjelder hvem"]].forEach(([id, placeholder]) => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const current = sel.value;
+      const opts = [`<option value="">${placeholder}</option>`]
+        .concat(boardMemberNames.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`))
+        .concat([`<option value="__annet__">Annet…</option>`]);
+      sel.innerHTML = opts.join("");
+      if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
+    });
+  }
+
+  // Viser fritekstfelt når "Annet…" velges
+  function wireOtherToggle(selectId, otherId) {
+    const sel = document.getElementById(selectId);
+    const other = document.getElementById(otherId);
+    if (!sel || !other) return;
+    sel.addEventListener("change", () => {
+      const show = sel.value === "__annet__";
+      other.style.display = show ? "block" : "none";
+      if (show) other.focus(); else other.value = "";
+    });
+  }
+
+  // Leser valgt person: enten dropdown-navn, eller fritekst hvis "Annet…"
+  function readBoardPerson(selectId, otherId) {
+    const sel = document.getElementById(selectId);
+    const other = document.getElementById(otherId);
+    if (!sel) return "";
+    if (sel.value === "__annet__") return (other?.value || "").trim();
+    return sel.value;
+  }
+
+  // Setter dropdown til et navn ved redigering; faller til "Annet…" hvis navnet ikke finnes
+  function setBoardPerson(selectId, otherId, value) {
+    const sel = document.getElementById(selectId);
+    const other = document.getElementById(otherId);
+    if (!sel) return;
+    const v = value || "";
+    if (!v) { sel.value = ""; if (other) { other.style.display = "none"; other.value = ""; } return; }
+    if ([...sel.options].some(o => o.value === v)) {
+      sel.value = v;
+      if (other) { other.style.display = "none"; other.value = ""; }
+    } else {
+      sel.value = "__annet__";
+      if (other) { other.style.display = "block"; other.value = v; }
+    }
   }
 
   function getTaskDate(task) {
@@ -3966,8 +4043,8 @@ await addDoc(historyRef, {
     editingTaskId = id;
     document.getElementById("board-title-input").value = task.title || "";
     document.getElementById("board-type-input").value = task.type || "task";
-    document.getElementById("board-assigned-input").value = task.assignedTo || "";
-    document.getElementById("board-person-input").value = task.relatedPerson || "";
+    setBoardPerson("board-assigned-input", "board-assigned-other", task.assignedTo || "");
+    setBoardPerson("board-person-input", "board-person-other", task.relatedPerson || "");
     document.getElementById("board-date-input").value = task.dueDate || "";
     document.getElementById("board-time-input").value = task.dueTime || "";
     document.getElementById("board-repeat-input").value = task.recurrence?.frequency || "none";
@@ -3980,8 +4057,8 @@ await addDoc(historyRef, {
   function resetBoardForm() {
     editingTaskId = null;
     document.getElementById("board-title-input").value = "";
-    document.getElementById("board-assigned-input").value = "";
-    document.getElementById("board-person-input").value = "";
+    setBoardPerson("board-assigned-input", "board-assigned-other", "");
+    setBoardPerson("board-person-input", "board-person-other", "");
     document.getElementById("board-date-input").value = "";
     document.getElementById("board-time-input").value = "";
     document.getElementById("board-repeat-input").value = "none";
@@ -3995,8 +4072,8 @@ await addDoc(historyRef, {
     if (!title) { alert("Skriv inn en oppgave først."); return; }
 
     const type = document.getElementById("board-type-input").value || "task";
-    const assignedTo = document.getElementById("board-assigned-input").value.trim();
-    const relatedPerson = document.getElementById("board-person-input").value.trim();
+    const assignedTo = readBoardPerson("board-assigned-input", "board-assigned-other");
+    const relatedPerson = readBoardPerson("board-person-input", "board-person-other");
     const dueDate = document.getElementById("board-date-input").value || "";
     const dueTime = document.getElementById("board-time-input").value || "";
     const repeat = document.getElementById("board-repeat-input").value || "none";
