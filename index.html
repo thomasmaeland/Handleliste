@@ -4025,12 +4025,56 @@ await addDoc(historyRef, {
     resetBoardForm();
   });
 
-  window.toggleBoardTask = async (id, completed) => {
-    await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id), {
-      completed: !completed,
-      completedAt: !completed ? Date.now() : null,
+  function nextRecurrenceDate(fromDateStr, frequency) {
+    // Tar utgangspunkt i oppgavens dato (eller i dag hvis den mangler) og legger til ett intervall
+    const base = fromDateStr ? new Date(`${fromDateStr}T12:00:00`) : new Date();
+    if (isNaN(base.getTime())) return "";
+    if (frequency === "daily") base.setDate(base.getDate() + 1);
+    else if (frequency === "weekly") base.setDate(base.getDate() + 7);
+    else if (frequency === "monthly") base.setMonth(base.getMonth() + 1);
+    else return "";
+    const y = base.getFullYear();
+    const m = String(base.getMonth() + 1).padStart(2, "0");
+    const d = String(base.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  async function spawnNextRecurrence(task) {
+    if (!task?.recurrence?.enabled || task.recurrence.frequency === "none") return;
+    const nextDate = nextRecurrenceDate(task.dueDate, task.recurrence.frequency);
+    if (!nextDate) return;
+    await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
+      title: task.title,
+      type: task.type || "task",
+      assignedTo: task.assignedTo || "",
+      relatedPerson: task.relatedPerson || "",
+      dueDate: nextDate,
+      dueTime: task.dueTime || "",
+      completed: false,
+      recurrence: { ...task.recurrence },
+      reminder: task.reminder ? { ...task.reminder } : { enabled: false, minutesBefore: null },
+      notification: task.notification ? { ...task.notification } : { enabled: false, minutesBefore: null, pushReady: false },
+      createdBy: currentUser?.uid || "",
+      createdByName: currentUser?.displayName || "",
+      createdAt: Date.now(),
       updatedAt: Date.now()
     });
+  }
+
+  window.toggleBoardTask = async (id, completed) => {
+    // completed = nåværende tilstand. Vi snur den.
+    const becomingDone = !completed;
+    const task = familyBoardItems.find(t => t.id === id);
+
+    await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id), {
+      completed: becomingDone,
+      completedAt: becomingDone ? Date.now() : null,
+      updatedAt: Date.now()
+    });
+
+    // Når en gjentakende oppgave fullføres via avkrysning (ikke swipe): opprett neste forekomst.
+    // Swipe håndterer dette selv etter at angre-vinduet er passert, for å unngå duplikat ved angre.
+    if (becomingDone && task) await spawnNextRecurrence(task);
   };
 
   window.deleteBoardTask = async (id) => {
@@ -4278,11 +4322,23 @@ await addDoc(historyRef, {
       initSwipe(
         wrapper,
         async () => {
-          await toggleBoardTask(task.id, task.completed);
-          if (!task.completed) {
+          const wasCompleted = task.completed;
+          // Kryss av uten å spawne neste forekomst ennå (vent på evt. angre)
+          await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", task.id), {
+            completed: !wasCompleted,
+            completedAt: !wasCompleted ? Date.now() : null,
+            updatedAt: Date.now()
+          });
+          if (!wasCompleted) {
+            let undone = false;
             showUndoToast(`${task.title} fullført`, async () => {
-              await toggleBoardTask(task.id, true);
+              undone = true;
+              await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", task.id), {
+                completed: false, completedAt: null, updatedAt: Date.now()
+              });
             });
+            // Spawn neste forekomst først når angre-vinduet er passert uten angre
+            setTimeout(() => { if (!undone) spawnNextRecurrence(task); }, 4200);
           }
         },
         async () => {
