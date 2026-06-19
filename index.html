@@ -198,6 +198,9 @@
     .board-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:11px 12px; display:flex; gap:10px; align-items:flex-start; }
     .board-card.done { opacity:.55; background:var(--bg); }
     .board-check { width:24px; height:24px; border-radius:50%; border:2px solid var(--border); background:none; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+    .board-edit { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:16px; padding:4px 6px; flex-shrink:0; align-self:flex-start; }
+    .board-edit:hover { color:var(--accent); }
+    .board-show-all { width:100%; background:none; border:1px solid var(--border); border-radius:8px; padding:8px; color:var(--ink2); font-size:12px; cursor:pointer; margin-top:4px; }
     .board-card.done .board-check { background:var(--accent); border-color:var(--accent); color:white; }
     .board-main { flex:1; min-width:0; }
     .board-title { font-size:14px; font-weight:500; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -3840,7 +3843,12 @@ await addDoc(historyRef, {
 
   function renderTaskCard(task) {
     const recText = recurrenceLabel(task.recurrence);
-    const reminderText = task.reminder?.enabled ? `Varsel ${task.reminder.minutesBefore} min før` : "";
+       if (done.length) {
+      const shownDone = showAllDone ? done.slice().reverse() : done.slice(-10).reverse();
+      html += `<div class="board-section"><div class="board-section-title">Fullført (${done.length})</div><div class="board-list">${shownDone.map(renderTaskCard).join("")}</div>`;
+      if (done.length > 10) html += `<button class="board-show-all" onclick="toggleShowAllDone()">${showAllDone ? "Vis færre" : `Vis alle ${done.length}`}</button>`;
+      html += `</div>`;
+    }
     return `<div class="swipe-wrapper" id="swipe-task-${task.id}">
       <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
       <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
@@ -3860,6 +3868,7 @@ await addDoc(historyRef, {
               ${reminderText ? `<span class="board-pill">🔔 ${escapeHtml(reminderText)}</span>` : ""}
             </div>
           </div>
+          <button class="board-edit" onclick="startEditTask('${task.id}')" title="Rediger">✎</button>
         </div>
       </div>
     </div>`;
@@ -3938,12 +3947,39 @@ await addDoc(historyRef, {
       const bd = getTaskDate(b)?.getTime() || 9999999999999;
       return ad - bd;
     });
+ let editingTaskId = null;
+  let showAllDone = false;
 
-    let html = filtersHtml;
-    if (today.length) html += `<div class="board-section"><div class="board-section-title">I dag</div><div class="board-list">${today.map(renderTaskCard).join("")}</div></div>`;
-    if (upcoming.length) html += `<div class="board-section"><div class="board-section-title">Kommende</div><div class="board-list">${upcoming.map(renderTaskCard).join("")}</div></div>`;
-    if (done.length) html += `<div class="board-section"><div class="board-section-title">Fullført</div><div class="board-list">${done.slice(-10).reverse().map(renderTaskCard).join("")}</div></div>`;
-    container.innerHTML = html || `<div class="board-empty">Ingen aktive oppgaver</div>`;
+  window.toggleShowAllDone = () => { showAllDone = !showAllDone; renderFamilyBoard(); };
+
+  window.startEditTask = (id) => {
+    const task = familyBoardItems.find(t => t.id === id);
+    if (!task) return;
+    editingTaskId = id;
+    document.getElementById("board-title-input").value = task.title || "";
+    document.getElementById("board-type-input").value = task.type || "task";
+    document.getElementById("board-assigned-input").value = task.assignedTo || "";
+    document.getElementById("board-person-input").value = task.relatedPerson || "";
+    document.getElementById("board-date-input").value = task.dueDate || "";
+    document.getElementById("board-time-input").value = task.dueTime || "";
+    document.getElementById("board-repeat-input").value = task.recurrence?.frequency || "none";
+    document.getElementById("board-reminder-input").value = task.reminder?.minutesBefore ? String(task.reminder.minutesBefore) : "none";
+    const btn = document.getElementById("board-add-btn");
+    btn.textContent = "✓ Lagre endring";
+    document.getElementById("board-screen").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  function resetBoardForm() {
+    editingTaskId = null;
+    document.getElementById("board-title-input").value = "";
+    document.getElementById("board-assigned-input").value = "";
+    document.getElementById("board-person-input").value = "";
+    document.getElementById("board-date-input").value = "";
+    document.getElementById("board-time-input").value = "";
+    document.getElementById("board-repeat-input").value = "none";
+    document.getElementById("board-reminder-input").value = "none";
+    document.getElementById("board-type-input").value = "task";
+    document.getElementById("board-add-btn").textContent = "+ Legg til på tavlen";
   }
 
   document.getElementById("board-add-btn").addEventListener("click", async () => {
@@ -3958,41 +3994,27 @@ await addDoc(historyRef, {
     const repeat = document.getElementById("board-repeat-input").value || "none";
     const reminderValue = document.getElementById("board-reminder-input").value || "none";
 
-    await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
-      title,
-      type,
-      assignedTo,
-      relatedPerson,
-      dueDate,
-      dueTime,
-      completed: false,
-      recurrence: {
-        enabled: repeat !== "none",
-        frequency: repeat,
-        interval: 1,
-        weekdays: []
-      },
-      reminder: {
-        enabled: reminderValue !== "none",
-        minutesBefore: reminderValue === "none" ? null : Number(reminderValue)
-      },
-      notification: {
-        enabled: reminderValue !== "none",
-        minutesBefore: reminderValue === "none" ? null : Number(reminderValue),
-        pushReady: false
-      },
-      createdBy: currentUser?.uid || "",
-      createdByName: currentUser?.displayName || "",
-      createdAt: Date.now(),
+    const taskData = {
+      title, type, assignedTo, relatedPerson, dueDate, dueTime,
+      recurrence: { enabled: repeat !== "none", frequency: repeat, interval: 1, weekdays: [] },
+      reminder: { enabled: reminderValue !== "none", minutesBefore: reminderValue === "none" ? null : Number(reminderValue) },
+      notification: { enabled: reminderValue !== "none", minutesBefore: reminderValue === "none" ? null : Number(reminderValue), pushReady: false },
       updatedAt: Date.now()
-    });
+    };
 
-    document.getElementById("board-title-input").value = "";
-    document.getElementById("board-person-input").value = "";
-    document.getElementById("board-date-input").value = "";
-    document.getElementById("board-time-input").value = "";
-    document.getElementById("board-repeat-input").value = "none";
-    document.getElementById("board-reminder-input").value = "none";
+    if (editingTaskId) {
+      await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", editingTaskId), taskData);
+    } else {
+      await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
+        ...taskData,
+        completed: false,
+        createdBy: currentUser?.uid || "",
+        createdByName: currentUser?.displayName || "",
+        createdAt: Date.now()
+      });
+    }
+
+    resetBoardForm();
   });
 
   window.toggleBoardTask = async (id, completed) => {
