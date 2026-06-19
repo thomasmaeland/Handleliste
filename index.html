@@ -3843,12 +3843,7 @@ await addDoc(historyRef, {
 
   function renderTaskCard(task) {
     const recText = recurrenceLabel(task.recurrence);
-       if (done.length) {
-      const shownDone = showAllDone ? done.slice().reverse() : done.slice(-10).reverse();
-      html += `<div class="board-section"><div class="board-section-title">Fullført (${done.length})</div><div class="board-list">${shownDone.map(renderTaskCard).join("")}</div>`;
-      if (done.length > 10) html += `<button class="board-show-all" onclick="toggleShowAllDone()">${showAllDone ? "Vis færre" : `Vis alle ${done.length}`}</button>`;
-      html += `</div>`;
-    }
+    const reminderText = task.reminder?.enabled ? `Varsel ${task.reminder.minutesBefore} min før` : "";
     return `<div class="swipe-wrapper" id="swipe-task-${task.id}">
       <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
       <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
@@ -3947,7 +3942,20 @@ await addDoc(historyRef, {
       const bd = getTaskDate(b)?.getTime() || 9999999999999;
       return ad - bd;
     });
- let editingTaskId = null;
+
+    let html = filtersHtml;
+    if (today.length) html += `<div class="board-section"><div class="board-section-title">I dag</div><div class="board-list">${today.map(renderTaskCard).join("")}</div></div>`;
+    if (upcoming.length) html += `<div class="board-section"><div class="board-section-title">Kommende</div><div class="board-list">${upcoming.map(renderTaskCard).join("")}</div></div>`;
+    if (done.length) {
+      const shownDone = showAllDone ? done.slice().reverse() : done.slice(-10).reverse();
+      html += `<div class="board-section"><div class="board-section-title">Fullført (${done.length})</div><div class="board-list">${shownDone.map(renderTaskCard).join("")}</div>`;
+      if (done.length > 10) html += `<button class="board-show-all" onclick="toggleShowAllDone()">${showAllDone ? "Vis færre" : `Vis alle ${done.length}`}</button>`;
+      html += `</div>`;
+    }
+    container.innerHTML = html || `<div class="board-empty">Ingen aktive oppgaver</div>`;
+    requestAnimationFrame(attachSwipeToTasks);
+  }
+  let editingTaskId = null;
   let showAllDone = false;
 
   window.toggleShowAllDone = () => { showAllDone = !showAllDone; renderFamilyBoard(); };
