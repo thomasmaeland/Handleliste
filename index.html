@@ -199,6 +199,12 @@
     .board-card.done { opacity:.55; background:var(--bg); }
     .board-check { width:24px; height:24px; border-radius:50%; border:2px solid var(--border); background:none; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
     .board-edit { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:16px; padding:4px 6px; flex-shrink:0; align-self:flex-start; }
+    .board-star { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:17px; padding:4px 4px; flex-shrink:0; align-self:flex-start; line-height:1; }
+    .board-star.on { color:var(--gold, #d4a843); }
+    .board-card.important { border-left:3px solid var(--gold, #d4a843); }
+    .board-card.important.done { border-left-color:var(--border); }
+    .board-important-toggle { width:100%; background:none; border:1.5px solid var(--border); border-radius:10px; padding:9px; font-size:13px; color:var(--ink2); cursor:pointer; margin-top:4px; }
+    .board-important-toggle.on { border-color:var(--gold); color:var(--gold); background:var(--gold-dim); }
     .board-edit:hover { color:var(--accent); }
     .board-show-all { width:100%; background:none; border:1px solid var(--border); border-radius:8px; padding:8px; color:var(--ink2); font-size:12px; cursor:pointer; margin-top:4px; }
     .board-card.done .board-check { background:var(--accent); border-color:var(--accent); color:white; }
@@ -538,6 +544,7 @@
             <option value="1440">1 dag før</option>
           </select>
         </div>
+        <button class="board-important-toggle" id="board-important-toggle" type="button" aria-pressed="false">☆ Marker som viktig</button>
         <button class="board-add-btn" id="board-add-btn" type="button">+ Legg til på tavlen</button>
         <button class="board-add-btn" id="push-enable-btn" type="button" style="background:var(--accent2);margin-top:8px">🔔 Aktiver varsler</button>
       </div>
@@ -3925,7 +3932,7 @@ await addDoc(historyRef, {
       <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
       <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
       <div class="swipe-inner">
-        <div class="board-card ${task.completed ? "done" : ""}">
+        <div class="board-card ${task.completed ? "done" : ""} ${task.important ? "important" : ""}">
           <button class="board-check" onclick="toggleBoardTask('${task.id}', ${!!task.completed})">${task.completed ? "✓" : ""}</button>
           <div class="board-main">
             <div class="board-title">${taskTypeIcon(task.type)} ${escapeHtml(task.title)}</div>
@@ -3940,6 +3947,7 @@ await addDoc(historyRef, {
               ${reminderText ? `<span class="board-pill">🔔 ${escapeHtml(reminderText)}</span>` : ""}
             </div>
           </div>
+          <button class="board-star ${task.important ? "on" : ""}" onclick="toggleTaskImportant('${task.id}', event)" title="${task.important ? "Fjern viktig" : "Merk som viktig"}">${task.important ? "★" : "☆"}</button>
           <button class="board-edit" onclick="startEditTask('${task.id}')" title="Rediger">✎</button>
         </div>
       </div>
@@ -4013,8 +4021,11 @@ await addDoc(historyRef, {
 
     const active = visibleItems.filter(t => !t.completed);
     const done = visibleItems.filter(t => t.completed);
-    const today = active.filter(t => isTodayDate(getTaskDate(t)));
+    const byImportance = (a, b) => (b.important ? 1 : 0) - (a.important ? 1 : 0);
+    const today = active.filter(t => isTodayDate(getTaskDate(t))).sort(byImportance);
     const upcoming = active.filter(t => !isTodayDate(getTaskDate(t))).sort((a,b) => {
+      const imp = byImportance(a, b);
+      if (imp !== 0) return imp;
       const ad = getTaskDate(a)?.getTime() || 9999999999999;
       const bd = getTaskDate(b)?.getTime() || 9999999999999;
       return ad - bd;
@@ -4034,6 +4045,18 @@ await addDoc(historyRef, {
   }
   let editingTaskId = null;
   let showAllDone = false;
+  let formImportant = false;
+
+  function setFormImportant(val) {
+    formImportant = !!val;
+    const btn = document.getElementById("board-important-toggle");
+    if (!btn) return;
+    btn.classList.toggle("on", formImportant);
+    btn.setAttribute("aria-pressed", formImportant ? "true" : "false");
+    btn.textContent = formImportant ? "★ Viktig" : "☆ Marker som viktig";
+  }
+
+  document.getElementById("board-important-toggle")?.addEventListener("click", () => setFormImportant(!formImportant));
 
   window.toggleShowAllDone = () => { showAllDone = !showAllDone; renderFamilyBoard(); };
 
@@ -4049,6 +4072,7 @@ await addDoc(historyRef, {
     document.getElementById("board-time-input").value = task.dueTime || "";
     document.getElementById("board-repeat-input").value = task.recurrence?.frequency || "none";
     document.getElementById("board-reminder-input").value = task.reminder?.minutesBefore ? String(task.reminder.minutesBefore) : "none";
+    setFormImportant(task.important);
     const btn = document.getElementById("board-add-btn");
     btn.textContent = "✓ Lagre endring";
     document.getElementById("board-screen").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -4064,6 +4088,7 @@ await addDoc(historyRef, {
     document.getElementById("board-repeat-input").value = "none";
     document.getElementById("board-reminder-input").value = "none";
     document.getElementById("board-type-input").value = "task";
+    setFormImportant(false);
     document.getElementById("board-add-btn").textContent = "+ Legg til på tavlen";
   }
 
@@ -4081,6 +4106,7 @@ await addDoc(historyRef, {
 
     const taskData = {
       title, type, assignedTo, relatedPerson, dueDate, dueTime,
+      important: formImportant,
       recurrence: { enabled: repeat !== "none", frequency: repeat, interval: 1, weekdays: [] },
       reminder: { enabled: reminderValue !== "none", minutesBefore: reminderValue === "none" ? null : Number(reminderValue) },
       notification: { enabled: reminderValue !== "none", minutesBefore: reminderValue === "none" ? null : Number(reminderValue), pushReady: false },
@@ -4156,6 +4182,16 @@ await addDoc(historyRef, {
 
   window.deleteBoardTask = async (id) => {
     await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id));
+  };
+
+  window.toggleTaskImportant = async (id, evt) => {
+    if (evt) evt.stopPropagation();
+    const task = familyBoardItems.find(t => t.id === id);
+    if (!task) return;
+    await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id), {
+      important: !task.important,
+      updatedAt: Date.now()
+    });
   };
 
 
