@@ -1922,6 +1922,7 @@ let LIST_ID = null;
   let currentTourId = null;
   let currentPerson = null;
   let packItems = [];
+  let lastPackFocusId = null;
   let unsubscribePackItems = null;
 
   function startListeningPackTours() {
@@ -2084,8 +2085,19 @@ let LIST_ID = null;
               </div>`;
           });
         }
+        const safeId = "addfor-" + btoa(unescape(encodeURIComponent(p))).replace(/[^a-zA-Z0-9]/g, "");
+        html += `
+          <div class="add-form" style="margin:4px 0 2px">
+            <input class="add-input" id="${safeId}" type="text" placeholder="Legg til for ${escapeHtml(p)}..." autocomplete="off" onkeydown="if(event.key==='Enter')addPackItemFor('${escapeJsString(p)}','${safeId}')" />
+            <button class="add-btn" type="button" onclick="addPackItemFor('${escapeJsString(p)}','${safeId}')">+</button>
+          </div>`;
       });
       container.innerHTML = html;
+      if (lastPackFocusId) {
+        const el = document.getElementById(lastPackFocusId);
+        if (el) { el.focus(); }
+        lastPackFocusId = null;
+      }
       return;
     }
 
@@ -2140,6 +2152,16 @@ let LIST_ID = null;
       addedBy: currentUser?.displayName || ""
     });
   }
+
+  window.addPackItemFor = async (person, inputId) => {
+    if (!currentTourId) return;
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const navn = input.value.trim();
+    if (!navn) return;
+    lastPackFocusId = inputId;  // re-fokuser samme felt etter at lista bygges på nytt
+    await addPackItem(navn, person, "diverse", 1);
+  };
 
   document.getElementById("pakke-item-add-btn").addEventListener("click", async () => {
     if (!currentTourId || !currentPerson) return;
