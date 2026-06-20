@@ -578,6 +578,14 @@
         </div>
 
         <button class="list-action-btn" id="pakke-ai-btn" type="button" style="width:100%;margin-bottom:1rem;justify-content:center;border:1px solid var(--gold);color:var(--gold);background:var(--gold-dim)">✨ Foreslå pakkeliste med AI</button>
+        <div id="pakke-ai-input-panel" style="display:none;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+          <div style="font-size:13px;color:var(--ink2);margin-bottom:.5rem">Fortell om turen — hvor, hvor lenge, hvem som er med og alder, og hva dere skal gjøre. Jo mer du skriver, jo bedre forslag.</div>
+          <textarea id="pakke-ai-text" rows="5" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;box-sizing:border-box" placeholder="F.eks: Danmark i 2,5 uker i juli. Katrine (voksen), Selma 5 år, Selma 2 år, Abel 10 uker. Mye strand og bading, leid sommerhus, kjører bil ned."></textarea>
+          <div style="display:flex;gap:8px;margin-top:.75rem">
+            <button class="add-btn" type="button" style="flex:1" id="pakke-ai-generate">✨ Lag forslag</button>
+            <button class="list-action-btn" type="button" style="border:1px solid var(--border)" id="pakke-ai-cancel">Avbryt</button>
+          </div>
+        </div>
         <div id="pakke-ai-suggestions" style="display:none;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)"></div>
 
         <div id="pakke-new-person-area" style="margin-bottom:1rem;padding:1rem;background:var(--accent-light);border-radius:var(--radius)">
@@ -2265,20 +2273,43 @@ let LIST_ID = null;
   // ===== AI PAKKEFORSLAG =====
   let aiSuggestions = [];  // [{person, navn, antall, kategori, valgt}]
 
-  document.getElementById("pakke-ai-btn").addEventListener("click", async () => {
+  document.getElementById("pakke-ai-btn").addEventListener("click", () => {
+    if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    if (!tour) return;
+    if ((tour.persons || []).length === 0) {
+      alert("Legg til personene på turen først, så foreslår AI hva hver skal pakke.");
+      return;
+    }
+    const panel = document.getElementById("pakke-ai-input-panel");
+    const text = document.getElementById("pakke-ai-text");
+    // Forhåndsfyll med det vi vet om turen, men la brukeren skrive fritt
+    if (!text.value.trim()) {
+      const start = [tour.turNavn, tour.beskrivelse].filter(Boolean).join(". ");
+      const personer = (tour.persons || []).join(", ");
+      text.value = start + (personer ? `\nPersoner: ${personer}` : "");
+    }
+    panel.style.display = "block";
+    document.getElementById("pakke-ai-suggestions").style.display = "none";
+    text.focus();
+  });
+
+  document.getElementById("pakke-ai-cancel").addEventListener("click", () => {
+    document.getElementById("pakke-ai-input-panel").style.display = "none";
+  });
+
+  document.getElementById("pakke-ai-generate").addEventListener("click", async () => {
     if (!currentTourId) return;
     const tour = packTours.find(t => t.id === currentTourId);
     if (!tour) return;
     const persons = tour.persons || [];
-    if (persons.length === 0) {
-      alert("Legg til personene på turen først, så foreslår AI hva hver skal pakke.");
-      return;
-    }
-    const beskrivelse = `${tour.turNavn || ""}. ${tour.beskrivelse || ""}`.trim();
+    const beskrivelse = document.getElementById("pakke-ai-text").value.trim();
+    if (!beskrivelse) { alert("Skriv litt om turen først."); return; }
+
     const box = document.getElementById("pakke-ai-suggestions");
-    const btn = document.getElementById("pakke-ai-btn");
-    btn.disabled = true;
-    btn.textContent = "✨ Lager forslag...";
+    const genBtn = document.getElementById("pakke-ai-generate");
+    genBtn.disabled = true;
+    genBtn.textContent = "✨ Lager forslag...";
     box.style.display = "block";
     box.innerHTML = `<div style="text-align:center;color:var(--ink3);font-size:13px">Tenker ut hva dere bør pakke...</div>`;
 
@@ -2293,7 +2324,6 @@ let LIST_ID = null;
         box.innerHTML = `<div style="color:var(--ink2);font-size:13px">Klarte ikke å lage forslag akkurat nå. Prøv igjen om litt.</div>`;
         return;
       }
-      // Flat ut til én liste med valgt-flagg
       aiSuggestions = [];
       data.forslag.forEach(f => {
         (f.ting || []).forEach(t => {
@@ -2303,12 +2333,13 @@ let LIST_ID = null;
           });
         });
       });
+      document.getElementById("pakke-ai-input-panel").style.display = "none";
       renderAiSuggestions();
     } catch (e) {
       box.innerHTML = `<div style="color:var(--ink2);font-size:13px">Noe gikk galt. Sjekk nettforbindelsen og prøv igjen.</div>`;
     } finally {
-      btn.disabled = false;
-      btn.textContent = "✨ Foreslå pakkeliste med AI";
+      genBtn.disabled = false;
+      genBtn.textContent = "✨ Lag forslag";
     }
   });
 
@@ -2356,10 +2387,22 @@ let LIST_ID = null;
 
   window.commitAiSuggestions = async () => {
     if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    const persons = tour?.persons || [];
     const valgte = aiSuggestions.filter(s => s.valgt);
     if (valgte.length === 0) { alert("Huk av minst én ting først."); return; }
     for (const s of valgte) {
-      await addPackItem(s.navn, s.person, s.kategori, s.antall);
+      // Match AI-personnavn mot turens faktiske personer (eksakt, ellers delvis)
+      let person = s.person;
+      if (!persons.includes(person)) {
+        const match = persons.find(p =>
+          p.toLowerCase() === String(person).toLowerCase() ||
+          String(person).toLowerCase().includes(p.toLowerCase()) ||
+          p.toLowerCase().includes(String(person).toLowerCase())
+        );
+        person = match || persons[0] || person;
+      }
+      await addPackItem(s.navn, person, s.kategori, s.antall);
     }
     dismissAiSuggestions();
   };
