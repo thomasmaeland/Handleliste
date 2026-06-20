@@ -1973,11 +1973,28 @@ let LIST_ID = null;
           <div class="item-name">${escapeHtml(tour.turNavn)}</div>
           <div class="item-detail">${tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : ""} · ${(tour.persons || []).length} personer</div>
         </div>
+        <button class="board-edit" onclick="editPackTour('${tour.id}', event)" title="Rediger tur" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:15px;padding:2px 6px">✎</button>
         <button class="delete-btn" onclick="deletePackTour('${tour.id}', event)" title="Slett tur">×</button>
         <span style="color:var(--ink3)">›</span>
       </div>
     `).join("");
   }
+
+  let editingTourId = null;
+
+  window.editPackTour = (tourId, evt) => {
+    if (evt) evt.stopPropagation();
+    const tour = packTours.find(t => t.id === tourId);
+    if (!tour) return;
+    editingTourId = tourId;
+    document.getElementById("pakke-modal-name").value = tour.turNavn || "";
+    document.getElementById("pakke-modal-date").value = tour.startDato
+      ? new Date(tour.startDato).toISOString().slice(0, 10) : "";
+    document.getElementById("pakke-modal-desc").value = tour.beskrivelse || "";
+    document.querySelector("#pakke-tour-modal .modal-title").textContent = "Rediger tur";
+    document.getElementById("pakke-modal-create").textContent = "Lagre";
+    document.getElementById("pakke-tour-modal").classList.add("open");
+  };
 
   window.deletePackTour = async (tourId, evt) => {
     if (evt) evt.stopPropagation();
@@ -2463,15 +2480,17 @@ let LIST_ID = null;
 
   // NEW TOUR MODAL
   document.getElementById("pakke-new-tour-btn").addEventListener("click", () => {
+    resetTourModal();
     document.getElementById("pakke-tour-modal").classList.add("open");
   });
 
   document.getElementById("pakke-modal-cancel").addEventListener("click", () => {
+    resetTourModal();
     document.getElementById("pakke-tour-modal").classList.remove("open");
   });
 
   document.getElementById("pakke-tour-modal").addEventListener("click", (e) => {
-    if (e.target === e.currentTarget) document.getElementById("pakke-tour-modal").classList.remove("open");
+    if (e.target === e.currentTarget) { resetTourModal(); document.getElementById("pakke-tour-modal").classList.remove("open"); }
   });
 
   document.getElementById("pakke-modal-create").addEventListener("click", async () => {
@@ -2479,19 +2498,33 @@ let LIST_ID = null;
     const startDato = document.getElementById("pakke-modal-date").value;
     const beskrivelse = document.getElementById("pakke-modal-desc").value.trim();
     if (!turNavn) return;
-    await addDoc(collection(db, "lists", LIST_ID, "packlists"), {
+    const data = {
       turNavn,
       startDato: startDato ? new Date(startDato).getTime() : null,
-      beskrivelse,
-      persons: [],
-      createdAt: Date.now(),
-      createdBy: currentUser?.uid || ""
-    });
+      beskrivelse
+    };
+    if (editingTourId) {
+      await updateDoc(doc(db, "lists", LIST_ID, "packlists", editingTourId), data);
+    } else {
+      await addDoc(collection(db, "lists", LIST_ID, "packlists"), {
+        ...data,
+        persons: [],
+        createdAt: Date.now(),
+        createdBy: currentUser?.uid || ""
+      });
+    }
+    resetTourModal();
+    document.getElementById("pakke-tour-modal").classList.remove("open");
+  });
+
+  function resetTourModal() {
+    editingTourId = null;
     document.getElementById("pakke-modal-name").value = "";
     document.getElementById("pakke-modal-date").value = "";
     document.getElementById("pakke-modal-desc").value = "";
-    document.getElementById("pakke-tour-modal").classList.remove("open");
-  });
+    document.querySelector("#pakke-tour-modal .modal-title").textContent = "Ny tur";
+    document.getElementById("pakke-modal-create").textContent = "Opprett";
+  }
 
   // Add .open class styling for modal (if not exists)
   const style = document.createElement("style");
