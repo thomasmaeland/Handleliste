@@ -872,7 +872,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-  import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, where, orderBy, setDoc, getDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, where, orderBy, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
   import { PRODUCTS, matchProduct, guessCategoryFromDB } from '/products.js';
 
@@ -887,17 +887,11 @@
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  const db = getFirestore(app);
-  const messagingVapidKey = "BPvPJGtqU_7ewG0u98mNnW5LJcod5vYZ88XMVZIp7nf9Tu8RWWj9vrMkX75IqssXlMMnJ7EFLPGVHgmqrkTGEi8";
-
-  // Aktiver offline persistence for Firestore
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn("Offline persistence ikke tillatt (flere tabs åpne?)");
-    } else if (err.code === 'unimplemented') {
-      console.warn("Offline persistence ikke støttet i denne nettleseren");
-    }
+  // Offline persistence via ny cache-API (erstatter enableIndexedDbPersistence)
+  const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
   });
+  const messagingVapidKey = "BPvPJGtqU_7ewG0u98mNnW5LJcod5vYZ88XMVZIp7nf9Tu8RWWj9vrMkX75IqssXlMMnJ7EFLPGVHgmqrkTGEi8";
 
   // Kategori-rekkefølge som i butikken
   const CAT_ORDER = ["frukt-gront","meieri","brod-bakeri","kjott-fisk","tørrvarer","frysevarer","drikke","snacks","hygiene","annet"];
