@@ -141,6 +141,8 @@
     .check-btn:hover { border-color:var(--accent); }
     .item-main { flex:1; min-width:0; }
     .item-name { font-size:15px; font-weight:400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .qty-btn { width:26px; height:26px; border:1px solid var(--border); background:var(--card); border-radius:6px; cursor:pointer; font-size:16px; line-height:1; color:var(--ink2); display:flex; align-items:center; justify-content:center; padding:0; }
+    .qty-btn:hover { border-color:var(--accent); color:var(--accent); }
     .item-detail { font-size:11px; color:var(--ink3); margin-top:1px; }
     .by-whom { font-size:10px; color:var(--accent2); font-weight:500; letter-spacing:.04em; flex-shrink:0; }
     .qty-wrap { display:flex; align-items:center; gap:4px; flex-shrink:0; }
@@ -2114,6 +2116,25 @@ let LIST_ID = null;
     });
   }
 
+  function packItemHtml(it) {
+    const qty = it.qty || 1;
+    const qtyControls = `
+      <div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
+        <button class="qty-btn" onclick="changePackQty('${it.id}',-1,event)" title="Færre" ${qty <= 1 ? 'style="opacity:.3"' : ""}>−</button>
+        <span style="min-width:20px;text-align:center;font-size:13px;color:var(--ink2)">${qty}</span>
+        <button class="qty-btn" onclick="changePackQty('${it.id}',1,event)" title="Flere">+</button>
+      </div>`;
+    return `
+      <div class="item ${it.done ? "done" : ""}" style="margin-bottom:6px">
+        <button class="check-btn" onclick="togglePackItem('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
+        <div class="item-main" style="cursor:pointer" onclick="renamePackItem('${it.id}',event)" title="Trykk for å endre navn">
+          <div class="item-name">${escapeHtml(it.navn)}</div>
+        </div>
+        ${qtyControls}
+        <button class="delete-btn" onclick="deletePackItem('${it.id}')" title="Fjern">×</button>
+      </div>`;
+  }
+
   function renderPackItems() {
     const container = document.getElementById("pakke-items-list");
     if (!container) return;
@@ -2142,12 +2163,7 @@ let LIST_ID = null;
           html += `<div style="font-size:13px;color:var(--ink3);padding:2px 0 6px">Ingenting ennå</div>`;
         } else {
           items.forEach(it => {
-            html += `
-              <div class="item ${it.done ? "done" : ""}" style="margin-bottom:6px">
-                <button class="check-btn" onclick="togglePackItem('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
-                <div class="item-main"><div class="item-name">${escapeHtml(it.navn)}${it.qty > 1 ? ` <span style="color:var(--ink3);font-size:13px">×${it.qty}</span>` : ""}</div></div>
-                <button class="delete-btn" onclick="deletePackItem('${it.id}')" title="Fjern">×</button>
-              </div>`;
+            html += packItemHtml(it);
           });
         }
         const safeId = "addfor-" + btoa(unescape(encodeURIComponent(p))).replace(/[^a-zA-Z0-9]/g, "");
@@ -2180,12 +2196,7 @@ let LIST_ID = null;
     PACK_CAT_ORDER.filter(c => groups[c] && groups[c].length).forEach(cat => {
       html += `<div class="section-label" style="margin:.75rem 0 .35rem">${PACK_CAT_LABELS[cat]}</div>`;
       groups[cat].forEach(it => {
-        html += `
-          <div class="item ${it.done ? "done" : ""}" style="margin-bottom:6px">
-            <button class="check-btn" onclick="togglePackItem('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
-            <div class="item-main"><div class="item-name">${escapeHtml(it.navn)}${it.qty > 1 ? ` <span style="color:var(--ink3);font-size:13px">×${it.qty}</span>` : ""}</div></div>
-            <button class="delete-btn" onclick="deletePackItem('${it.id}')" title="Fjern">×</button>
-          </div>`;
+        html += packItemHtml(it);
       });
     });
     container.innerHTML = html;
@@ -2194,6 +2205,28 @@ let LIST_ID = null;
   window.togglePackItem = async (id, done) => {
     if (!currentTourId) return;
     await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), { done: !done });
+  };
+
+  window.changePackQty = async (id, delta, evt) => {
+    if (evt) evt.stopPropagation();
+    if (!currentTourId) return;
+    const it = packItems.find(x => x.id === id);
+    if (!it) return;
+    const newQty = (it.qty || 1) + delta;
+    if (newQty < 1) return; // går ikke under 1 her; bruk × for å slette
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), { qty: newQty });
+  };
+
+  window.renamePackItem = async (id, evt) => {
+    if (evt) evt.stopPropagation();
+    if (!currentTourId) return;
+    const it = packItems.find(x => x.id === id);
+    if (!it) return;
+    const nytt = prompt("Endre navn:", it.navn);
+    if (nytt === null) return;
+    const trimmed = nytt.trim();
+    if (!trimmed || trimmed === it.navn) return;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), { navn: trimmed });
   };
 
   window.deletePackItem = async (id) => {
