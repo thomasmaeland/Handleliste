@@ -1926,10 +1926,17 @@ let LIST_ID = null;
 
   function startListeningPackTours() {
     if (unsubscribeTours) unsubscribeTours();
-    const q = query(collection(db, "lists", LIST_ID, "packlists"), orderBy("startDato", "desc"));
+    const q = query(collection(db, "lists", LIST_ID, "packlists"), orderBy("createdAt", "desc"));
     unsubscribeTours = onSnapshot(q, (snap) => {
       packTours = [];
       snap.forEach(d => packTours.push({ id: d.id, ...d.data() }));
+      // Vis turer med dato først (nærmeste øverst), deretter turer uten dato
+      packTours.sort((a, b) => {
+        if (a.startDato && b.startDato) return b.startDato - a.startDato;
+        if (a.startDato && !b.startDato) return -1;
+        if (!a.startDato && b.startDato) return 1;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
       renderPackToursView();
     });
   }
