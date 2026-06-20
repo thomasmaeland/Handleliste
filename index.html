@@ -1985,8 +1985,20 @@ let LIST_ID = null;
         return (b.createdAt || 0) - (a.createdAt || 0);
       });
       renderPackToursView();
+      // Gjenopprett åpen tur etter refresh (kun én gang, og kun hvis vi ikke alt står i en tur)
+      if (!packToursRestored) {
+        packToursRestored = true;
+        try {
+          const openId = localStorage.getItem("hl-open-tour");
+          const activeTab = localStorage.getItem("hl-active-tab");
+          if (openId && activeTab === "pakke" && !currentTourId && packTours.some(t => t.id === openId)) {
+            openPackTourDetail(openId);
+          }
+        } catch(e) {}
+      }
     });
   }
+  let packToursRestored = false;
 
   function renderPackToursView() {
     const container = document.getElementById("pakke-tours-list");
@@ -2047,6 +2059,7 @@ let LIST_ID = null;
     currentPerson = null;
     const tour = packTours.find(t => t.id === tourId);
     if (!tour) return;
+    try { localStorage.setItem("hl-open-tour", tourId); } catch(e) {}
 
     document.getElementById("pakke-tours-view").style.display = "none";
     document.getElementById("pakke-detail-view").style.display = "block";
@@ -2158,6 +2171,7 @@ let LIST_ID = null;
   document.getElementById("pakke-back-btn").addEventListener("click", () => {
     currentTourId = null;
     currentPerson = null;
+    try { localStorage.removeItem("hl-open-tour"); } catch(e) {}
     if (unsubscribePackItems) unsubscribePackItems();
     document.getElementById("pakke-tours-view").style.display = "block";
     document.getElementById("pakke-detail-view").style.display = "none";
