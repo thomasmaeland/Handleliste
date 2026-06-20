@@ -577,21 +577,18 @@
           <div style="font-size:13px;color:var(--ink2);margin-top:.5rem" id="pakke-tour-desc">—</div>
         </div>
 
-        <select class="modal-select" id="pakke-person-select" style="margin-bottom:1rem;width:100%">
-          <option value="">Velg person...</option>
-        </select>
-
-        <div style="display:none;margin-bottom:1rem;padding:1rem;background:var(--accent-light);border-radius:var(--radius)" id="pakke-new-person-area">
+        <div id="pakke-new-person-area" style="margin-bottom:1rem;padding:1rem;background:var(--accent-light);border-radius:var(--radius)">
           <div id="pakke-member-quickadd" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.6rem"></div>
-          <div style="font-size:12px;color:var(--ink3);margin-bottom:.5rem">Legg til ny person</div>
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:.5rem">Legg til ny person på turen</div>
           <div class="add-form">
             <input class="add-input" id="pakke-new-person-input" type="text" placeholder="Navn" autocomplete="off" />
             <button class="add-btn" id="pakke-new-person-btn" type="button">+</button>
           </div>
         </div>
 
-        <div id="pakke-items-area" style="display:none">
-          <select class="modal-select" id="pakke-cat-input" style="margin-bottom:.75rem;width:100%">
+        <div id="pakke-add-area" style="margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:.5rem">Legg til ting</div>
+          <select class="modal-select" id="pakke-cat-input" style="margin-bottom:.5rem;width:100%">
             <option value="klar">👕 Klær</option>
             <option value="toalett">🧴 Toalettsaker</option>
             <option value="dokumenter">📄 Dokumenter</option>
@@ -599,14 +596,22 @@
             <option value="barn">🧸 Barn</option>
             <option value="diverse" selected>📦 Diverse</option>
           </select>
-          <div class="add-form" style="margin-bottom:.5rem">
+          <div class="add-form" style="margin-bottom:.6rem">
             <input class="add-input" id="pakke-item-input" type="text" placeholder="Hva skal pakkes?" autocomplete="off" />
             <input class="add-input" id="pakke-qty-input" type="number" min="1" value="1" inputmode="numeric" style="max-width:60px;text-align:center" title="Antall" />
-            <button class="add-btn" id="pakke-item-add-btn" type="button">+</button>
           </div>
-          <button class="list-action-btn" id="pakke-add-all-btn" type="button" style="width:100%;margin-bottom:1rem;font-size:13px;justify-content:center">👥 Legg til for alle på turen</button>
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:.4rem">Hvem skal ha det?</div>
+          <div id="pakke-who-buttons" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:.4rem">Vis</div>
+        <select class="modal-select" id="pakke-person-select" style="margin-bottom:1rem;width:100%">
+          <option value="">Velg person...</option>
+        </select>
+
+        <div id="pakke-items-area">
           <div id="pakke-items-list">
-            <div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg person først</p></div>
+            <div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg visning over</p></div>
           </div>
         </div>
       </div>
@@ -1971,10 +1976,10 @@ let LIST_ID = null;
     document.getElementById("pakke-tour-title").textContent = tour.turNavn;
     document.getElementById("pakke-tour-date").textContent = tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : "";
     document.getElementById("pakke-tour-desc").textContent = tour.beskrivelse || "";
-    document.getElementById("pakke-items-area").style.display = "none";
 
     const personSelect = document.getElementById("pakke-person-select");
     const updatePersonDropdown = () => {
+      const prev = personSelect.value;
       personSelect.innerHTML = '<option value="">Velg person...</option>';
       if ((tour.persons || []).length > 0) {
         personSelect.innerHTML += '<option value="__alle__">👥 Alle (oversikt)</option>';
@@ -1982,7 +1987,9 @@ let LIST_ID = null;
       (tour.persons || []).forEach(p => {
         personSelect.innerHTML += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`;
       });
+      if (prev && [...personSelect.options].some(o => o.value === prev)) personSelect.value = prev;
       renderMemberQuickAdd();
+      renderWhoButtons();
     };
 
     const addPersonToTour = async (navn) => {
@@ -1998,19 +2005,51 @@ let LIST_ID = null;
       const box = document.getElementById("pakke-member-quickadd");
       if (!box) return;
       const available = boardMemberNames.filter(n => !(tour.persons || []).includes(n));
-      if (available.length === 0) { box.innerHTML = ""; return; }
-      box.innerHTML = available.map(n =>
+      box.innerHTML = available.length === 0 ? "" : available.map(n =>
         `<button type="button" class="board-pill" style="cursor:pointer;border:1px solid var(--border);background:var(--card);padding:5px 10px;font-size:13px" onclick="quickAddTourPerson('${escapeJsString(n)}')">+ ${escapeHtml(n)}</button>`
       ).join("");
     };
     window.quickAddTourPerson = (navn) => addPersonToTour(navn);
 
-    updatePersonDropdown();
+    // "Hvem skal ha det?" – knapper for hver person + Alle
+    const renderWhoButtons = () => {
+      const box = document.getElementById("pakke-who-buttons");
+      if (!box) return;
+      const persons = tour.persons || [];
+      if (persons.length === 0) {
+        box.innerHTML = `<span style="font-size:13px;color:var(--ink3)">Legg til en person først</span>`;
+        return;
+      }
+      let html = persons.map(p =>
+        `<button type="button" class="who-btn" style="cursor:pointer;border:1px solid var(--border);background:var(--card);border-radius:8px;padding:6px 12px;font-size:13px" onclick="addItemToPerson('${escapeJsString(p)}')">${escapeHtml(p)}</button>`
+      ).join("");
+      if (persons.length > 1) {
+        html += `<button type="button" class="who-btn" style="cursor:pointer;border:1px solid var(--gold);color:var(--gold);background:var(--gold-dim);border-radius:8px;padding:6px 12px;font-size:13px" onclick="addItemToPerson('__alle__')">👥 Alle</button>`;
+      }
+      box.innerHTML = html;
+    };
 
-    // Make add-person area visible
+    // Legger tingen i input til valgt person (eller alle)
+    window.addItemToPerson = async (who) => {
+      const input = document.getElementById("pakke-item-input");
+      const navn = input.value.trim();
+      if (!navn) { input.focus(); return; }
+      const cat = document.getElementById("pakke-cat-input").value || "diverse";
+      const qty = readPackQty();
+      if (who === "__alle__") {
+        for (const p of (tour.persons || [])) await addPackItem(navn, p, cat, qty);
+      } else {
+        await addPackItem(navn, who, cat, qty);
+      }
+      input.value = "";
+      document.getElementById("pakke-qty-input").value = "1";
+      input.focus();
+    };
+
+    updatePersonDropdown();
     document.getElementById("pakke-new-person-area").style.display = "block";
 
-    // Handle adding new person (fritekst)
+    // Legg til ny person (fritekst)
     const addPersonInput = document.getElementById("pakke-new-person-input");
     const handleAddPerson = async () => {
       const navn = addPersonInput.value.trim();
@@ -2019,13 +2058,22 @@ let LIST_ID = null;
       addPersonInput.value = "";
       addPersonInput.focus();
     };
-
     document.getElementById("pakke-new-person-btn").onclick = handleAddPerson;
-    addPersonInput.onkeydown = (e) => {
-      if (e.key === "Enter") handleAddPerson();
+    addPersonInput.onkeydown = (e) => { if (e.key === "Enter") handleAddPerson(); };
+
+    // Enter i ting-feltet legger til for valgt visning, eller ber om å velge hvem
+    document.getElementById("pakke-item-input").onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      const sel = personSelect.value;
+      if (sel && sel !== "__alle__") addItemToPerson(sel);
+      else if (sel === "__alle__") addItemToPerson("__alle__");
     };
 
-    if (boardMemberNames.length === 0) loadBoardMembers().then(renderMemberQuickAdd);
+    if (boardMemberNames.length === 0) loadBoardMembers().then(() => { renderMemberQuickAdd(); });
+
+    // Behold tur-referanse for medlemsredigering
+    window._currentTour = tour;
+    window._updatePersonDropdown = updatePersonDropdown;
 
     startListeningPackItems(tourId);
   };
@@ -2038,27 +2086,10 @@ let LIST_ID = null;
     document.getElementById("pakke-detail-view").style.display = "none";
   });
 
-  document.getElementById("pakke-person-select").addEventListener("change", async (e) => {
+  document.getElementById("pakke-person-select").addEventListener("change", (e) => {
     const person = e.target.value.trim();
-    if (!person) {
-      currentPerson = null;
-      document.getElementById("pakke-items-area").style.display = "none";
-      return;
-    }
-    currentPerson = person;
-    document.getElementById("pakke-items-area").style.display = "block";
-    if (person === "__alle__") {
-      // Oversiktsmodus: skjul inntasting, vis bare samlet liste
-      document.getElementById("pakke-cat-input").style.display = "none";
-      document.querySelector("#pakke-items-area .add-form").style.display = "none";
-      document.getElementById("pakke-add-all-btn").style.display = "none";
-      renderPackItems();
-    } else {
-      document.getElementById("pakke-cat-input").style.display = "";
-      document.querySelector("#pakke-items-area .add-form").style.display = "";
-      document.getElementById("pakke-add-all-btn").style.display = "";
-      document.getElementById("pakke-item-input").focus();
-    }
+    currentPerson = person || null;
+    renderPackItems();
   });
 
   function startListeningPackItems(tourId) {
@@ -2075,13 +2106,11 @@ let LIST_ID = null;
   function renderPackItems() {
     const container = document.getElementById("pakke-items-list");
     if (!container) return;
-    if (!currentPerson) {
-      container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg person først</p></div>`;
-      return;
-    }
+    // Standard: vis oversikt (alle) når ingen spesifikk person er valgt
+    const view = currentPerson || "__alle__";
 
     // Oversiktsmodus: vis alle personer med hver sin liste
-    if (currentPerson === "__alle__") {
+    if (view === "__alle__") {
       const tour = packTours.find(t => t.id === currentTourId);
       const persons = (tour?.persons || []);
       if (persons.length === 0 || packItems.length === 0) {
@@ -2092,9 +2121,11 @@ let LIST_ID = null;
       persons.forEach(p => {
         const items = packItems.filter(it => it.person === p);
         const packed = items.filter(it => it.done).length;
-        html += `<div style="margin:1rem 0 .4rem;font-family:'DM Serif Display',serif;font-size:1.05rem;display:flex;justify-content:space-between;align-items:baseline">
-          <span>${escapeHtml(p)}</span>
+        html += `<div style="margin:1rem 0 .4rem;display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span style="font-family:'DM Serif Display',serif;font-size:1.05rem;flex:1">${escapeHtml(p)}</span>
           <span style="font-size:12px;color:var(--ink3)">${packed}/${items.length} pakket</span>
+          <button type="button" title="Endre navn" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:14px;padding:2px 4px" onclick="renameTourPerson('${escapeJsString(p)}')">✎</button>
+          <button type="button" title="Fjern person" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:15px;padding:2px 4px" onclick="removeTourPerson('${escapeJsString(p)}')">🗑</button>
         </div>`;
         if (items.length === 0) {
           html += `<div style="font-size:13px;color:var(--ink3);padding:2px 0 6px">Ingenting ennå</div>`;
@@ -2124,9 +2155,9 @@ let LIST_ID = null;
       return;
     }
 
-    const personItems = packItems.filter(it => it.person === currentPerson);
+    const personItems = packItems.filter(it => it.person === view);
     if (personItems.length === 0) {
-      container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Ingen items for ${escapeHtml(currentPerson)}</p></div>`;
+      container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Ingen items for ${escapeHtml(view)}</p></div>`;
       return;
     }
     const groups = {};
@@ -2186,41 +2217,47 @@ let LIST_ID = null;
     await addPackItem(navn, person, "diverse", 1);
   };
 
-  document.getElementById("pakke-item-add-btn").addEventListener("click", async () => {
-    if (!currentTourId || !currentPerson) return;
-    const input = document.getElementById("pakke-item-input");
-    const navn = input.value.trim();
-    if (!navn) return;
-    const cat = document.getElementById("pakke-cat-input").value || "diverse";
-    await addPackItem(navn, currentPerson, cat, readPackQty());
-    input.value = "";
-    document.getElementById("pakke-qty-input").value = "1";
-    input.focus();
-  });
-
-  document.getElementById("pakke-add-all-btn").addEventListener("click", async () => {
+  window.removeTourPerson = async (person) => {
     if (!currentTourId) return;
     const tour = packTours.find(t => t.id === currentTourId);
-    const persons = (tour?.persons || []);
-    if (persons.length === 0) { alert("Legg til minst én person på turen først (i feltet 'Legg til ny person')."); return; }
-    const input = document.getElementById("pakke-item-input");
-    const navn = input.value.trim();
-    if (!navn) { alert("Skriv hva som skal pakkes i feltet 'Hva skal pakkes?' først."); input.focus(); return; }
-    const cat = document.getElementById("pakke-cat-input").value || "diverse";
-    const qty = readPackQty();
-    for (const p of persons) await addPackItem(navn, p, cat, qty);
-    input.value = "";
-    document.getElementById("pakke-qty-input").value = "1";
-    input.focus();
-    alert(`"${navn}" lagt til for ${persons.length} ${persons.length === 1 ? "person" : "personer"}.`);
-  });
+    if (!tour) return;
+    const itemCount = packItems.filter(it => it.person === person).length;
+    const msg = itemCount > 0
+      ? `Fjerne ${person} og de ${itemCount} tingene deres fra turen?`
+      : `Fjerne ${person} fra turen?`;
+    if (!confirm(msg)) return;
+    // Slett personens elementer
+    for (const it of packItems.filter(it => it.person === person)) {
+      await deleteDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", it.id));
+    }
+    // Fjern fra persons-array
+    const newPersons = (tour.persons || []).filter(p => p !== person);
+    tour.persons = newPersons;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId), { persons: newPersons });
+    if (currentPerson === person) currentPerson = "__alle__";
+    if (window._updatePersonDropdown) window._updatePersonDropdown();
+  };
 
-  document.getElementById("pakke-item-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("pakke-item-add-btn").click();
-  });
-  document.getElementById("pakke-qty-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("pakke-item-add-btn").click();
-  });
+  window.renameTourPerson = async (oldName) => {
+    if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    if (!tour) return;
+    const newName = prompt(`Nytt navn for ${oldName}:`, oldName);
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    if ((tour.persons || []).includes(trimmed)) { alert(trimmed + " finnes allerede på turen."); return; }
+    // Oppdater alle elementenes person-felt
+    for (const it of packItems.filter(it => it.person === oldName)) {
+      await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", it.id), { person: trimmed });
+    }
+    // Oppdater persons-array
+    const newPersons = (tour.persons || []).map(p => p === oldName ? trimmed : p);
+    tour.persons = newPersons;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId), { persons: newPersons });
+    if (currentPerson === oldName) currentPerson = trimmed;
+    if (window._updatePersonDropdown) window._updatePersonDropdown();
+  };
 
   // NEW TOUR MODAL
   document.getElementById("pakke-new-tour-btn").addEventListener("click", () => {
