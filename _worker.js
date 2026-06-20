@@ -1,6 +1,93 @@
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/suggest-packing" && request.method === "POST") {
+      try {
+        const apiKey = env.ANTHROPIC_API_KEY;
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "API key not configured" }), {
+            status: 500, headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        const { beskrivelse, personer } = await request.json();
+        const personListe = Array.isArray(personer) && personer.length
+          ? personer.join(", ")
+          : "(ingen personer oppgitt)";
+
+        const prompt = `Du planlegger pakkeliste for en familietur. Lag forslag til hva hver person bør pakke.
+
+Turbeskrivelse: ${beskrivelse || "(ingen beskrivelse)"}
+Personer på turen: ${personListe}
+
+Svar KUN med gyldig JSON, ingen annen tekst:
+{
+  "forslag": [
+    {
+      "person": "Katrine",
+      "ting": [
+        { "navn": "Solkrem", "antall": 1, "kategori": "toalett" },
+        { "navn": "Pass", "antall": 1, "kategori": "dokumenter" }
+      ]
+    }
+  ]
+}
+
+Regler:
+- Bruk EKSAKT personnavnene fra listen over som "person"-verdi
+- "kategori" må være én av: klar, toalett, dokumenter, elektronikk, barn, diverse
+- Tilpass til alder og turlengde: spedbarn trenger bleier/skift/våtservietter, småbarn trenger egne ting, voksne andre ting
+- Tilpass til destinasjon og årstid hvis det fremgår (sol/bad/varme vs kulde)
+- "antall": fornuftig mengde for turlengden (f.eks. flere bleiepakker for lang tur med baby)
+- Vær praktisk og dekkende, men ikke overdriv med urealistiske mengder
+- Norsk stavemåte med æøå`;
+
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 4096,
+            system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst.",
+            messages: [{ role: "user", content: [{ type: "text", text: prompt }] }]
+          })
+        });
+
+        const rawText = await response.text();
+        if (!response.ok) {
+          return new Response(JSON.stringify({ error: "Anthropic API feil", status: response.status, detaljer: rawText }), {
+            status: 500, headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        const data = JSON.parse(rawText);
+        const text = data.content?.[0]?.text || "";
+        let clean = text.replace(/```json|```/g, "").trim();
+        const firstBrace = clean.indexOf("{");
+        const lastBrace = clean.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace !== -1) clean = clean.substring(firstBrace, lastBrace + 1);
+
+        if (!clean.startsWith("{")) {
+          return new Response(JSON.stringify({ forslag: [], feil: "Kunne ikke lage forslag. Prøv en tydeligere beskrivelse." }), {
+            status: 200, headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        const parsed = JSON.parse(clean);
+        return new Response(JSON.stringify(parsed), { headers: { "Content-Type": "application/json" } });
+
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+
     if (url.pathname === "/scan" && request.method === "POST") {
       try {
         const apiKey = env.ANTHROPIC_API_KEY;
