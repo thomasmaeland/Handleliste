@@ -143,6 +143,9 @@
     .item-name { font-size:15px; font-weight:400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .qty-btn { width:26px; height:26px; border:1px solid var(--border); background:var(--card); border-radius:6px; cursor:pointer; font-size:16px; line-height:1; color:var(--ink2); display:flex; align-items:center; justify-content:center; padding:0; }
     .qty-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .pack-progress { border:1px solid var(--border); background:var(--card); border-radius:14px; padding:3px 10px; font-size:12px; color:var(--ink2); cursor:pointer; flex-shrink:0; min-width:38px; }
+    .pack-progress:hover { border-color:var(--accent); color:var(--accent); }
+    .pack-progress.full { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
     .item-detail { font-size:11px; color:var(--ink3); margin-top:1px; }
     .by-whom { font-size:10px; color:var(--accent2); font-weight:500; letter-spacing:.04em; flex-shrink:0; }
     .qty-wrap { display:flex; align-items:center; gap:4px; flex-shrink:0; }
@@ -2154,18 +2157,29 @@ let LIST_ID = null;
 
   function packItemHtml(it) {
     const qty = it.qty || 1;
+    const packed = Math.min(it.packed != null ? it.packed : (it.done ? qty : 0), qty);
+    const erFerdig = packed >= qty;
+
+    // Antall-redigering (endre hvor mange som skal pakkes)
     const qtyControls = `
       <div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
-        <button class="qty-btn" onclick="changePackQty('${it.id}',-1,event)" title="Færre" ${qty <= 1 ? 'style="opacity:.3"' : ""}>−</button>
-        <span style="min-width:20px;text-align:center;font-size:13px;color:var(--ink2)">${qty}</span>
-        <button class="qty-btn" onclick="changePackQty('${it.id}',1,event)" title="Flere">+</button>
+        <button class="qty-btn" onclick="changePackQty('${it.id}',-1,event)" title="Færre totalt" ${qty <= 1 ? 'style="opacity:.3"' : ""}>−</button>
+        <span style="min-width:18px;text-align:center;font-size:13px;color:var(--ink2)">${qty}</span>
+        <button class="qty-btn" onclick="changePackQty('${it.id}',1,event)" title="Flere totalt">+</button>
       </div>`;
+
+    // Fremdriftsteller – bare når det er mer enn 1 å pakke
+    const progress = qty > 1
+      ? `<button class="pack-progress ${erFerdig ? "full" : ""}" onclick="incrementPacked('${it.id}',event)" title="Trykk for å pakke én til">${packed}/${qty}</button>`
+      : "";
+
     return `
-      <div class="item ${it.done ? "done" : ""}" style="margin-bottom:6px">
-        <button class="check-btn" onclick="togglePackItem('${it.id}', ${!!it.done})">${it.done ? "✓" : ""}</button>
+      <div class="item ${erFerdig ? "done" : ""}" style="margin-bottom:6px">
+        <button class="check-btn" onclick="togglePackItem('${it.id}', ${erFerdig})">${erFerdig ? "✓" : ""}</button>
         <div class="item-main" style="cursor:pointer" onclick="renamePackItem('${it.id}',event)" title="Trykk for å endre navn">
           <div class="item-name">${escapeHtml(it.navn)}</div>
         </div>
+        ${progress}
         ${qtyControls}
         <button class="delete-btn" onclick="deletePackItem('${it.id}')" title="Fjern">×</button>
       </div>`;
@@ -2238,9 +2252,32 @@ let LIST_ID = null;
     container.innerHTML = html;
   }
 
-  window.togglePackItem = async (id, done) => {
+  window.togglePackItem = async (id, erFerdig) => {
     if (!currentTourId) return;
-    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), { done: !done });
+    const it = packItems.find(x => x.id === id);
+    if (!it) return;
+    const qty = it.qty || 1;
+    // Hake: ett klikk markerer ALT pakket, klikk igjen nullstiller
+    const nyPacked = erFerdig ? 0 : qty;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), {
+      packed: nyPacked,
+      done: nyPacked >= qty
+    });
+  };
+
+  window.incrementPacked = async (id, evt) => {
+    if (evt) evt.stopPropagation();
+    if (!currentTourId) return;
+    const it = packItems.find(x => x.id === id);
+    if (!it) return;
+    const qty = it.qty || 1;
+    const naa = Math.min(it.packed != null ? it.packed : (it.done ? qty : 0), qty);
+    // Øk med 1, rull tilbake til 0 når alt er pakket og man trykker igjen
+    const ny = naa >= qty ? 0 : naa + 1;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), {
+      packed: ny,
+      done: ny >= qty
+    });
   };
 
   window.changePackQty = async (id, delta, evt) => {
@@ -2250,7 +2287,13 @@ let LIST_ID = null;
     if (!it) return;
     const newQty = (it.qty || 1) + delta;
     if (newQty < 1) return; // går ikke under 1 her; bruk × for å slette
-    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), { qty: newQty });
+    // Behold pakket-antall innenfor ny grense
+    const naaPacked = Math.min(it.packed != null ? it.packed : (it.done ? (it.qty || 1) : 0), newQty);
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), {
+      qty: newQty,
+      packed: naaPacked,
+      done: naaPacked >= newQty
+    });
   };
 
   window.renamePackItem = async (id, evt) => {
