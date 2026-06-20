@@ -1,3 +1,41 @@
+// Reparerer JSON som ble avkuttet (f.eks. ved max_tokens).
+// Kutter tilbake til siste komplette objekt og lukker åpne arrays/objekter i riktig rekkefølge.
+function repairTruncatedJson(s) {
+  let lastComplete = s.lastIndexOf("}");
+  if (lastComplete === -1) return null;
+  let candidate = s.substring(0, lastComplete + 1);
+
+  for (let attempt = 0; attempt < 200; attempt++) {
+    try {
+      return JSON.parse(candidate);
+    } catch (e) {
+      // Bygg en stack over åpne strukturer for å lukke i riktig nestingsrekkefølge
+      const stack = [];
+      let inStr = false, esc = false;
+      for (const ch of candidate) {
+        if (esc) { esc = false; continue; }
+        if (ch === "\\") { esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === "{") stack.push("}");
+        else if (ch === "[") stack.push("]");
+        else if (ch === "}" || ch === "]") stack.pop();
+      }
+      // Fjern henge-komma, lukk i omvendt rekkefølge (innerst først)
+      candidate = candidate.replace(/,\s*$/, "");
+      if (stack.length > 0) {
+        candidate = candidate + stack.reverse().join("");
+      } else {
+        // Ingen åpne strukturer men fortsatt ugyldig – kutt til forrige "}"
+        const prev = candidate.lastIndexOf("}", candidate.length - 2);
+        if (prev === -1) return null;
+        candidate = candidate.substring(0, prev + 1);
+      }
+    }
+  }
+  return null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -52,7 +90,7 @@ Regler:
           },
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
-            max_tokens: 4096,
+            max_tokens: 8000,
             system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst.",
             messages: [{ role: "user", content: [{ type: "text", text: prompt }] }]
           })
@@ -67,10 +105,10 @@ Regler:
 
         const data = JSON.parse(rawText);
         const text = data.content?.[0]?.text || "";
+        const stopReason = data.stop_reason || "";
         let clean = text.replace(/```json|```/g, "").trim();
         const firstBrace = clean.indexOf("{");
-        const lastBrace = clean.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace !== -1) clean = clean.substring(firstBrace, lastBrace + 1);
+        if (firstBrace !== -1) clean = clean.substring(firstBrace);
 
         if (!clean.startsWith("{")) {
           return new Response(JSON.stringify({ forslag: [], feil: "Kunne ikke lage forslag. Prøv en tydeligere beskrivelse." }), {
@@ -78,7 +116,22 @@ Regler:
           });
         }
 
-        const parsed = JSON.parse(clean);
+        let parsed;
+        try {
+          // Prøv vanlig parsing først (kutt etter siste hele }-objekt)
+          const lastBrace = clean.lastIndexOf("}");
+          parsed = JSON.parse(clean.substring(0, lastBrace + 1));
+        } catch (e1) {
+          // Svaret er sannsynligvis avkuttet (stop_reason: max_tokens). Reparer.
+          parsed = repairTruncatedJson(clean);
+        }
+
+        if (!parsed || !parsed.forslag) {
+          return new Response(JSON.stringify({ forslag: [], feil: "Forslaget ble for langt og kunne ikke leses helt. Prøv færre personer om gangen." }), {
+            status: 200, headers: { "Content-Type": "application/json" }
+          });
+        }
+
         return new Response(JSON.stringify(parsed), { headers: { "Content-Type": "application/json" } });
 
       } catch (err) {
