@@ -2321,7 +2321,9 @@ let LIST_ID = null;
       });
       const data = await res.json();
       if (data.error || !data.forslag) {
-        box.innerHTML = `<div style="color:var(--ink2);font-size:13px">Klarte ikke å lage forslag akkurat nå. Prøv igjen om litt.</div>`;
+        console.error("Pakkeforslag-feil:", data);
+        const detalj = data.detaljer || data.error || data.feil || "ukjent feil";
+        box.innerHTML = `<div style="color:var(--ink2);font-size:13px">Klarte ikke å lage forslag.<br><span style="color:var(--ink3);font-size:11px">${escapeHtml(String(detalj)).slice(0,300)}</span></div>`;
         return;
       }
       aiSuggestions = [];
