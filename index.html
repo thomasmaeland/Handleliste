@@ -342,6 +342,12 @@
 <!-- LOGIN -->
 <div id="login-screen" style="display:none">
   <div class="login-logo">Handleliste<span>Del listen med den du handler med</span></div>
+  <div id="inapp-warning" style="display:none;max-width:340px;background:#fff3cd;border:1px solid #e0c068;border-radius:12px;padding:1rem 1.25rem;color:#5c4a1a;font-size:14px;line-height:1.5;text-align:center">
+    <div style="font-weight:600;margin-bottom:.4rem">Åpne i nettleseren din</div>
+    Du har åpnet appen inne i en annen app (f.eks. Messenger). Google-innlogging fungerer ikke her.<br><br>
+    Trykk på <strong>menyen (⋯ eller ⋮)</strong> øverst og velg <strong>«Åpne i nettleser»</strong> — eller kopier lenken til Chrome eller Safari.
+    <button id="inapp-copy-btn" style="margin-top:.85rem;width:100%;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;cursor:pointer">Kopier lenken</button>
+  </div>
   <button class="login-btn" id="google-login-btn">
     <svg class="google-icon" viewBox="0 0 24 24">
       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -990,6 +996,25 @@ let LIST_ID = null;
     try { await signInWithPopup(auth, provider); } catch(e) { console.error(e); }
   });
   document.getElementById("signout-btn").addEventListener("click", () => signOut(auth));
+
+  // Oppdag in-app browsere (Messenger, Instagram, Facebook m.fl.) der Google-innlogging er blokkert
+  function erInAppBrowser() {
+    const ua = (navigator.userAgent || "").toLowerCase();
+    return /fban|fbav|fb_iab|instagram|messenger|line\/|micromessenger|tiktok|snapchat/.test(ua);
+  }
+  if (erInAppBrowser()) {
+    const w = document.getElementById("inapp-warning");
+    if (w) w.style.display = "block";
+  }
+  document.getElementById("inapp-copy-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("inapp-copy-btn");
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      btn.textContent = "Kopiert! Lim inn i Chrome/Safari";
+    } catch (e) {
+      btn.textContent = window.location.href;
+    }
+  });
 
   async function createUniqueHouseholdForUser(user) {
     let code = "";
@@ -2168,12 +2193,9 @@ let LIST_ID = null;
         <button class="qty-btn" onclick="changePackQty('${it.id}',1,event)" title="Flere totalt">+</button>
       </div>`;
 
-    // Fremdriftsteller – bare når det er mer enn 1 å pakke. Trykk tallet = pakk én til, − = angre én.
+    // Fremdriftsteller – bare når det er mer enn 1 å pakke
     const progress = qty > 1
-      ? `<div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
-           <button class="qty-btn" onclick="decrementPacked('${it.id}',event)" title="Pakk én mindre" ${packed <= 0 ? 'style="opacity:.3"' : ""}>−</button>
-           <button class="pack-progress ${erFerdig ? "full" : ""}" onclick="incrementPacked('${it.id}',event)" title="Trykk for å pakke én til">${packed}/${qty}</button>
-         </div>`
+      ? `<button class="pack-progress ${erFerdig ? "full" : ""}" onclick="incrementPacked('${it.id}',event)" title="Trykk for å pakke én til">${packed}/${qty}</button>`
       : "";
 
     return `
@@ -2275,23 +2297,8 @@ let LIST_ID = null;
     if (!it) return;
     const qty = it.qty || 1;
     const naa = Math.min(it.packed != null ? it.packed : (it.done ? qty : 0), qty);
-    if (naa >= qty) return; // allerede full – bruk − for å gå ned
-    const ny = naa + 1;
-    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), {
-      packed: ny,
-      done: ny >= qty
-    });
-  };
-
-  window.decrementPacked = async (id, evt) => {
-    if (evt) evt.stopPropagation();
-    if (!currentTourId) return;
-    const it = packItems.find(x => x.id === id);
-    if (!it) return;
-    const qty = it.qty || 1;
-    const naa = Math.min(it.packed != null ? it.packed : (it.done ? qty : 0), qty);
-    if (naa <= 0) return;
-    const ny = naa - 1;
+    // Øk med 1, rull tilbake til 0 når alt er pakket og man trykker igjen
+    const ny = naa >= qty ? 0 : naa + 1;
     await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), {
       packed: ny,
       done: ny >= qty
