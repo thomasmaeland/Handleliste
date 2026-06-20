@@ -1973,10 +1973,29 @@ let LIST_ID = null;
           <div class="item-name">${escapeHtml(tour.turNavn)}</div>
           <div class="item-detail">${tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : ""} · ${(tour.persons || []).length} personer</div>
         </div>
+        <button class="delete-btn" onclick="deletePackTour('${tour.id}', event)" title="Slett tur">×</button>
         <span style="color:var(--ink3)">›</span>
       </div>
     `).join("");
   }
+
+  window.deletePackTour = async (tourId, evt) => {
+    if (evt) evt.stopPropagation();
+    const tour = packTours.find(t => t.id === tourId);
+    const navn = tour?.turNavn || "denne turen";
+    if (!confirm(`Slette "${navn}" og alt som er pakket på den? Dette kan ikke angres.`)) return;
+    // Slett alle pakke-elementer i turen først, deretter selve turen
+    try {
+      const itemsSnap = await getDocs(collection(db, "lists", LIST_ID, "packlists", tourId, "items"));
+      for (const d of itemsSnap.docs) {
+        await deleteDoc(doc(db, "lists", LIST_ID, "packlists", tourId, "items", d.id));
+      }
+      await deleteDoc(doc(db, "lists", LIST_ID, "packlists", tourId));
+    } catch (e) {
+      console.error("Kunne ikke slette tur:", e);
+      alert("Klarte ikke å slette turen. Prøv igjen.");
+    }
+  };
 
   window.openPackTourDetail = (tourId) => {
     currentTourId = tourId;
