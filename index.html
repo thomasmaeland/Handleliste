@@ -577,6 +577,9 @@
           <div style="font-size:13px;color:var(--ink2);margin-top:.5rem" id="pakke-tour-desc">—</div>
         </div>
 
+        <button class="list-action-btn" id="pakke-ai-btn" type="button" style="width:100%;margin-bottom:1rem;justify-content:center;border:1px solid var(--gold);color:var(--gold);background:var(--gold-dim)">✨ Foreslå pakkeliste med AI</button>
+        <div id="pakke-ai-suggestions" style="display:none;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)"></div>
+
         <div id="pakke-new-person-area" style="margin-bottom:1rem;padding:1rem;background:var(--accent-light);border-radius:var(--radius)">
           <div id="pakke-member-quickadd" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.6rem"></div>
           <div style="font-size:12px;color:var(--ink3);margin-bottom:.5rem">Legg til ny person på turen</div>
@@ -2257,6 +2260,108 @@ let LIST_ID = null;
     await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId), { persons: newPersons });
     if (currentPerson === oldName) currentPerson = trimmed;
     if (window._updatePersonDropdown) window._updatePersonDropdown();
+  };
+
+  // ===== AI PAKKEFORSLAG =====
+  let aiSuggestions = [];  // [{person, navn, antall, kategori, valgt}]
+
+  document.getElementById("pakke-ai-btn").addEventListener("click", async () => {
+    if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    if (!tour) return;
+    const persons = tour.persons || [];
+    if (persons.length === 0) {
+      alert("Legg til personene på turen først, så foreslår AI hva hver skal pakke.");
+      return;
+    }
+    const beskrivelse = `${tour.turNavn || ""}. ${tour.beskrivelse || ""}`.trim();
+    const box = document.getElementById("pakke-ai-suggestions");
+    const btn = document.getElementById("pakke-ai-btn");
+    btn.disabled = true;
+    btn.textContent = "✨ Lager forslag...";
+    box.style.display = "block";
+    box.innerHTML = `<div style="text-align:center;color:var(--ink3);font-size:13px">Tenker ut hva dere bør pakke...</div>`;
+
+    try {
+      const res = await fetch("/suggest-packing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ beskrivelse, personer: persons })
+      });
+      const data = await res.json();
+      if (data.error || !data.forslag) {
+        box.innerHTML = `<div style="color:var(--ink2);font-size:13px">Klarte ikke å lage forslag akkurat nå. Prøv igjen om litt.</div>`;
+        return;
+      }
+      // Flat ut til én liste med valgt-flagg
+      aiSuggestions = [];
+      data.forslag.forEach(f => {
+        (f.ting || []).forEach(t => {
+          aiSuggestions.push({
+            person: f.person, navn: t.navn,
+            antall: t.antall || 1, kategori: t.kategori || "diverse", valgt: true
+          });
+        });
+      });
+      renderAiSuggestions();
+    } catch (e) {
+      box.innerHTML = `<div style="color:var(--ink2);font-size:13px">Noe gikk galt. Sjekk nettforbindelsen og prøv igjen.</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "✨ Foreslå pakkeliste med AI";
+    }
+  });
+
+  function renderAiSuggestions() {
+    const box = document.getElementById("pakke-ai-suggestions");
+    if (aiSuggestions.length === 0) {
+      box.innerHTML = `<div style="font-size:13px;color:var(--ink3)">Ingen forslag.</div>`;
+      return;
+    }
+    // Grupper per person
+    const byPerson = {};
+    aiSuggestions.forEach((s, i) => { (byPerson[s.person] = byPerson[s.person] || []).push(i); });
+
+    let html = `<div style="font-weight:600;margin-bottom:.5rem">Forslag — huk av det du vil ha med</div>`;
+    Object.keys(byPerson).forEach(person => {
+      html += `<div style="font-family:'DM Serif Display',serif;font-size:1rem;margin:.7rem 0 .3rem">${escapeHtml(person)}</div>`;
+      byPerson[person].forEach(i => {
+        const s = aiSuggestions[i];
+        html += `
+          <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:14px;cursor:pointer">
+            <input type="checkbox" ${s.valgt ? "checked" : ""} onchange="toggleAiSuggestion(${i})" style="width:18px;height:18px" />
+            <span>${escapeHtml(s.navn)}${s.antall > 1 ? ` ×${s.antall}` : ""}</span>
+          </label>`;
+      });
+    });
+    const valgtAntall = aiSuggestions.filter(s => s.valgt).length;
+    html += `
+      <div style="display:flex;gap:8px;margin-top:1rem">
+        <button class="add-btn" type="button" style="flex:1" onclick="commitAiSuggestions()">Legg til ${valgtAntall} valgte</button>
+        <button class="list-action-btn" type="button" style="border:1px solid var(--border)" onclick="dismissAiSuggestions()">Avbryt</button>
+      </div>`;
+    box.innerHTML = html;
+  }
+
+  window.toggleAiSuggestion = (i) => {
+    if (aiSuggestions[i]) { aiSuggestions[i].valgt = !aiSuggestions[i].valgt; renderAiSuggestions(); }
+  };
+
+  window.dismissAiSuggestions = () => {
+    aiSuggestions = [];
+    const box = document.getElementById("pakke-ai-suggestions");
+    box.style.display = "none";
+    box.innerHTML = "";
+  };
+
+  window.commitAiSuggestions = async () => {
+    if (!currentTourId) return;
+    const valgte = aiSuggestions.filter(s => s.valgt);
+    if (valgte.length === 0) { alert("Huk av minst én ting først."); return; }
+    for (const s of valgte) {
+      await addPackItem(s.navn, s.person, s.kategori, s.antall);
+    }
+    dismissAiSuggestions();
   };
 
   // NEW TOUR MODAL
