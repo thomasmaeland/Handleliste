@@ -408,6 +408,16 @@
           <div id="list-info-panel" style="display:none;margin-top:12px;padding:12px;background:var(--surface-hover);border-radius:6px;font-size:14px;border-left:3px solid var(--accent)">
             <div id="list-info-content"></div>
           </div>
+          <div class="dd-divider"></div>
+          <div class="dd-section-label">Husholdning</div>
+          <div id="household-info" style="padding:4px 8px 8px;font-size:13px;color:var(--ink2)">
+            <div id="household-members">Laster...</div>
+            <div style="margin-top:8px;font-size:12px;color:var(--ink3)">Husholdningskode</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+              <code id="household-code" style="background:var(--surface-hover);padding:3px 8px;border-radius:6px;font-size:13px">—</code>
+              <button onclick="copyHouseholdCode(event)" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--ink2)">Kopier</button>
+            </div>
+          </div>
           <button class="dd-opt" onclick="closeSettingsDropdown(); openCreateSharedListModal()">+ Delt handleliste</button>
           <button class="dd-opt" id="share-btn" onclick="closeSettingsDropdown(); openShareModal()">👥 Del</button>
           <div class="dd-divider"></div>
@@ -4707,7 +4717,42 @@ await addDoc(historyRef, {
   window.setFontSize = (size) => { applyFontSize(size); };
 
   window.toggleSettingsDropdown = () => {
-    document.getElementById('settings-dropdown').classList.toggle('open');
+    const dd = document.getElementById('settings-dropdown');
+    dd.classList.toggle('open');
+    if (dd.classList.contains('open')) loadHouseholdInfo();
+  };
+
+  async function loadHouseholdInfo() {
+    const membersEl = document.getElementById("household-members");
+    const codeEl = document.getElementById("household-code");
+    if (!HOUSEHOLD_ID) { if (membersEl) membersEl.textContent = "Ingen husholdning"; return; }
+    if (codeEl) codeEl.textContent = HOUSEHOLD_ID;
+    try {
+      const snap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const members = snap.exists() ? (snap.data().members || {}) : {};
+      const navn = Array.isArray(members)
+        ? []
+        : Object.entries(members).map(([uid, n]) => ({ navn: String(n), erMeg: uid === currentUser?.uid }));
+      if (navn.length === 0) {
+        membersEl.textContent = "Ingen medlemmer registrert ennå.";
+      } else {
+        membersEl.innerHTML = navn.map(m =>
+          `<div style="padding:2px 0">👤 ${escapeHtml(m.navn)}${m.erMeg ? ' <span style="color:var(--ink3);font-size:11px">(deg)</span>' : ''}</div>`
+        ).join("");
+      }
+    } catch (e) {
+      membersEl.textContent = "Kunne ikke laste medlemmer.";
+    }
+  }
+
+  window.copyHouseholdCode = async (evt) => {
+    if (evt) evt.stopPropagation();
+    if (!HOUSEHOLD_ID) return;
+    try {
+      await navigator.clipboard.writeText(HOUSEHOLD_ID);
+      evt.target.textContent = "Kopiert!";
+      setTimeout(() => { evt.target.textContent = "Kopier"; }, 1500);
+    } catch (e) {}
   };
   window.closeSettingsDropdown = () => {
     document.getElementById('settings-dropdown').classList.remove('open');
