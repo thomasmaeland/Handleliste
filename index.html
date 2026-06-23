@@ -2986,6 +2986,27 @@ window.fjernFraHistorikk = async (navn) => {
     container.innerHTML = html;
   }
 
+  // Finner siste prisendring for en vare innenfor SAMME butikk (pålitelig – samme navn, samme sted)
+  function prisEndring(navn) {
+    const h = purchaseHistory[navn];
+    if (!h || !h.priserPerButikk) return null;
+    let best = null; // mest nylige endring på tvers av butikker
+    Object.entries(h.priserPerButikk).forEach(([butikk, data]) => {
+      const arr = Array.isArray(data) ? data : null;
+      if (!arr || arr.length < 2) return;
+      const forrige = arr[arr.length - 2];
+      const siste = arr[arr.length - 1];
+      if (!forrige?.pris || !siste?.pris) return;
+      const diff = siste.pris - forrige.pris;
+      if (Math.abs(diff) < 0.5) return; // ignorer ubetydelige endringer
+      const dato = siste.dato || 0;
+      if (!best || dato > best.dato) {
+        best = { butikk, diff, fra: forrige.pris, til: siste.pris, dato };
+      }
+    });
+    return best;
+  }
+
   function renderItem(item) {
     const qty = item.qty || 1;
     const unit = item.unit || "stk";
@@ -2995,6 +3016,14 @@ window.fjernFraHistorikk = async (navn) => {
     const lineTotal = price ? (price * qty) : null;
     const priceStr = lineTotal ? `· ${lineTotal % 1 === 0 ? lineTotal : lineTotal.toFixed(0)} kr` : "";
     const detail = `${qty} ${unit} ${priceStr}`;
+    const endring = prisEndring(item.name);
+    let endringMerke = "";
+    if (endring) {
+      const opp = endring.diff > 0;
+      const diffStr = `${opp ? "↑" : "↓"} ${Math.abs(Math.round(endring.diff))} kr`;
+      const farge = opp ? "#c0392b" : "#2d8a4e";
+      endringMerke = `<span class="pris-endring" title="${opp ? "Opp" : "Ned"} fra ${Math.round(endring.fra)} til ${Math.round(endring.til)} kr på ${escapeHtml(endring.butikk)}" style="font-size:11px;color:${farge};border:1px solid ${farge}33;background:${farge}11;border-radius:6px;padding:1px 6px;margin-left:6px;white-space:nowrap">${diffStr}</span>`;
+    }
     return `<div class="swipe-wrapper" id="swipe-${item.id}">
       <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
       <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
@@ -3002,7 +3031,7 @@ window.fjernFraHistorikk = async (navn) => {
         <div class="item ${item.done?'done':''}" id="item-${item.id}">
           <button class="check-btn" onclick="toggleItem('${item.id}',${item.done})">${item.done?"✓":""}</button>
           <div class="item-main" onclick="openEdit('${item.id}')" style="cursor:pointer">
-            <div class="item-name">${item.name}</div>
+            <div class="item-name">${item.name}${endringMerke}</div>
             <div class="item-detail">${detail}</div>
           </div>
           ${initials ? `<span class="by-whom">${initials}</span>` : ""}
