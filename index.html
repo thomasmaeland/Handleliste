@@ -636,6 +636,7 @@
           <div style="font-family:'DM Serif Display',serif;font-size:1.2rem;margin-bottom:.25rem" id="pakke-tour-title">—</div>
           <div style="font-size:12px;color:var(--ink3)" id="pakke-tour-date">—</div>
           <div style="font-size:13px;color:var(--ink2);margin-top:.5rem" id="pakke-tour-desc">—</div>
+          <button type="button" onclick="resetTourPacking()" style="margin-top:.75rem;background:none;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--ink2);cursor:pointer">↺ Nullstill pakking (klar for ny tur)</button>
         </div>
 
         <button class="list-action-btn" id="pakke-ai-btn" type="button" style="width:100%;margin-bottom:1rem;justify-content:center;border:1px solid var(--gold);color:var(--gold);background:var(--gold-dim)">✨ Foreslå pakkeliste med AI</button>
@@ -2084,6 +2085,26 @@ let LIST_ID = null;
     document.querySelector("#pakke-tour-modal .modal-title").textContent = "Rediger tur";
     document.getElementById("pakke-modal-create").textContent = "Lagre";
     document.getElementById("pakke-tour-modal").classList.add("open");
+  };
+
+  window.resetTourPacking = async () => {
+    if (!currentTourId) return;
+    const ferdige = packItems.filter(it => (it.packed || 0) > 0 || it.done);
+    if (ferdige.length === 0) { alert("Ingenting er pakket ennå – ingenting å nullstille."); return; }
+    if (!confirm(`Nullstille pakkingen? Alle ${packItems.length} ting beholdes, men hakene fjernes så du kan pakke på nytt.`)) return;
+    try {
+      for (const it of packItems) {
+        if ((it.packed || 0) > 0 || it.done) {
+          await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", it.id), {
+            packed: 0,
+            done: false
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Kunne ikke nullstille pakking:", e);
+      alert("Klarte ikke å nullstille. Prøv igjen.");
+    }
   };
 
   window.deletePackTour = async (tourId, evt) => {
