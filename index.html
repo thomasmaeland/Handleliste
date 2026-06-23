@@ -636,7 +636,6 @@
           <div style="font-family:'DM Serif Display',serif;font-size:1.2rem;margin-bottom:.25rem" id="pakke-tour-title">—</div>
           <div style="font-size:12px;color:var(--ink3)" id="pakke-tour-date">—</div>
           <div style="font-size:13px;color:var(--ink2);margin-top:.5rem" id="pakke-tour-desc">—</div>
-          <button type="button" onclick="resetTourPacking()" style="margin-top:.75rem;background:none;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--ink2);cursor:pointer">↺ Nullstill pakking (klar for ny tur)</button>
         </div>
 
         <button class="list-action-btn" id="pakke-ai-btn" type="button" style="width:100%;margin-bottom:1rem;justify-content:center;border:1px solid var(--gold);color:var(--gold);background:var(--gold-dim)">✨ Foreslå pakkeliste med AI</button>
@@ -2064,6 +2063,7 @@ let LIST_ID = null;
           <div class="item-name">${escapeHtml(tour.turNavn)}</div>
           <div class="item-detail">${tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : ""} · ${(tour.persons || []).length} personer</div>
         </div>
+        <button class="board-edit" onclick="copyPackTour('${tour.id}', event)" title="Kopier til ny tur" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:15px;padding:2px 6px">📋</button>
         <button class="board-edit" onclick="editPackTour('${tour.id}', event)" title="Rediger tur" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:15px;padding:2px 6px">✎</button>
         <button class="delete-btn" onclick="deletePackTour('${tour.id}', event)" title="Slett tur">×</button>
         <span style="color:var(--ink3)">›</span>
@@ -2087,23 +2087,40 @@ let LIST_ID = null;
     document.getElementById("pakke-tour-modal").classList.add("open");
   };
 
-  window.resetTourPacking = async () => {
-    if (!currentTourId) return;
-    const ferdige = packItems.filter(it => (it.packed || 0) > 0 || it.done);
-    if (ferdige.length === 0) { alert("Ingenting er pakket ennå – ingenting å nullstille."); return; }
-    if (!confirm(`Nullstille pakkingen? Alle ${packItems.length} ting beholdes, men hakene fjernes så du kan pakke på nytt.`)) return;
+  window.copyPackTour = async (tourId, evt) => {
+    if (evt) evt.stopPropagation();
+    const tour = packTours.find(t => t.id === tourId);
+    if (!tour) return;
+    if (!confirm(`Kopiere "${tour.turNavn}"? Du får en ny tur med samme personer og ting, klar til å pakkes på nytt.`)) return;
     try {
-      for (const it of packItems) {
-        if ((it.packed || 0) > 0 || it.done) {
-          await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", it.id), {
-            packed: 0,
-            done: false
-          });
-        }
+      // 1. Lag ny tur – samme personer, ingen dato, navn + (kopi)
+      const nyTur = await addDoc(collection(db, "lists", LIST_ID, "packlists"), {
+        turNavn: `${tour.turNavn} (kopi)`,
+        startDato: null,
+        beskrivelse: tour.beskrivelse || "",
+        persons: [...(tour.persons || [])],
+        createdAt: Date.now(),
+        createdBy: currentUser?.uid || ""
+      });
+      // 2. Hent alle ting fra originalen og kopier dem nullstilt (upakket)
+      const itemsSnap = await getDocs(collection(db, "lists", LIST_ID, "packlists", tourId, "items"));
+      for (const d of itemsSnap.docs) {
+        const it = d.data();
+        await addDoc(collection(db, "lists", LIST_ID, "packlists", nyTur.id, "items"), {
+          navn: it.navn,
+          qty: it.qty || 1,
+          person: it.person || "",
+          cat: it.cat || "diverse",
+          packed: 0,
+          done: false,
+          createdAt: Date.now(),
+          addedBy: currentUser?.displayName || ""
+        });
       }
+      alert(`Kopi laget! Du finner "${tour.turNavn} (kopi)" i listen.`);
     } catch (e) {
-      console.error("Kunne ikke nullstille pakking:", e);
-      alert("Klarte ikke å nullstille. Prøv igjen.");
+      console.error("Kunne ikke kopiere tur:", e);
+      alert("Klarte ikke å kopiere turen. Prøv igjen.");
     }
   };
 
