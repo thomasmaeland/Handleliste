@@ -196,6 +196,10 @@
     .board-input, .board-select { width:100%; border:1.5px solid var(--border); border-radius:9px; padding:9px 10px; font-family:'DM Sans',sans-serif; font-size:13px; background:var(--bg); color:var(--ink); outline:none; }
     .board-input:focus, .board-select:focus { border-color:var(--accent); background:white; }
     .board-full { grid-column:1 / -1; }
+    .board-label { display:block; font-size:12px; font-weight:600; color:var(--ink2); margin-bottom:3px; }
+    .board-optional { font-weight:400; color:var(--ink3); font-size:11px; }
+    .board-more-toggle { width:100%; background:none; border:none; color:var(--accent); font-size:13px; font-weight:600; cursor:pointer; padding:8px; margin-top:8px; }
+    .board-more-toggle:hover { text-decoration:underline; }
     .board-add-btn { width:100%; background:var(--accent); color:white; border:none; border-radius:10px; padding:11px; font-size:14px; font-weight:500; cursor:pointer; margin-top:4px; }
     .board-section { margin-bottom:1.25rem; }
     .board-section-title { font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:.55rem; }
@@ -535,37 +539,73 @@
     <div id="board-screen">
       <div class="board-form">
         <div class="board-form-title">Familietavle</div>
-        <div class="board-grid">
-          <input class="board-input board-full" id="board-title-input" type="text" placeholder="Hva skal huskes?" />
-          <select class="board-select" id="board-type-input">
-            <option value="task">Oppgave</option>
-            <option value="event">Aktivitet</option>
-            <option value="reminder">Påminnelse</option>
-          </select>
-          <select class="board-select" id="board-assigned-input">
-            <option value="">Ansvarlig</option>
-          </select>
-          <select class="board-select" id="board-person-input">
-            <option value="">Gjelder hvem</option>
-          </select>
-          <input class="board-input board-full" id="board-assigned-other" type="text" placeholder="Skriv ansvarlig" style="display:none" />
-          <input class="board-input board-full" id="board-person-other" type="text" placeholder="Skriv hvem det gjelder" style="display:none" />
-          <input class="board-input" id="board-date-input" type="date" />
-          <input class="board-input" id="board-time-input" type="time" />
-          <select class="board-select" id="board-repeat-input">
-            <option value="none">Ingen gjentakelse</option>
-            <option value="daily">Daglig</option>
-            <option value="weekly">Ukentlig</option>
-            <option value="monthly">Månedlig</option>
-          </select>
-          <select class="board-select" id="board-reminder-input">
-            <option value="none">Ingen varsel</option>
-            <option value="15">15 min før</option>
-            <option value="60">1 time før</option>
-            <option value="1440">1 dag før</option>
-          </select>
+
+        <label class="board-label" for="board-title-input">Hva skal huskes?</label>
+        <input class="board-input board-full" id="board-title-input" type="text" placeholder="F.eks. Ta ut søppel, tannlege, kjøp bursdagsgave" />
+
+        <div class="board-grid" style="margin-top:8px">
+          <div>
+            <label class="board-label" for="board-type-input">Type</label>
+            <select class="board-select" id="board-type-input">
+              <option value="task">Oppgave</option>
+              <option value="event">Aktivitet</option>
+              <option value="reminder">Påminnelse</option>
+            </select>
+          </div>
+          <div>
+            <label class="board-label" for="board-date-input">Frist <span class="board-optional">(valgfritt)</span></label>
+            <input class="board-input" id="board-date-input" type="date" />
+          </div>
         </div>
-        <button class="board-important-toggle" id="board-important-toggle" type="button" aria-pressed="false">☆ Marker som viktig</button>
+
+        <button class="board-more-toggle" id="board-more-toggle" type="button" aria-expanded="false">Flere valg ▾</button>
+
+        <div id="board-more-fields" style="display:none">
+          <div class="board-grid">
+            <div>
+              <label class="board-label" for="board-assigned-input">Ansvarlig <span class="board-optional">(valgfritt)</span></label>
+              <select class="board-select" id="board-assigned-input">
+                <option value="">Ingen valgt</option>
+              </select>
+            </div>
+            <div>
+              <label class="board-label" for="board-person-input">Gjelder hvem <span class="board-optional">(valgfritt)</span></label>
+              <select class="board-select" id="board-person-input">
+                <option value="">Ingen valgt</option>
+              </select>
+            </div>
+          </div>
+          <input class="board-input board-full" id="board-assigned-other" type="text" placeholder="Skriv ansvarlig" style="display:none;margin-top:6px" />
+          <input class="board-input board-full" id="board-person-other" type="text" placeholder="Skriv hvem det gjelder" style="display:none;margin-top:6px" />
+
+          <div class="board-grid" style="margin-top:8px">
+            <div>
+              <label class="board-label" for="board-time-input">Klokkeslett <span class="board-optional">(valgfritt)</span></label>
+              <input class="board-input" id="board-time-input" type="time" />
+            </div>
+            <div>
+              <label class="board-label" for="board-repeat-input">Gjentakelse</label>
+              <select class="board-select" id="board-repeat-input">
+                <option value="none">Ingen gjentakelse</option>
+                <option value="daily">Daglig</option>
+                <option value="weekly">Ukentlig</option>
+                <option value="monthly">Månedlig</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top:8px">
+            <label class="board-label" for="board-reminder-input">Varsel <span class="board-optional">(krever at varsler er aktivert)</span></label>
+            <select class="board-select board-full" id="board-reminder-input">
+              <option value="none">Ingen varsel</option>
+              <option value="15">15 min før</option>
+              <option value="60">1 time før</option>
+              <option value="1440">1 dag før</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="board-important-toggle" id="board-important-toggle" type="button" aria-pressed="false" style="margin-top:8px">☆ Marker som viktig</button>
         <button class="board-add-btn" id="board-add-btn" type="button">+ Legg til på tavlen</button>
         <button class="board-add-btn" id="push-enable-btn" type="button" style="background:var(--accent2);margin-top:8px">🔔 Aktiver varsler</button>
       </div>
@@ -4579,6 +4619,20 @@ await addDoc(historyRef, {
 
   document.getElementById("board-important-toggle")?.addEventListener("click", () => setFormImportant(!formImportant));
 
+  // "Flere valg" – vis/skjul de valgfrie feltene
+  function setBoardMoreOpen(open) {
+    const fields = document.getElementById("board-more-fields");
+    const btn = document.getElementById("board-more-toggle");
+    if (!fields || !btn) return;
+    fields.style.display = open ? "block" : "none";
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.textContent = open ? "Færre valg ▴" : "Flere valg ▾";
+  }
+  document.getElementById("board-more-toggle")?.addEventListener("click", () => {
+    const open = document.getElementById("board-more-fields").style.display !== "none";
+    setBoardMoreOpen(!open);
+  });
+
   window.toggleShowAllDone = () => { showAllDone = !showAllDone; renderFamilyBoard(); };
 
   window.startEditTask = (id) => {
@@ -4594,6 +4648,11 @@ await addDoc(historyRef, {
     document.getElementById("board-repeat-input").value = task.recurrence?.frequency || "none";
     document.getElementById("board-reminder-input").value = task.reminder?.minutesBefore ? String(task.reminder.minutesBefore) : "none";
     setFormImportant(task.important);
+    // Åpne "flere valg" hvis oppgaven bruker noen av de valgfrie feltene
+    const harValgfritt = task.assignedTo || task.relatedPerson || task.dueTime ||
+      (task.recurrence?.frequency && task.recurrence.frequency !== "none") ||
+      task.reminder?.minutesBefore;
+    setBoardMoreOpen(!!harValgfritt);
     const btn = document.getElementById("board-add-btn");
     btn.textContent = "✓ Lagre endring";
     document.getElementById("board-screen").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -4610,6 +4669,7 @@ await addDoc(historyRef, {
     document.getElementById("board-reminder-input").value = "none";
     document.getElementById("board-type-input").value = "task";
     setFormImportant(false);
+    setBoardMoreOpen(false);
     document.getElementById("board-add-btn").textContent = "+ Legg til på tavlen";
   }
 
