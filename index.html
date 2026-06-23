@@ -15,7 +15,7 @@
     :root {
       --bg: #f7f5f0; --surface: #fff; --ink: #1c1c1e; --ink2: #6b6b6b; --ink3: #aeaead;
       --accent: #2d6a4f; --accent-light: #d8f3dc; --accent2: #e07a2f;
-      --danger: #c0392b; --border: #e8e4dc; --radius: 14px;
+      --danger: #c0392b; --border: #e8e4dc; --radius: 12px;
       --shadow: 0 2px 12px rgba(0,0,0,0.07);
       --gold: #a07828; --gold-dim: #fdf3e0; --border-gold: rgba(160,120,40,0.2);
     }
@@ -23,8 +23,8 @@
     /* MØRKT TEMA */
     body.dark {
       --bg: #080d14; --surface: #0d1520; --ink: #e6edf8; --ink2: #7a94b0; --ink3: #3d5570;
-      --accent: #1a56db; --accent-light: #0f2a5c; --accent2: #f59e0b;
-      --danger: #ef4444; --border: rgba(255,255,255,0.06); --radius: 14px;
+      --accent: #52b788; --accent-light: #163024; --accent2: #f59e0b;
+      --danger: #ef4444; --border: rgba(255,255,255,0.06); --radius: 12px;
       --shadow: 0 2px 12px rgba(0,0,0,0.4);
       --gold: #c9a84c; --gold-dim: #1e1608; --border-gold: rgba(201,168,76,0.2);
     }
@@ -93,7 +93,7 @@
     main { flex:1; padding:1rem 1.25rem 6rem; }
 
     /* SMART BTN */
-    .smart-list-btn { display:flex; align-items:center; gap:8px; width:100%; background:linear-gradient(135deg,#2d6a4f,#40916c); color:white; border:none; border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; box-shadow:0 2px 8px rgba(45,106,79,.25); }
+    .smart-list-btn { display:flex; align-items:center; gap:8px; width:100%; background:var(--accent); color:white; border:none; border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; box-shadow:0 2px 8px rgba(45,106,79,.25); }
     .smart-list-btn:hover { transform:translateY(-1px); box-shadow:0 4px 16px rgba(45,106,79,.35); }
     .smart-list-btn .btn-icon { font-size:18px; }
     .smart-list-btn .btn-sub { font-size:11px; opacity:.8; margin-left:auto; }
