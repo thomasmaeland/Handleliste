@@ -4371,13 +4371,46 @@ await addDoc(historyRef, {
     if (!HOUSEHOLD_ID) return;
     if (unsubscribeTasks) unsubscribeTasks();
     loadBoardMembers();
+    boardFirstSnapshot = true;
     const q = query(collection(db, "lists", HOUSEHOLD_ID, "tasks"), orderBy("createdAt", "asc"));
     unsubscribeTasks = onSnapshot(q, snapshot => {
+      // Varsle om nye oppgaver lagt til av ANDRE (ikke ved første lasting, ikke egne)
+      if (!boardFirstSnapshot) {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const t = change.doc.data();
+            const avMeg = t.createdBy && t.createdBy === currentUser?.uid;
+            if (!avMeg) {
+              const hvem = t.createdByName ? t.createdByName.split(" ")[0] : "Noen";
+              showInAppNotice(`${hvem} la til: ${t.title}`);
+            }
+          }
+        });
+      }
+      boardFirstSnapshot = false;
+
       familyBoardItems = [];
       snapshot.forEach(d => familyBoardItems.push({ id:d.id, ...d.data() }));
       renderFamilyBoard();
       requestAnimationFrame(attachSwipeToTasks);
     });
+  }
+  let boardFirstSnapshot = true;
+
+  // Enkelt in-app varsel (toast) – vises bare mens appen er åpen
+  let inAppNoticeTimer = null;
+  function showInAppNotice(tekst) {
+    let el = document.getElementById("inapp-notice");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "inapp-notice";
+      el.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--accent);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:9999;max-width:90vw;text-align:center;opacity:0;transition:opacity .2s";
+      document.body.appendChild(el);
+    }
+    el.textContent = "🔔 " + tekst;
+    requestAnimationFrame(() => { el.style.opacity = "1"; });
+    if (inAppNoticeTimer) clearTimeout(inAppNoticeTimer);
+    inAppNoticeTimer = setTimeout(() => { el.style.opacity = "0"; }, 4000);
   }
 
   async function loadBoardMembers() {
