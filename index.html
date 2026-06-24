@@ -62,14 +62,27 @@
     .deling-transfer-arrow { color:var(--ink3); }
     .deling-transfer-to { color:var(--ink); font-weight:600; }
     .deling-transfer-amt { margin-left:auto; font-weight:700; color:var(--ink); white-space:nowrap; }
-    .deling-transfer-action { margin-top:9px; }
-    .deling-vipps-btn { width:100%; background:#ff5b24; color:#fff; border:none; border-radius:8px; padding:9px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+    .deling-transfer-action { margin-top:9px; display:flex; gap:8px; }
+    .deling-vipps-btn { flex:1; background:#ff5b24; color:#fff; border:none; border-radius:8px; padding:9px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+    .deling-mark-btn { flex:1; background:var(--bg); color:var(--ink2); border:1px solid var(--border); border-radius:8px; padding:9px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; cursor:pointer; }
     .deling-settled { background:var(--accent-light); color:var(--accent); border-radius:var(--radius); padding:13px; text-align:center; font-size:13px; font-weight:500; }
     .deling-muted { color:var(--ink3); font-size:13px; }
     .deling-foot { font-size:11px; color:var(--ink3); margin-top:1.25rem; line-height:1.5; }
     .deling-members-box { display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; }
     .deling-check { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink); cursor:pointer; }
     .deling-check input { width:16px; height:16px; accent-color:var(--accent); }
+    .deling-settled-note { background:var(--accent-light); color:var(--accent); border-radius:var(--radius); padding:13px; text-align:center; font-size:13px; font-weight:500; }
+    .deling-paid-row { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border); }
+    .deling-paid-text { flex:1; font-size:13px; color:var(--ink2); }
+    .deling-bal { font-size:12px; font-weight:600; padding:1px 7px; border-radius:999px; margin-left:4px; white-space:nowrap; }
+    .deling-bal.pos { background:var(--accent-light); color:var(--accent); }
+    .deling-bal.neg { background:rgba(192,57,43,.12); color:var(--danger); }
+    .deling-bal.zero { background:var(--border); color:var(--ink2); }
+    .deling-people-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:1.25rem 0 .5rem; flex-wrap:wrap; }
+    .deling-people-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .deling-mini-btn { background:var(--accent-light); color:var(--accent); border:none; border-radius:999px; padding:6px 11px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; cursor:pointer; }
+    .deling-toggle-all { font-size:12px; color:var(--ink3); }
+    .deling-toggle-all button { background:none; border:none; color:var(--accent); font-size:12px; font-weight:600; cursor:pointer; padding:0 2px; font-family:'DM Sans',sans-serif; }
 
     body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); min-height:100dvh; max-width:480px; margin:0 auto; transition:background .25s, color .25s; }
 
@@ -731,43 +744,20 @@
     <!-- DELING / KOSTNADSDELING -->
     <div id="deling-screen" style="display:none">
       <div id="deling-summary" class="deling-summary"></div>
-      <div class="deling-btn-row">
-        <button class="deling-add-btn" onclick="openDelingExpenseModal()">➕ Ny utgift</button>
-        <button class="deling-add-btn deling-add-secondary" onclick="openDelingWalletModal()">👥 Ny gruppe</button>
-      </div>
+      <button class="deling-add-btn" style="width:100%;margin-bottom:1rem" onclick="openExpenseModal()">➕ Ny utgift</button>
       <div id="deling-settlement"></div>
-      <div class="deling-section-title">Utgifter</div>
+      <div id="deling-settled-list"></div>
+      <div class="deling-section-title" style="margin-top:1.25rem">Utgifter</div>
       <div id="deling-expenses"></div>
-      <div class="deling-section-title" style="margin-top:1.25rem">Grupper</div>
-      <div id="deling-wallets"></div>
-      <p class="deling-foot">Summen deles likt per person. «Betal med Vipps» åpner Vipps og kopierer mottakers nummer – du bekrefter selv beløpet i Vipps.</p>
-    </div>
-
-    <!-- DELING: GRUPPE-MODAL -->
-    <div class="modal-overlay" id="deling-wallet-modal">
-      <div class="modal">
-        <div class="modal-title" id="deling-wallet-title">Ny gruppe</div>
-        <div class="modal-row">
-          <label class="modal-label">Navn</label>
-          <input class="modal-input" id="deling-wallet-name" type="text" placeholder="f.eks. Familie Hansen" />
-        </div>
-        <div class="modal-row">
-          <label class="modal-label">Antall personer</label>
-          <input class="modal-input" id="deling-wallet-shares" type="number" min="1" step="1" value="1" />
-        </div>
-        <div class="modal-row">
-          <label class="modal-label">Vipps-nr</label>
-          <input class="modal-input" id="deling-wallet-vipps" type="tel" inputmode="numeric" placeholder="valgfritt – for betalingsknapp" />
-        </div>
-        <div class="modal-row" style="flex-direction:column;align-items:stretch">
-          <label class="modal-label" style="margin-bottom:6px">Medlemmer i gruppen</label>
-          <div id="deling-wallet-members" class="deling-members-box"></div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:1rem">
-          <button class="modal-input" onclick="saveDelingWallet()" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Lagre</button>
-          <button class="modal-input" onclick="closeDelingModal('deling-wallet-modal')" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
+      <div class="deling-people-head">
+        <div class="deling-section-title" style="margin:0">Personer</div>
+        <div class="deling-people-btns">
+          <button class="deling-mini-btn" onclick="hentFraMedlemmer()">👥 Hent fra medlemmer</button>
+          <button class="deling-mini-btn" onclick="openPersonModal()">➕ Ny person</button>
         </div>
       </div>
+      <div id="deling-people"></div>
+      <p class="deling-foot">Hver utgift deles likt mellom personene du velger. «Betal med Vipps» åpner Vipps og kopierer mottakers nummer – du bekrefter beløpet selv. «Marker betalt» fører oppgjøret som gjort, så det forsvinner fra lista.</p>
     </div>
 
     <!-- DELING: UTGIFT-MODAL -->
@@ -776,19 +766,45 @@
         <div class="modal-title" id="deling-expense-title">Ny utgift</div>
         <div class="modal-row">
           <label class="modal-label">Beskrivelse</label>
-          <input class="modal-input" id="deling-expense-desc" type="text" placeholder="f.eks. Middag fredag" />
+          <input class="modal-input" id="deling-expense-desc" type="text" placeholder="f.eks. To is" />
         </div>
         <div class="modal-row">
           <label class="modal-label">Beløp (kr)</label>
           <input class="modal-input" id="deling-expense-amount" type="text" inputmode="decimal" placeholder="0" />
         </div>
         <div class="modal-row">
-          <label class="modal-label">Betalt av</label>
+          <label class="modal-label">La ut</label>
           <select class="modal-input" id="deling-expense-paidby"></select>
         </div>
+        <div class="modal-row" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <label class="modal-label">Deles mellom</label>
+            <span class="deling-toggle-all"><button type="button" onclick="toggleAlleDeler(true)">Alle</button> · <button type="button" onclick="toggleAlleDeler(false)">Ingen</button></span>
+          </div>
+          <div id="deling-expense-shared" class="deling-members-box"></div>
+        </div>
         <div style="display:flex;gap:8px;margin-top:1rem">
-          <button class="modal-input" onclick="saveDelingExpense()" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Lagre</button>
+          <button class="modal-input" onclick="saveExpense()" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Lagre</button>
           <button class="modal-input" onclick="closeDelingModal('deling-expense-modal')" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELING: PERSON-MODAL -->
+    <div class="modal-overlay" id="deling-person-modal">
+      <div class="modal">
+        <div class="modal-title" id="deling-person-title">Ny person</div>
+        <div class="modal-row">
+          <label class="modal-label">Navn</label>
+          <input class="modal-input" id="deling-person-name" type="text" placeholder="f.eks. Katrine" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Vipps-nr</label>
+          <input class="modal-input" id="deling-person-vipps" type="tel" inputmode="numeric" placeholder="valgfritt – for betalingsknapp" />
+        </div>
+        <div style="display:flex;gap:8px;margin-top:1rem">
+          <button class="modal-input" onclick="savePerson()" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Lagre</button>
+          <button class="modal-input" onclick="closeDelingModal('deling-person-modal')" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
         </div>
       </div>
     </div>
@@ -5469,300 +5485,287 @@ window.addEventListener('offline', () => {
 
 
 /* =========================================================================
-   LOMMEBØKER / DELING  – kostnadsdeling per liste (lists/{LIST_ID}/...)
-   Datamodell:
-     lists/{LIST_ID}/wallets/{id}   { name, shares, vipps, memberUids[], createdAt }
-     lists/{LIST_ID}/expenses/{id}  { desc, amount, paidBy(walletId), createdAt, createdBy }
+   DELING – kostnadsdeling per PERSON (lists/{LIST_ID}/...)
+   Modell:
+     people/{id}       { name, vipps, uid|null, createdAt }
+     expenses/{id}     { desc, amount, paidBy(personId), sharedBy[personIds], createdAt, createdBy }
+     settlements/{id}  { from(personId), to(personId), amount, createdAt, createdBy }
+   Hver utgift splittes likt mellom personene den deles med.
+   "Marker betalt" lagrer et oppgjør som trekkes fra saldoene.
    ========================================================================= */
-  let delingWallets = [];
-  let delingExpenses = [];
-  let delingMembers = {};           // {uid: navn} for aktiv liste
-  let unsubDelingWallets = null;
-  let unsubDelingExpenses = null;
-  let editingWalletId = null;
-  let editingExpenseId = null;
+  let delPeople = [];
+  let delExpenses = [];
+  let delSettlements = [];
+  let delMembers = {};            // {uid: navn} for aktiv liste (til "Hent fra medlemmer")
+  let unsubDelPeople = null, unsubDelExpenses = null, unsubDelSettle = null;
+  let editPersonId = null, editExpenseId = null;
 
   function dEsc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-  function fmtKr(n){
-    const r = Math.round((Number(n) || 0) * 100) / 100;
-    return r.toLocaleString("nb-NO", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " kr";
-  }
+  function dKr(n){ const r = Math.round((Number(n)||0)*100)/100; return r.toLocaleString("nb-NO",{minimumFractionDigits:0,maximumFractionDigits:2}) + " kr"; }
+  function dAmt(x){ return Number(x && x.amount != null ? x.amount : 0) || 0; }
+  function personName(id){ const p = delPeople.find(x => x.id === id); return p ? p.name : "Ukjent"; }
 
-  async function loadDelingMembers(){
-    delingMembers = {};
+  async function loadDelMembers(){
+    delMembers = {};
     try {
-      if (currentListType === "shared") {
-        const s = await getDoc(doc(db, "sharedLists", LIST_ID));
-        if (s.exists()) delingMembers = s.data().members || {};
-      } else {
-        const s = await getDoc(doc(db, "households", LIST_ID));
-        if (s.exists()) delingMembers = s.data().members || {};
-      }
-    } catch(e){ console.warn("Kunne ikke laste medlemmer for deling", e); }
-    if (Array.isArray(delingMembers)) {
-      const t = {}; for (const uid of delingMembers) t[uid] = "Medlem"; delingMembers = t;
-    }
+      const ref = currentListType === "shared" ? doc(db,"sharedLists",LIST_ID) : doc(db,"households",LIST_ID);
+      const s = await getDoc(ref);
+      if (s.exists()) delMembers = s.data().members || {};
+    } catch(e){ console.warn("deling: medlemmer", e); }
+    if (Array.isArray(delMembers)) { const t={}; for(const u of delMembers) t[u]="Medlem"; delMembers=t; }
   }
 
   function startListeningDeling(){
-    if (unsubDelingWallets) unsubDelingWallets();
-    if (unsubDelingExpenses) unsubDelingExpenses();
+    stopListeningDeling();
     if (!LIST_ID) return;
-    loadDelingMembers();
-    const wq = query(collection(db, "lists", LIST_ID, "wallets"), orderBy("createdAt"));
-    unsubDelingWallets = onSnapshot(wq, (snap) => {
-      delingWallets = [];
-      snap.forEach(d => delingWallets.push({ id: d.id, ...d.data() }));
-      renderDeling();
-    }, (err) => console.warn("wallets-lytter:", err));
-    const eq = query(collection(db, "lists", LIST_ID, "expenses"), orderBy("createdAt", "desc"));
-    unsubDelingExpenses = onSnapshot(eq, (snap) => {
-      delingExpenses = [];
-      snap.forEach(d => delingExpenses.push({ id: d.id, ...d.data() }));
-      renderDeling();
-    }, (err) => console.warn("expenses-lytter:", err));
+    loadDelMembers();
+    unsubDelPeople = onSnapshot(query(collection(db,"lists",LIST_ID,"people"), orderBy("createdAt")), (snap)=>{
+      delPeople = []; snap.forEach(d=>delPeople.push({id:d.id, ...d.data()})); renderDeling();
+    }, e=>console.warn("people:",e));
+    unsubDelExpenses = onSnapshot(query(collection(db,"lists",LIST_ID,"expenses"), orderBy("createdAt","desc")), (snap)=>{
+      delExpenses = []; snap.forEach(d=>delExpenses.push({id:d.id, ...d.data()})); renderDeling();
+    }, e=>console.warn("expenses:",e));
+    unsubDelSettle = onSnapshot(query(collection(db,"lists",LIST_ID,"settlements"), orderBy("createdAt","desc")), (snap)=>{
+      delSettlements = []; snap.forEach(d=>delSettlements.push({id:d.id, ...d.data()})); renderDeling();
+    }, e=>console.warn("settlements:",e));
   }
-
   function stopListeningDeling(){
-    if (unsubDelingWallets) { unsubDelingWallets(); unsubDelingWallets = null; }
-    if (unsubDelingExpenses) { unsubDelingExpenses(); unsubDelingExpenses = null; }
+    if (unsubDelPeople){ unsubDelPeople(); unsubDelPeople=null; }
+    if (unsubDelExpenses){ unsubDelExpenses(); unsubDelExpenses=null; }
+    if (unsubDelSettle){ unsubDelSettle(); unsubDelSettle=null; }
   }
 
-  function walletShares(w){
-    const s = Number(w.shares);
-    if (s && s > 0) return s;
-    if (Array.isArray(w.memberUids) && w.memberUids.length) return w.memberUids.length;
-    return 1;
-  }
-
-  /* Oppgjør: del totalsum på antall personer (shares), regn netto per lommebok,
-     og minimer antall overføringer (grådig: største skyldner -> største mottaker). */
-  function computeSettlement(wallets, expenses){
-    const total = expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
-    const totalShares = wallets.reduce((a, w) => a + walletShares(w), 0);
-    const perShare = totalShares > 0 ? total / totalShares : 0;
-    const balances = wallets.map(w => {
-      const paid = expenses.filter(e => e.paidBy === w.id).reduce((a, e) => a + (Number(e.amount) || 0), 0);
-      const owed = walletShares(w) * perShare;
-      return { id: w.id, name: w.name, vipps: w.vipps || "", net: Math.round((paid - owed) * 100) / 100, paid, owed };
+  /* Saldo per person = lagt ut − sum av andeler, justert for registrerte oppgjør.
+     Deretter minimeres antall overføringer (grådig). */
+  function computeDeling(){
+    const total = delExpenses.reduce((a,e)=>a+dAmt(e),0);
+    const net = {}; delPeople.forEach(p=>net[p.id]=0);
+    const paidMap = {}, owedMap = {}; delPeople.forEach(p=>{paidMap[p.id]=0; owedMap[p.id]=0;});
+    delExpenses.forEach(e=>{
+      const sharers = (Array.isArray(e.sharedBy)&&e.sharedBy.length) ? e.sharedBy : delPeople.map(p=>p.id);
+      const each = sharers.length ? dAmt(e)/sharers.length : 0;
+      if (net[e.paidBy]!==undefined){ net[e.paidBy]+=dAmt(e); paidMap[e.paidBy]+=dAmt(e); }
+      sharers.forEach(pid=>{ if(net[pid]!==undefined){ net[pid]-=each; owedMap[pid]+=each; } });
     });
-    // overføringer
-    const creditors = balances.filter(b => b.net > 0.009).map(b => ({ ...b, rem: b.net })).sort((a,b) => b.rem - a.rem);
-    const debtors  = balances.filter(b => b.net < -0.009).map(b => ({ ...b, rem: -b.net })).sort((a,b) => b.rem - a.rem);
-    const transfers = [];
-    let ci = 0, di = 0;
-    while (ci < creditors.length && di < debtors.length){
-      const c = creditors[ci], d = debtors[di];
-      const amt = Math.min(c.rem, d.rem);
-      if (amt > 0.009){
-        transfers.push({ fromId: d.id, fromName: d.name, toId: c.id, toName: c.name, toVipps: c.vipps, amount: Math.round(amt * 100) / 100 });
-      }
-      c.rem -= amt; d.rem -= amt;
-      if (c.rem <= 0.009) ci++;
-      if (d.rem <= 0.009) di++;
+    delSettlements.forEach(s=>{
+      if (net[s.from]!==undefined) net[s.from]+=dAmt(s);
+      if (net[s.to]!==undefined)   net[s.to]-=dAmt(s);
+    });
+    const balances = delPeople.map(p=>({ id:p.id, name:p.name, vipps:p.vipps||"", paid:paidMap[p.id]||0, owed:owedMap[p.id]||0, net:Math.round((net[p.id]||0)*100)/100 }));
+    const creditors = balances.filter(b=>b.net>0.009).map(b=>({...b,rem:b.net})).sort((a,b)=>b.rem-a.rem);
+    const debtors   = balances.filter(b=>b.net<-0.009).map(b=>({...b,rem:-b.net})).sort((a,b)=>b.rem-a.rem);
+    const transfers = []; let ci=0,di=0;
+    while (ci<creditors.length && di<debtors.length){
+      const c=creditors[ci], d=debtors[di], amt=Math.min(c.rem,d.rem);
+      if (amt>0.009) transfers.push({ fromId:d.id, fromName:d.name, toId:c.id, toName:c.name, toVipps:c.vipps, amount:Math.round(amt*100)/100 });
+      c.rem-=amt; d.rem-=amt; if(c.rem<=0.009)ci++; if(d.rem<=0.009)di++;
     }
-    return { total, totalShares, perShare, balances, transfers };
+    return { total, balances, transfers };
   }
 
   function renderDeling(){
-    renderDelingWallets();
-    renderDelingExpenses();
-    renderDelingSettlement();
+    const r = computeDeling();
+    renderDelSummary(r); renderDelSettlement(r); renderDelSettled(); renderDelExpenses(); renderDelPeople(r);
   }
 
-  function renderDelingWallets(){
-    const el = document.getElementById("deling-wallets");
-    if (!el) return;
-    if (!delingWallets.length){
-      el.innerHTML = `<div class="empty-state"><div class="big">💰</div><p>Ingen grupper ennå. Opprett lommebøker for å dele utgifter – ett par, en familie eller én person per gruppe.</p></div>`;
-      return;
-    }
-    el.innerHTML = delingWallets.map(w => {
-      const names = (Array.isArray(w.memberUids) ? w.memberUids : []).map(u => dEsc(delingMembers[u] || "Medlem")).join(", ");
-      const sub = [];
-      sub.push(walletShares(w) + (walletShares(w) === 1 ? " person" : " personer"));
-      if (w.vipps) sub.push("Vipps " + dEsc(w.vipps));
-      return `<div class="deling-card">
-        <div class="deling-card-main">
-          <div class="deling-card-name">${dEsc(w.name)}</div>
-          <div class="deling-card-sub">${sub.join(" · ")}${names ? " · " + names : ""}</div>
-        </div>
-        <div class="deling-card-actions">
-          <button class="deling-icon-btn" title="Rediger" onclick="openDelingWalletModal('${w.id}')">✎</button>
-          <button class="deling-icon-btn" title="Slett" onclick="deleteDelingWallet('${w.id}')">🗑</button>
-        </div>
-      </div>`;
-    }).join("");
+  function renderDelSummary(r){
+    const el = document.getElementById("deling-summary"); if(!el) return;
+    el.innerHTML = delExpenses.length
+      ? `Totalt lagt ut: <strong>${dKr(r.total)}</strong> · ${delPeople.length} ${delPeople.length===1?"person":"personer"}`
+      : "";
   }
 
-  function renderDelingExpenses(){
-    const el = document.getElementById("deling-expenses");
-    if (!el) return;
-    if (!delingExpenses.length){
-      el.innerHTML = `<div class="deling-muted">Ingen utgifter registrert ennå.</div>`;
-      return;
-    }
-    el.innerHTML = delingExpenses.map(e => {
-      const w = delingWallets.find(x => x.id === e.paidBy);
-      const who = w ? dEsc(w.name) : "Ukjent";
-      return `<div class="deling-exp-row">
-        <div class="deling-exp-info">
-          <div class="deling-exp-desc">${dEsc(e.desc || "Utgift")}</div>
-          <div class="deling-exp-who">Betalt av ${who}</div>
-        </div>
-        <div class="deling-exp-amt">${fmtKr(e.amount)}</div>
-        <button class="deling-icon-btn" title="Slett" onclick="deleteDelingExpense('${e.id}')">✕</button>
-      </div>`;
-    }).join("");
-  }
-
-  function renderDelingSettlement(){
-    const el = document.getElementById("deling-settlement");
-    const sumEl = document.getElementById("deling-summary");
-    if (!el) return;
-    const { total, transfers, balances } = computeSettlement(delingWallets, delingExpenses);
-    if (sumEl){
-      sumEl.innerHTML = delingExpenses.length
-        ? `Totalt: <strong>${fmtKr(total)}</strong> fordelt på ${balances.length} ${balances.length === 1 ? "gruppe" : "grupper"}`
-        : "";
-    }
-    if (!delingWallets.length || !delingExpenses.length){
-      el.innerHTML = "";
-      return;
-    }
-    if (!transfers.length){
-      el.innerHTML = `<div class="deling-settled">✅ Alt er gjort opp – ingen overføringer nødvendig.</div>`;
-      return;
-    }
-    el.innerHTML = `<div class="deling-section-title">Oppgjør</div>` + transfers.map(t => {
-      const vippsBtn = t.toVipps
+  function renderDelSettlement(r){
+    const el = document.getElementById("deling-settlement"); if(!el) return;
+    if (delPeople.length<2 || !delExpenses.length){ el.innerHTML=""; return; }
+    if (!r.transfers.length){ el.innerHTML = `<div class="deling-settled-note">✅ Alt er gjort opp – ingen overføringer gjenstår.</div>`; return; }
+    el.innerHTML = `<div class="deling-section-title">Oppgjør</div>` + r.transfers.map(t=>{
+      const pay = t.toVipps
         ? `<button class="deling-vipps-btn" onclick="betalMedVipps('${dEsc(t.toVipps)}', ${t.amount}, this)">Betal med Vipps</button>`
-        : `<span class="deling-muted" style="font-size:11px">Legg inn Vipps-nr på «${dEsc(t.toName)}» for betalingsknapp</span>`;
+        : `<span class="deling-muted" style="font-size:11px;align-self:center">Legg inn Vipps-nr på «${dEsc(t.toName)}»</span>`;
       return `<div class="deling-transfer">
         <div class="deling-transfer-line">
           <span class="deling-transfer-from">${dEsc(t.fromName)}</span>
           <span class="deling-transfer-arrow">→</span>
           <span class="deling-transfer-to">${dEsc(t.toName)}</span>
-          <span class="deling-transfer-amt">${fmtKr(t.amount)}</span>
+          <span class="deling-transfer-amt">${dKr(t.amount)}</span>
         </div>
-        <div class="deling-transfer-action">${vippsBtn}</div>
+        <div class="deling-transfer-action">
+          ${pay}
+          <button class="deling-mark-btn" onclick="markerBetalt('${t.fromId}','${t.toId}',${t.amount})">Marker betalt</button>
+        </div>
       </div>`;
     }).join("");
   }
 
-  /* ---------- Vipps-handoff (ingen API – åpner Vipps, kopierer mottakernr) ---------- */
+  function renderDelSettled(){
+    const el = document.getElementById("deling-settled-list"); if(!el) return;
+    if (!delSettlements.length){ el.innerHTML=""; return; }
+    el.innerHTML = `<div class="deling-section-title" style="margin-top:1.25rem">Registrerte oppgjør</div>` + delSettlements.map(s=>
+      `<div class="deling-paid-row">
+        <span class="deling-paid-text">${dEsc(personName(s.from))} betalte ${dEsc(personName(s.to))} · ${dKr(dAmt(s))}</span>
+        <button class="deling-icon-btn" title="Angre" onclick="angreBetalt('${s.id}')">✕</button>
+      </div>`).join("");
+  }
+
+  function renderDelExpenses(){
+    const el = document.getElementById("deling-expenses"); if(!el) return;
+    if (!delExpenses.length){ el.innerHTML = `<div class="deling-muted">Ingen utgifter registrert ennå.</div>`; return; }
+    el.innerHTML = delExpenses.map(e=>{
+      const sharers = (Array.isArray(e.sharedBy)&&e.sharedBy.length) ? e.sharedBy : delPeople.map(p=>p.id);
+      const delesTekst = sharers.length===delPeople.length ? "alle" : sharers.map(id=>dEsc(personName(id))).join(", ");
+      return `<div class="deling-exp-row">
+        <div class="deling-exp-info">
+          <div class="deling-exp-desc">${dEsc(e.desc||"Utgift")}</div>
+          <div class="deling-exp-who">${dEsc(personName(e.paidBy))} la ut · deles på ${delesTekst}</div>
+        </div>
+        <div class="deling-exp-amt">${dKr(dAmt(e))}</div>
+        <button class="deling-icon-btn" title="Rediger" onclick="openExpenseModal('${e.id}')">✎</button>
+        <button class="deling-icon-btn" title="Slett" onclick="deleteExpense('${e.id}')">✕</button>
+      </div>`;
+    }).join("");
+  }
+
+  function renderDelPeople(r){
+    const el = document.getElementById("deling-people"); if(!el) return;
+    if (!delPeople.length){
+      el.innerHTML = `<div class="empty-state"><div class="big">💰</div><p>Ingen personer ennå. Hent dem fra lista, eller legg til manuelt.</p></div>`;
+      return;
+    }
+    const bal = {}; r.balances.forEach(b=>bal[b.id]=b.net);
+    el.innerHTML = delPeople.map(p=>{
+      const n = bal[p.id] || 0;
+      let badge = "";
+      if (delExpenses.length){
+        if (n > 0.009) badge = `<span class="deling-bal pos">+${dKr(n)}</span>`;
+        else if (n < -0.009) badge = `<span class="deling-bal neg">−${dKr(-n)}</span>`;
+        else badge = `<span class="deling-bal zero">à jour</span>`;
+      }
+      const sub = p.vipps ? "Vipps " + dEsc(p.vipps) : `<span class="deling-muted" style="font-size:12px">ingen Vipps-nr</span>`;
+      return `<div class="deling-card">
+        <div class="deling-card-main">
+          <div class="deling-card-name">${dEsc(p.name)} ${badge}</div>
+          <div class="deling-card-sub">${sub}</div>
+        </div>
+        <div class="deling-card-actions">
+          <button class="deling-icon-btn" title="Rediger" onclick="openPersonModal('${p.id}')">✎</button>
+          <button class="deling-icon-btn" title="Slett" onclick="deletePerson('${p.id}')">🗑</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  /* ---------- Vipps-handoff (gjenbruker in-app-deteksjon) ---------- */
   window.betalMedVipps = (vipps, amount, btn) => {
-    const nr = String(vipps || "").replace(/\s/g, "");
-    if (nr && navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(nr).catch(() => {});
+    const nr = String(vipps||"").replace(/\s/g,"");
+    if (nr && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(nr).catch(()=>{});
+    if (typeof erInAppBrowser === "function" && erInAppBrowser()){
+      alert("Du er i en in-app nettleser (f.eks. Messenger/Instagram). Åpne appen i Chrome eller Safari for å hoppe til Vipps.\n\nMottakers Vipps-nr er kopiert: " + (nr||"(mangler)"));
+      return;
     }
-    if (btn){
-      const orig = btn.textContent;
-      btn.textContent = "Vipps-nr kopiert ✓";
-      setTimeout(() => { btn.textContent = orig; }, 2200);
-    }
+    if (btn){ const o=btn.textContent; btn.textContent="Vipps-nr kopiert ✓"; setTimeout(()=>{btn.textContent=o;},2200); }
     try { window.location.href = "vipps://"; } catch(e){}
   };
 
-  /* ---------- Lommebok-modal ---------- */
-  window.openDelingWalletModal = (walletId) => {
-    editingWalletId = walletId || null;
-    const w = walletId ? delingWallets.find(x => x.id === walletId) : null;
-    const titleEl = document.getElementById("deling-wallet-title");
-    const nameEl = document.getElementById("deling-wallet-name");
-    const sharesEl = document.getElementById("deling-wallet-shares");
-    const vippsEl = document.getElementById("deling-wallet-vipps");
-    const memEl = document.getElementById("deling-wallet-members");
-    if (titleEl) titleEl.textContent = w ? "Rediger gruppe" : "Ny gruppe";
-    if (nameEl) nameEl.value = w ? (w.name || "") : "";
-    if (sharesEl) sharesEl.value = w ? walletShares(w) : 1;
-    if (vippsEl) vippsEl.value = w ? (w.vipps || "") : "";
-    if (memEl){
-      const chosen = w && Array.isArray(w.memberUids) ? w.memberUids : [];
-      const entries = Object.entries(delingMembers);
-      memEl.innerHTML = entries.length
-        ? entries.map(([uid, navn]) =>
-            `<label class="deling-check"><input type="checkbox" value="${dEsc(uid)}" ${chosen.includes(uid) ? "checked" : ""}/> ${dEsc(navn)}</label>`
-          ).join("")
-        : `<div class="deling-muted" style="font-size:12px">Ingen medlemmer funnet på denne lista.</div>`;
-    }
-    document.getElementById("deling-wallet-modal").classList.add("open");
+  /* ---------- Oppgjør (marker betalt / angre) ---------- */
+  window.markerBetalt = async (fromId, toId, amount) => {
+    if (!confirm(`Registrere at ${personName(fromId)} har betalt ${personName(toId)} ${dKr(amount)}?`)) return;
+    try { await addDoc(collection(db,"lists",LIST_ID,"settlements"), { from:fromId, to:toId, amount:Number(amount)||0, createdAt:Date.now(), createdBy:currentUser?currentUser.uid:null }); }
+    catch(e){ console.error(e); alert("Kunne ikke registrere oppgjøret."); }
+  };
+  window.angreBetalt = async (id) => {
+    if (!confirm("Angre dette oppgjøret? Beløpet vil dukke opp igjen i oppgjøret.")) return;
+    try { await deleteDoc(doc(db,"lists",LIST_ID,"settlements",id)); }
+    catch(e){ console.error(e); alert("Kunne ikke angre."); }
   };
 
-  window.saveDelingWallet = async () => {
-    const name = (document.getElementById("deling-wallet-name").value || "").trim();
-    if (!name){ alert("Gi gruppen et navn."); return; }
-    let shares = parseInt(document.getElementById("deling-wallet-shares").value, 10);
-    if (!shares || shares < 1) shares = 1;
-    const vipps = (document.getElementById("deling-wallet-vipps").value || "").replace(/\s/g, "");
-    const memberUids = Array.from(document.querySelectorAll("#deling-wallet-members input[type=checkbox]:checked")).map(c => c.value);
+  /* ---------- Personer ---------- */
+  window.hentFraMedlemmer = async () => {
+    const eksisterende = new Set(delPeople.map(p=>p.uid).filter(Boolean));
+    const nye = Object.entries(delMembers).filter(([uid])=>!eksisterende.has(uid));
+    if (!nye.length){ alert("Alle medlemmer på lista er allerede lagt til som personer."); return; }
     try {
-      if (editingWalletId){
-        await updateDoc(doc(db, "lists", LIST_ID, "wallets", editingWalletId), { name, shares, vipps, memberUids });
-      } else {
-        await addDoc(collection(db, "lists", LIST_ID, "wallets"), { name, shares, vipps, memberUids, createdAt: Date.now() });
+      for (const [uid,navn] of nye){
+        await setDoc(doc(db,"lists",LIST_ID,"people",uid), { name:String(navn||"Medlem"), vipps:"", uid, createdAt:Date.now() }, { merge:true });
       }
-      document.getElementById("deling-wallet-modal").classList.remove("open");
-      editingWalletId = null;
-    } catch(e){ console.error(e); alert("Kunne ikke lagre gruppen."); }
+    } catch(e){ console.error(e); alert("Kunne ikke hente medlemmer."); }
   };
 
-  window.deleteDelingWallet = async (walletId) => {
-    const w = delingWallets.find(x => x.id === walletId);
-    const used = delingExpenses.some(e => e.paidBy === walletId);
-    let msg = `Slette gruppen «${w ? w.name : ""}»?`;
-    if (used) msg += "\n\nNB: Det finnes utgifter betalt av denne gruppen. Slett eller endre dem først for et riktig oppgjør.";
+  window.openPersonModal = (personId) => {
+    editPersonId = personId || null;
+    const p = personId ? delPeople.find(x=>x.id===personId) : null;
+    const t=document.getElementById("deling-person-title"), n=document.getElementById("deling-person-name"), v=document.getElementById("deling-person-vipps");
+    if(t) t.textContent = p ? "Rediger person" : "Ny person";
+    if(n) n.value = p ? (p.name||"") : "";
+    if(v) v.value = p ? (p.vipps||"") : "";
+    document.getElementById("deling-person-modal").classList.add("open");
+  };
+  window.savePerson = async () => {
+    const name = (document.getElementById("deling-person-name").value||"").trim();
+    if (!name){ alert("Skriv inn et navn."); return; }
+    const vipps = (document.getElementById("deling-person-vipps").value||"").replace(/\s/g,"");
+    try {
+      if (editPersonId) await updateDoc(doc(db,"lists",LIST_ID,"people",editPersonId), { name, vipps });
+      else await addDoc(collection(db,"lists",LIST_ID,"people"), { name, vipps, uid:null, createdAt:Date.now() });
+      document.getElementById("deling-person-modal").classList.remove("open"); editPersonId=null;
+    } catch(e){ console.error(e); alert("Kunne ikke lagre personen."); }
+  };
+  window.deletePerson = async (personId) => {
+    const brukt = delExpenses.some(e=>e.paidBy===personId || (Array.isArray(e.sharedBy)&&e.sharedBy.includes(personId)));
+    let msg = `Slette ${personName(personId)}?`;
+    if (brukt) msg += "\n\nNB: Personen er knyttet til utgifter. Rett opp dem først for et riktig oppgjør.";
     if (!confirm(msg)) return;
-    try { await deleteDoc(doc(db, "lists", LIST_ID, "wallets", walletId)); }
-    catch(e){ console.error(e); alert("Kunne ikke slette gruppen."); }
+    try { await deleteDoc(doc(db,"lists",LIST_ID,"people",personId)); }
+    catch(e){ console.error(e); alert("Kunne ikke slette personen."); }
   };
 
-  /* ---------- Utgift-modal ---------- */
-  window.openDelingExpenseModal = (expenseId) => {
-    if (!delingWallets.length){ alert("Opprett minst én gruppe først."); return; }
-    editingExpenseId = expenseId || null;
-    const e = expenseId ? delingExpenses.find(x => x.id === expenseId) : null;
-    const titleEl = document.getElementById("deling-expense-title");
-    const descEl = document.getElementById("deling-expense-desc");
-    const amtEl = document.getElementById("deling-expense-amount");
-    const payEl = document.getElementById("deling-expense-paidby");
-    if (titleEl) titleEl.textContent = e ? "Rediger utgift" : "Ny utgift";
-    if (descEl) descEl.value = e ? (e.desc || "") : "";
-    if (amtEl) amtEl.value = e ? (e.amount != null ? e.amount : "") : "";
-    if (payEl){
-      payEl.innerHTML = delingWallets.map(w => `<option value="${w.id}">${dEsc(w.name)}</option>`).join("");
-      if (e && e.paidBy) payEl.value = e.paidBy;
+  /* ---------- Utgifter ---------- */
+  window.openExpenseModal = (expenseId) => {
+    if (!delPeople.length){ alert("Legg til minst én person først (Hent fra medlemmer)."); return; }
+    editExpenseId = expenseId || null;
+    const e = expenseId ? delExpenses.find(x=>x.id===expenseId) : null;
+    const t=document.getElementById("deling-expense-title");
+    const d=document.getElementById("deling-expense-desc");
+    const a=document.getElementById("deling-expense-amount");
+    const pay=document.getElementById("deling-expense-paidby");
+    const share=document.getElementById("deling-expense-shared");
+    if(t) t.textContent = e ? "Rediger utgift" : "Ny utgift";
+    if(d) d.value = e ? (e.desc||"") : "";
+    if(a) a.value = e ? (e.amount!=null?e.amount:"") : "";
+    if(pay) pay.innerHTML = delPeople.map(p=>`<option value="${p.id}">${dEsc(p.name)}</option>`).join("");
+    if(pay && e && e.paidBy) pay.value = e.paidBy;
+    if(share){
+      const chosen = e && Array.isArray(e.sharedBy) ? e.sharedBy : delPeople.map(p=>p.id); // ny = alle
+      share.innerHTML = delPeople.map(p=>
+        `<label class="deling-check"><input type="checkbox" value="${dEsc(p.id)}" ${chosen.includes(p.id)?"checked":""}/> ${dEsc(p.name)}</label>`
+      ).join("");
     }
     document.getElementById("deling-expense-modal").classList.add("open");
   };
-
-  window.saveDelingExpense = async () => {
-    const desc = (document.getElementById("deling-expense-desc").value || "").trim();
-    const amount = parseFloat((document.getElementById("deling-expense-amount").value || "").replace(",", "."));
+  window.toggleAlleDeler = (on) => {
+    document.querySelectorAll("#deling-expense-shared input[type=checkbox]").forEach(c=>{ c.checked = on; });
+  };
+  window.saveExpense = async () => {
+    const desc = (document.getElementById("deling-expense-desc").value||"").trim();
+    const amount = parseFloat((document.getElementById("deling-expense-amount").value||"").replace(",","."));
     const paidBy = document.getElementById("deling-expense-paidby").value;
-    if (!(amount > 0)){ alert("Skriv inn et gyldig beløp."); return; }
-    if (!paidBy){ alert("Velg hvem som betalte."); return; }
+    const sharedBy = Array.from(document.querySelectorAll("#deling-expense-shared input:checked")).map(c=>c.value);
+    if (!(amount>0)){ alert("Skriv inn et gyldig beløp."); return; }
+    if (!paidBy){ alert("Velg hvem som la ut."); return; }
+    if (!sharedBy.length){ alert("Velg minst én som skal dele utgiften."); return; }
     try {
-      if (editingExpenseId){
-        await updateDoc(doc(db, "lists", LIST_ID, "expenses", editingExpenseId), { desc, amount, paidBy });
-      } else {
-        await addDoc(collection(db, "lists", LIST_ID, "expenses"), { desc, amount, paidBy, createdAt: Date.now(), createdBy: currentUser ? currentUser.uid : null });
-      }
-      document.getElementById("deling-expense-modal").classList.remove("open");
-      editingExpenseId = null;
+      if (editExpenseId) await updateDoc(doc(db,"lists",LIST_ID,"expenses",editExpenseId), { desc, amount, paidBy, sharedBy });
+      else await addDoc(collection(db,"lists",LIST_ID,"expenses"), { desc, amount, paidBy, sharedBy, createdAt:Date.now(), createdBy:currentUser?currentUser.uid:null });
+      document.getElementById("deling-expense-modal").classList.remove("open"); editExpenseId=null;
     } catch(e){ console.error(e); alert("Kunne ikke lagre utgiften."); }
   };
-
-  window.deleteDelingExpense = async (expenseId) => {
+  window.deleteExpense = async (id) => {
     if (!confirm("Slette denne utgiften?")) return;
-    try { await deleteDoc(doc(db, "lists", LIST_ID, "expenses", expenseId)); }
+    try { await deleteDoc(doc(db,"lists",LIST_ID,"expenses",id)); }
     catch(e){ console.error(e); alert("Kunne ikke slette utgiften."); }
   };
 
-  window.closeDelingModal = (id) => {
-    const m = document.getElementById(id);
-    if (m) m.classList.remove("open");
-  };
+  window.closeDelingModal = (id) => { const m=document.getElementById(id); if(m) m.classList.remove("open"); };
 
 </script>
 </body>
