@@ -37,6 +37,40 @@
     .ic-host { display:inline; }
     .ic { display:inline-block; width:1.05em; height:1.05em; vertical-align:-0.16em; flex-shrink:0; }
 
+    /* DELING / KOSTNADSDELING */
+    .deling-summary { font-size:13px; color:var(--ink2); margin-bottom:.6rem; }
+    .deling-summary strong { color:var(--ink); }
+    .deling-btn-row { display:flex; gap:8px; margin-bottom:1rem; }
+    .deling-add-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); padding:11px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+    .deling-add-secondary { background:var(--accent-light); color:var(--accent); }
+    .deling-section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--ink3); margin:0 0 .5rem; }
+    .deling-card { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:11px 13px; margin-bottom:8px; }
+    .deling-card-main { flex:1; min-width:0; }
+    .deling-card-name { font-size:14px; font-weight:600; color:var(--ink); }
+    .deling-card-sub { font-size:12px; color:var(--ink2); margin-top:2px; }
+    .deling-card-actions { display:flex; gap:2px; }
+    .deling-icon-btn { background:none; border:none; cursor:pointer; color:var(--ink3); font-size:14px; padding:4px 6px; border-radius:8px; line-height:1; }
+    .deling-icon-btn:hover { background:var(--accent-light); color:var(--accent); }
+    .deling-exp-row { display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--border); }
+    .deling-exp-info { flex:1; min-width:0; }
+    .deling-exp-desc { font-size:14px; color:var(--ink); }
+    .deling-exp-who { font-size:11px; color:var(--ink2); margin-top:1px; }
+    .deling-exp-amt { font-size:14px; font-weight:600; color:var(--ink); white-space:nowrap; }
+    .deling-transfer { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:11px 13px; margin-bottom:8px; }
+    .deling-transfer-line { display:flex; align-items:center; gap:7px; font-size:14px; }
+    .deling-transfer-from { color:var(--ink2); }
+    .deling-transfer-arrow { color:var(--ink3); }
+    .deling-transfer-to { color:var(--ink); font-weight:600; }
+    .deling-transfer-amt { margin-left:auto; font-weight:700; color:var(--ink); white-space:nowrap; }
+    .deling-transfer-action { margin-top:9px; }
+    .deling-vipps-btn { width:100%; background:#ff5b24; color:#fff; border:none; border-radius:8px; padding:9px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+    .deling-settled { background:var(--accent-light); color:var(--accent); border-radius:var(--radius); padding:13px; text-align:center; font-size:13px; font-weight:500; }
+    .deling-muted { color:var(--ink3); font-size:13px; }
+    .deling-foot { font-size:11px; color:var(--ink3); margin-top:1.25rem; line-height:1.5; }
+    .deling-members-box { display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; }
+    .deling-check { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink); cursor:pointer; }
+    .deling-check input { width:16px; height:16px; accent-color:var(--accent); }
+
     body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); min-height:100dvh; max-width:480px; margin:0 auto; transition:background .25s, color .25s; }
 
     /* LOGIN */
@@ -438,6 +472,7 @@
       <button class="nav-tab" id="tab-history" onclick="showTab('history')">📋 Historikk</button>
       <button class="nav-tab" id="tab-board" onclick="showTab('board')">👨‍👩‍👧‍👦 Tavle</button>
       <button class="nav-tab" id="tab-pakke" onclick="showTab('pakke')">🧳 Pakke</button>
+      <button class="nav-tab" id="tab-deling" onclick="showTab('deling')">💰 Deling</button>
     </div>
     <div class="add-form" id="add-form-area">
       <input class="add-input" id="new-item-input" type="text" placeholder="Legg til vare..." autocomplete="off" />
@@ -689,6 +724,71 @@
           <div id="pakke-items-list">
             <div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg visning over</p></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELING / KOSTNADSDELING -->
+    <div id="deling-screen" style="display:none">
+      <div id="deling-summary" class="deling-summary"></div>
+      <div class="deling-btn-row">
+        <button class="deling-add-btn" onclick="openDelingExpenseModal()">➕ Ny utgift</button>
+        <button class="deling-add-btn deling-add-secondary" onclick="openDelingWalletModal()">👥 Ny gruppe</button>
+      </div>
+      <div id="deling-settlement"></div>
+      <div class="deling-section-title">Utgifter</div>
+      <div id="deling-expenses"></div>
+      <div class="deling-section-title" style="margin-top:1.25rem">Grupper</div>
+      <div id="deling-wallets"></div>
+      <p class="deling-foot">Summen deles likt per person. «Betal med Vipps» åpner Vipps og kopierer mottakers nummer – du bekrefter selv beløpet i Vipps.</p>
+    </div>
+
+    <!-- DELING: GRUPPE-MODAL -->
+    <div class="modal-overlay" id="deling-wallet-modal">
+      <div class="modal">
+        <div class="modal-title" id="deling-wallet-title">Ny gruppe</div>
+        <div class="modal-row">
+          <label class="modal-label">Navn</label>
+          <input class="modal-input" id="deling-wallet-name" type="text" placeholder="f.eks. Familie Hansen" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Antall personer</label>
+          <input class="modal-input" id="deling-wallet-shares" type="number" min="1" step="1" value="1" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Vipps-nr</label>
+          <input class="modal-input" id="deling-wallet-vipps" type="tel" inputmode="numeric" placeholder="valgfritt – for betalingsknapp" />
+        </div>
+        <div class="modal-row" style="flex-direction:column;align-items:stretch">
+          <label class="modal-label" style="margin-bottom:6px">Medlemmer i gruppen</label>
+          <div id="deling-wallet-members" class="deling-members-box"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:1rem">
+          <button class="modal-input" onclick="saveDelingWallet()" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Lagre</button>
+          <button class="modal-input" onclick="closeDelingModal('deling-wallet-modal')" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELING: UTGIFT-MODAL -->
+    <div class="modal-overlay" id="deling-expense-modal">
+      <div class="modal">
+        <div class="modal-title" id="deling-expense-title">Ny utgift</div>
+        <div class="modal-row">
+          <label class="modal-label">Beskrivelse</label>
+          <input class="modal-input" id="deling-expense-desc" type="text" placeholder="f.eks. Middag fredag" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Beløp (kr)</label>
+          <input class="modal-input" id="deling-expense-amount" type="text" inputmode="decimal" placeholder="0" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Betalt av</label>
+          <select class="modal-input" id="deling-expense-paidby"></select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:1rem">
+          <button class="modal-input" onclick="saveDelingExpense()" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Lagre</button>
+          <button class="modal-input" onclick="closeDelingModal('deling-expense-modal')" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
         </div>
       </div>
     </div>
@@ -1275,6 +1375,7 @@ let LIST_ID = null;
     startListeningWithPrice();
     startListeningTasks();
     startListeningPackTours();
+    startListeningDeling();
     loadHistory();
     updateListInfoPanel();
     saveLastList();  // Lagre sist brukte liste
@@ -1867,6 +1968,7 @@ let LIST_ID = null;
     startListeningWithPrice();
     startListeningTasks();
     startListeningPackTours();
+    startListeningDeling();
     loadHistory();
     
     document.getElementById("new-list-modal").classList.remove("open");
@@ -1976,6 +2078,7 @@ let LIST_ID = null;
       startListeningWithPrice();
       startListeningTasks();
       startListeningPackTours();
+      startListeningDeling();
       renderSuggestions();
       loadHistory();
       handleInviteParameter();
@@ -1994,6 +2097,7 @@ let LIST_ID = null;
       if (unsubscribeTasks) unsubscribeTasks();
       if (unsubscribeTours) unsubscribeTours();
       if (unsubscribePackItems) unsubscribePackItems();
+      stopListeningDeling();
     }
   });
   // TABS
@@ -2002,10 +2106,12 @@ let LIST_ID = null;
     document.getElementById("tab-history").classList.toggle("active", tab === "history");
     document.getElementById("tab-board").classList.toggle("active", tab === "board");
     document.getElementById("tab-pakke").classList.toggle("active", tab === "pakke");
+    document.getElementById("tab-deling").classList.toggle("active", tab === "deling");
     document.getElementById("list-screen").style.display = tab === "list" ? "block" : "none";
     document.getElementById("history-screen").style.display = tab === "history" ? "block" : "none";
     document.getElementById("board-screen").style.display = tab === "board" ? "block" : "none";
     document.getElementById("pakke-screen").style.display = tab === "pakke" ? "block" : "none";
+    document.getElementById("deling-screen").style.display = tab === "deling" ? "block" : "none";
     document.getElementById("add-form-area").style.display = tab === "list" ? "flex" : "none";
     try { localStorage.setItem("hl-active-tab", tab); } catch(e) {}
   };
@@ -3838,6 +3944,7 @@ await cleanupPurchaseHistoryDuplicates();
 startListeningWithPrice();
       startListeningTasks();
       startListeningPackTours();
+      startListeningDeling();
       renderSuggestions();
       loadHistory();
 
@@ -5309,7 +5416,8 @@ window.addEventListener('offline', () => {
     '\u{1F50D}':`<svg ${S}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`,
     '\u{1F501}':`<svg ${S}><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`,
     '\u{1F4C8}':`<svg ${S}><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg>`,
-    '\u{1F4C4}':`<svg ${S}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`
+    '\u{1F4C4}':`<svg ${S}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`,
+    '\u{1F4B0}':`<svg ${S}><path d="M2 9a3 3 0 0 1 3-3h14a2 2 0 0 1 2 2v1"/><path d="M2 9v8a3 3 0 0 0 3 3h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H5"/><circle cx="16.5" cy="13.5" r="1.5"/></svg>`
   };
   const keys = Object.keys(ICONS).map(k => k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
   const RE = new RegExp('(?:'+keys+')\\uFE0F?','gu');
@@ -5358,6 +5466,303 @@ window.addEventListener('offline', () => {
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 })();
+
+
+/* =========================================================================
+   LOMMEBØKER / DELING  – kostnadsdeling per liste (lists/{LIST_ID}/...)
+   Datamodell:
+     lists/{LIST_ID}/wallets/{id}   { name, shares, vipps, memberUids[], createdAt }
+     lists/{LIST_ID}/expenses/{id}  { desc, amount, paidBy(walletId), createdAt, createdBy }
+   ========================================================================= */
+  let delingWallets = [];
+  let delingExpenses = [];
+  let delingMembers = {};           // {uid: navn} for aktiv liste
+  let unsubDelingWallets = null;
+  let unsubDelingExpenses = null;
+  let editingWalletId = null;
+  let editingExpenseId = null;
+
+  function dEsc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function fmtKr(n){
+    const r = Math.round((Number(n) || 0) * 100) / 100;
+    return r.toLocaleString("nb-NO", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " kr";
+  }
+
+  async function loadDelingMembers(){
+    delingMembers = {};
+    try {
+      if (currentListType === "shared") {
+        const s = await getDoc(doc(db, "sharedLists", LIST_ID));
+        if (s.exists()) delingMembers = s.data().members || {};
+      } else {
+        const s = await getDoc(doc(db, "households", LIST_ID));
+        if (s.exists()) delingMembers = s.data().members || {};
+      }
+    } catch(e){ console.warn("Kunne ikke laste medlemmer for deling", e); }
+    if (Array.isArray(delingMembers)) {
+      const t = {}; for (const uid of delingMembers) t[uid] = "Medlem"; delingMembers = t;
+    }
+  }
+
+  function startListeningDeling(){
+    if (unsubDelingWallets) unsubDelingWallets();
+    if (unsubDelingExpenses) unsubDelingExpenses();
+    if (!LIST_ID) return;
+    loadDelingMembers();
+    const wq = query(collection(db, "lists", LIST_ID, "wallets"), orderBy("createdAt"));
+    unsubDelingWallets = onSnapshot(wq, (snap) => {
+      delingWallets = [];
+      snap.forEach(d => delingWallets.push({ id: d.id, ...d.data() }));
+      renderDeling();
+    }, (err) => console.warn("wallets-lytter:", err));
+    const eq = query(collection(db, "lists", LIST_ID, "expenses"), orderBy("createdAt", "desc"));
+    unsubDelingExpenses = onSnapshot(eq, (snap) => {
+      delingExpenses = [];
+      snap.forEach(d => delingExpenses.push({ id: d.id, ...d.data() }));
+      renderDeling();
+    }, (err) => console.warn("expenses-lytter:", err));
+  }
+
+  function stopListeningDeling(){
+    if (unsubDelingWallets) { unsubDelingWallets(); unsubDelingWallets = null; }
+    if (unsubDelingExpenses) { unsubDelingExpenses(); unsubDelingExpenses = null; }
+  }
+
+  function walletShares(w){
+    const s = Number(w.shares);
+    if (s && s > 0) return s;
+    if (Array.isArray(w.memberUids) && w.memberUids.length) return w.memberUids.length;
+    return 1;
+  }
+
+  /* Oppgjør: del totalsum på antall personer (shares), regn netto per lommebok,
+     og minimer antall overføringer (grådig: største skyldner -> største mottaker). */
+  function computeSettlement(wallets, expenses){
+    const total = expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+    const totalShares = wallets.reduce((a, w) => a + walletShares(w), 0);
+    const perShare = totalShares > 0 ? total / totalShares : 0;
+    const balances = wallets.map(w => {
+      const paid = expenses.filter(e => e.paidBy === w.id).reduce((a, e) => a + (Number(e.amount) || 0), 0);
+      const owed = walletShares(w) * perShare;
+      return { id: w.id, name: w.name, vipps: w.vipps || "", net: Math.round((paid - owed) * 100) / 100, paid, owed };
+    });
+    // overføringer
+    const creditors = balances.filter(b => b.net > 0.009).map(b => ({ ...b, rem: b.net })).sort((a,b) => b.rem - a.rem);
+    const debtors  = balances.filter(b => b.net < -0.009).map(b => ({ ...b, rem: -b.net })).sort((a,b) => b.rem - a.rem);
+    const transfers = [];
+    let ci = 0, di = 0;
+    while (ci < creditors.length && di < debtors.length){
+      const c = creditors[ci], d = debtors[di];
+      const amt = Math.min(c.rem, d.rem);
+      if (amt > 0.009){
+        transfers.push({ fromId: d.id, fromName: d.name, toId: c.id, toName: c.name, toVipps: c.vipps, amount: Math.round(amt * 100) / 100 });
+      }
+      c.rem -= amt; d.rem -= amt;
+      if (c.rem <= 0.009) ci++;
+      if (d.rem <= 0.009) di++;
+    }
+    return { total, totalShares, perShare, balances, transfers };
+  }
+
+  function renderDeling(){
+    renderDelingWallets();
+    renderDelingExpenses();
+    renderDelingSettlement();
+  }
+
+  function renderDelingWallets(){
+    const el = document.getElementById("deling-wallets");
+    if (!el) return;
+    if (!delingWallets.length){
+      el.innerHTML = `<div class="empty-state"><div class="big">💰</div><p>Ingen grupper ennå. Opprett lommebøker for å dele utgifter – ett par, en familie eller én person per gruppe.</p></div>`;
+      return;
+    }
+    el.innerHTML = delingWallets.map(w => {
+      const names = (Array.isArray(w.memberUids) ? w.memberUids : []).map(u => dEsc(delingMembers[u] || "Medlem")).join(", ");
+      const sub = [];
+      sub.push(walletShares(w) + (walletShares(w) === 1 ? " person" : " personer"));
+      if (w.vipps) sub.push("Vipps " + dEsc(w.vipps));
+      return `<div class="deling-card">
+        <div class="deling-card-main">
+          <div class="deling-card-name">${dEsc(w.name)}</div>
+          <div class="deling-card-sub">${sub.join(" · ")}${names ? " · " + names : ""}</div>
+        </div>
+        <div class="deling-card-actions">
+          <button class="deling-icon-btn" title="Rediger" onclick="openDelingWalletModal('${w.id}')">✎</button>
+          <button class="deling-icon-btn" title="Slett" onclick="deleteDelingWallet('${w.id}')">🗑</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderDelingExpenses(){
+    const el = document.getElementById("deling-expenses");
+    if (!el) return;
+    if (!delingExpenses.length){
+      el.innerHTML = `<div class="deling-muted">Ingen utgifter registrert ennå.</div>`;
+      return;
+    }
+    el.innerHTML = delingExpenses.map(e => {
+      const w = delingWallets.find(x => x.id === e.paidBy);
+      const who = w ? dEsc(w.name) : "Ukjent";
+      return `<div class="deling-exp-row">
+        <div class="deling-exp-info">
+          <div class="deling-exp-desc">${dEsc(e.desc || "Utgift")}</div>
+          <div class="deling-exp-who">Betalt av ${who}</div>
+        </div>
+        <div class="deling-exp-amt">${fmtKr(e.amount)}</div>
+        <button class="deling-icon-btn" title="Slett" onclick="deleteDelingExpense('${e.id}')">✕</button>
+      </div>`;
+    }).join("");
+  }
+
+  function renderDelingSettlement(){
+    const el = document.getElementById("deling-settlement");
+    const sumEl = document.getElementById("deling-summary");
+    if (!el) return;
+    const { total, transfers, balances } = computeSettlement(delingWallets, delingExpenses);
+    if (sumEl){
+      sumEl.innerHTML = delingExpenses.length
+        ? `Totalt: <strong>${fmtKr(total)}</strong> fordelt på ${balances.length} ${balances.length === 1 ? "gruppe" : "grupper"}`
+        : "";
+    }
+    if (!delingWallets.length || !delingExpenses.length){
+      el.innerHTML = "";
+      return;
+    }
+    if (!transfers.length){
+      el.innerHTML = `<div class="deling-settled">✅ Alt er gjort opp – ingen overføringer nødvendig.</div>`;
+      return;
+    }
+    el.innerHTML = `<div class="deling-section-title">Oppgjør</div>` + transfers.map(t => {
+      const vippsBtn = t.toVipps
+        ? `<button class="deling-vipps-btn" onclick="betalMedVipps('${dEsc(t.toVipps)}', ${t.amount}, this)">Betal med Vipps</button>`
+        : `<span class="deling-muted" style="font-size:11px">Legg inn Vipps-nr på «${dEsc(t.toName)}» for betalingsknapp</span>`;
+      return `<div class="deling-transfer">
+        <div class="deling-transfer-line">
+          <span class="deling-transfer-from">${dEsc(t.fromName)}</span>
+          <span class="deling-transfer-arrow">→</span>
+          <span class="deling-transfer-to">${dEsc(t.toName)}</span>
+          <span class="deling-transfer-amt">${fmtKr(t.amount)}</span>
+        </div>
+        <div class="deling-transfer-action">${vippsBtn}</div>
+      </div>`;
+    }).join("");
+  }
+
+  /* ---------- Vipps-handoff (ingen API – åpner Vipps, kopierer mottakernr) ---------- */
+  window.betalMedVipps = (vipps, amount, btn) => {
+    const nr = String(vipps || "").replace(/\s/g, "");
+    if (nr && navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(nr).catch(() => {});
+    }
+    if (btn){
+      const orig = btn.textContent;
+      btn.textContent = "Vipps-nr kopiert ✓";
+      setTimeout(() => { btn.textContent = orig; }, 2200);
+    }
+    try { window.location.href = "vipps://"; } catch(e){}
+  };
+
+  /* ---------- Lommebok-modal ---------- */
+  window.openDelingWalletModal = (walletId) => {
+    editingWalletId = walletId || null;
+    const w = walletId ? delingWallets.find(x => x.id === walletId) : null;
+    const titleEl = document.getElementById("deling-wallet-title");
+    const nameEl = document.getElementById("deling-wallet-name");
+    const sharesEl = document.getElementById("deling-wallet-shares");
+    const vippsEl = document.getElementById("deling-wallet-vipps");
+    const memEl = document.getElementById("deling-wallet-members");
+    if (titleEl) titleEl.textContent = w ? "Rediger gruppe" : "Ny gruppe";
+    if (nameEl) nameEl.value = w ? (w.name || "") : "";
+    if (sharesEl) sharesEl.value = w ? walletShares(w) : 1;
+    if (vippsEl) vippsEl.value = w ? (w.vipps || "") : "";
+    if (memEl){
+      const chosen = w && Array.isArray(w.memberUids) ? w.memberUids : [];
+      const entries = Object.entries(delingMembers);
+      memEl.innerHTML = entries.length
+        ? entries.map(([uid, navn]) =>
+            `<label class="deling-check"><input type="checkbox" value="${dEsc(uid)}" ${chosen.includes(uid) ? "checked" : ""}/> ${dEsc(navn)}</label>`
+          ).join("")
+        : `<div class="deling-muted" style="font-size:12px">Ingen medlemmer funnet på denne lista.</div>`;
+    }
+    document.getElementById("deling-wallet-modal").classList.add("open");
+  };
+
+  window.saveDelingWallet = async () => {
+    const name = (document.getElementById("deling-wallet-name").value || "").trim();
+    if (!name){ alert("Gi gruppen et navn."); return; }
+    let shares = parseInt(document.getElementById("deling-wallet-shares").value, 10);
+    if (!shares || shares < 1) shares = 1;
+    const vipps = (document.getElementById("deling-wallet-vipps").value || "").replace(/\s/g, "");
+    const memberUids = Array.from(document.querySelectorAll("#deling-wallet-members input[type=checkbox]:checked")).map(c => c.value);
+    try {
+      if (editingWalletId){
+        await updateDoc(doc(db, "lists", LIST_ID, "wallets", editingWalletId), { name, shares, vipps, memberUids });
+      } else {
+        await addDoc(collection(db, "lists", LIST_ID, "wallets"), { name, shares, vipps, memberUids, createdAt: Date.now() });
+      }
+      document.getElementById("deling-wallet-modal").classList.remove("open");
+      editingWalletId = null;
+    } catch(e){ console.error(e); alert("Kunne ikke lagre gruppen."); }
+  };
+
+  window.deleteDelingWallet = async (walletId) => {
+    const w = delingWallets.find(x => x.id === walletId);
+    const used = delingExpenses.some(e => e.paidBy === walletId);
+    let msg = `Slette gruppen «${w ? w.name : ""}»?`;
+    if (used) msg += "\n\nNB: Det finnes utgifter betalt av denne gruppen. Slett eller endre dem først for et riktig oppgjør.";
+    if (!confirm(msg)) return;
+    try { await deleteDoc(doc(db, "lists", LIST_ID, "wallets", walletId)); }
+    catch(e){ console.error(e); alert("Kunne ikke slette gruppen."); }
+  };
+
+  /* ---------- Utgift-modal ---------- */
+  window.openDelingExpenseModal = (expenseId) => {
+    if (!delingWallets.length){ alert("Opprett minst én gruppe først."); return; }
+    editingExpenseId = expenseId || null;
+    const e = expenseId ? delingExpenses.find(x => x.id === expenseId) : null;
+    const titleEl = document.getElementById("deling-expense-title");
+    const descEl = document.getElementById("deling-expense-desc");
+    const amtEl = document.getElementById("deling-expense-amount");
+    const payEl = document.getElementById("deling-expense-paidby");
+    if (titleEl) titleEl.textContent = e ? "Rediger utgift" : "Ny utgift";
+    if (descEl) descEl.value = e ? (e.desc || "") : "";
+    if (amtEl) amtEl.value = e ? (e.amount != null ? e.amount : "") : "";
+    if (payEl){
+      payEl.innerHTML = delingWallets.map(w => `<option value="${w.id}">${dEsc(w.name)}</option>`).join("");
+      if (e && e.paidBy) payEl.value = e.paidBy;
+    }
+    document.getElementById("deling-expense-modal").classList.add("open");
+  };
+
+  window.saveDelingExpense = async () => {
+    const desc = (document.getElementById("deling-expense-desc").value || "").trim();
+    const amount = parseFloat((document.getElementById("deling-expense-amount").value || "").replace(",", "."));
+    const paidBy = document.getElementById("deling-expense-paidby").value;
+    if (!(amount > 0)){ alert("Skriv inn et gyldig beløp."); return; }
+    if (!paidBy){ alert("Velg hvem som betalte."); return; }
+    try {
+      if (editingExpenseId){
+        await updateDoc(doc(db, "lists", LIST_ID, "expenses", editingExpenseId), { desc, amount, paidBy });
+      } else {
+        await addDoc(collection(db, "lists", LIST_ID, "expenses"), { desc, amount, paidBy, createdAt: Date.now(), createdBy: currentUser ? currentUser.uid : null });
+      }
+      document.getElementById("deling-expense-modal").classList.remove("open");
+      editingExpenseId = null;
+    } catch(e){ console.error(e); alert("Kunne ikke lagre utgiften."); }
+  };
+
+  window.deleteDelingExpense = async (expenseId) => {
+    if (!confirm("Slette denne utgiften?")) return;
+    try { await deleteDoc(doc(db, "lists", LIST_ID, "expenses", expenseId)); }
+    catch(e){ console.error(e); alert("Kunne ikke slette utgiften."); }
+  };
+
+  window.closeDelingModal = (id) => {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove("open");
+  };
 
 </script>
 </body>
