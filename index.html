@@ -4599,6 +4599,8 @@ await addDoc(historyRef, {
   }
 
   // Personliste for ønsker = husholdningsmedlemmer + evt. ekstra (barn) lagret på husholdningen
+  let wishBirthdays = {};
+
   async function loadWishPersons() {
     try {
       const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
@@ -4607,6 +4609,7 @@ await addDoc(historyRef, {
       const memberNavn = Array.isArray(members) ? [] : Object.values(members).map(n => String(n).trim()).filter(Boolean);
       const ekstra = Array.isArray(data.wishPersons) ? data.wishPersons : [];
       wishPersons = [...new Set([...memberNavn, ...ekstra])].sort((a, b) => a.localeCompare(b, "no"));
+      wishBirthdays = data.wishBirthdays || {};
       fillWishPersonSelect();
     } catch (e) {
       console.error("Kunne ikke laste personer for ønsker:", e);
@@ -4676,15 +4679,35 @@ await addDoc(historyRef, {
       container.innerHTML = `<div class="board-empty">Velg en person for å se ønskelista</div>`;
       return;
     }
+
+    // Person-header: fødselsdato/alder + handlinger
+    const bd = wishBirthdays[currentWishPerson];
+    let bdStr = "";
+    if (bd) {
+      const d = new Date(bd);
+      if (!isNaN(d.getTime())) {
+        const alder = beregnAlder(d);
+        bdStr = `🎂 ${d.toLocaleDateString("no-NO", { day: "numeric", month: "long" })}${alder != null ? ` · ${alder} år` : ""}`;
+      }
+    }
+    const header = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px 12px;flex-wrap:wrap">
+        <div style="font-size:13px;color:var(--ink2)">${bdStr || '<span style="color:var(--ink3)">Ingen fødselsdato satt</span>'}</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="setWishBirthday('${escapeJsString(currentWishPerson)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink2)">${bd ? "Endre dato" : "Sett fødselsdato"}</button>
+          <button onclick="deleteWishPerson('${escapeJsString(currentWishPerson)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink3)">Fjern person</button>
+        </div>
+      </div>`;
+
     const personWishes = wishes.filter(w => w.person === currentWishPerson);
     if (personWishes.length === 0) {
-      container.innerHTML = `<div class="board-empty">Ingen ønsker for ${escapeHtml(currentWishPerson)} ennå</div>`;
+      container.innerHTML = header + `<div class="board-empty">Ingen ønsker for ${escapeHtml(currentWishPerson)} ennå</div>`;
       return;
     }
 
     // Er den innloggede eieren av denne lista? (la inn ønskene selv)
     // Skjult avkryssing: eieren ser IKKE kjøpt-status på sine egne ønsker.
-    let html = `<div class="board-section"><div class="board-list">`;
+    let html = header + `<div class="board-section"><div class="board-list">`;
     personWishes.forEach(w => {
       const erMittEget = w.onsketAvUid && w.onsketAvUid === currentUser?.uid;
       const visKjopt = w.kjopt && !erMittEget; // skjul for eier
@@ -4724,6 +4747,73 @@ await addDoc(historyRef, {
     const w = wishes.find(x => x.id === id);
     if (w && !confirm(`Fjerne "${w.navn}"?`)) return;
     await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "wishes", id));
+  };
+
+  function beregnAlder(fodselsdato) {
+    const naa = new Date();
+    let alder = naa.getFullYear() - fodselsdato.getFullYear();
+    const m = naa.getMonth() - fodselsdato.getMonth();
+    if (m < 0 || (m === 0 && naa.getDate() < fodselsdato.getDate())) alder--;
+    return alder >= 0 ? alder : null;
+  }
+
+  window.setWishBirthday = async (person) => {
+    if (!HOUSEHOLD_ID) return;
+    const naavaerende = wishBirthdays[person] || "";
+    const svar = prompt(`Fødselsdato for ${person} (ÅÅÅÅ-MM-DD):`, naavaerende);
+    if (svar === null) return;
+    const trimmet = svar.trim();
+    // Tom = fjern datoen
+    if (!trimmet) {
+      const nye = { ...wishBirthdays };
+      delete nye[person];
+      await updateDoc(doc(db, "households", HOUSEHOLD_ID), { wishBirthdays: nye });
+      await loadWishPersons();
+      renderWishes();
+      return;
+    }
+    const d = new Date(trimmet);
+    if (isNaN(d.getTime())) { alert("Ugyldig dato. Bruk formatet ÅÅÅÅ-MM-DD, f.eks. 2023-05-12."); return; }
+    await updateDoc(doc(db, "households", HOUSEHOLD_ID), {
+      wishBirthdays: { ...wishBirthdays, [person]: trimmet }
+    });
+    await loadWishPersons();
+    renderWishes();
+  };
+
+  window.deleteWishPerson = async (person) => {
+    if (!HOUSEHOLD_ID) return;
+    const antallOnsker = wishes.filter(w => w.person === person).length;
+    // Husholdningsmedlemmer kan ikke fjernes herfra – bare ekstra-personer (barn)
+    if (boardMemberNames.includes(person)) {
+      alert(`${person} er et husholdningsmedlem og kan ikke fjernes fra ønskelistene her. Ekstra-personer (barn e.l.) kan fjernes.`);
+      return;
+    }
+    const msg = antallOnsker > 0
+      ? `Fjerne ${person} og de ${antallOnsker} ønskene deres?`
+      : `Fjerne ${person}?`;
+    if (!confirm(msg)) return;
+    try {
+      // Slett personens ønsker
+      for (const w of wishes.filter(w => w.person === person)) {
+        await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "wishes", w.id));
+      }
+      // Fjern fra wishPersons og wishBirthdays
+      const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const data = hhSnap.exists() ? hhSnap.data() : {};
+      const nyePersoner = (Array.isArray(data.wishPersons) ? data.wishPersons : []).filter(p => p !== person);
+      const nyeBd = { ...(data.wishBirthdays || {}) };
+      delete nyeBd[person];
+      await updateDoc(doc(db, "households", HOUSEHOLD_ID), { wishPersons: nyePersoner, wishBirthdays: nyeBd });
+      currentWishPerson = null;
+      document.getElementById("onsker-person-select").value = "";
+      document.getElementById("onsker-add-area").style.display = "none";
+      await loadWishPersons();
+      renderWishes();
+    } catch (e) {
+      console.error("Kunne ikke fjerne person:", e);
+      alert("Klarte ikke å fjerne personen. Prøv igjen.");
+    }
   };
 
   async function loadBoardMembers() {
