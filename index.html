@@ -486,6 +486,7 @@
       <button class="nav-tab" id="tab-board" onclick="showTab('board')">👨‍👩‍👧‍👦 Tavle</button>
       <button class="nav-tab" id="tab-pakke" onclick="showTab('pakke')">🧳 Pakke</button>
       <button class="nav-tab" id="tab-deling" onclick="showTab('deling')">💰 Deling</button>
+      <button class="nav-tab" id="tab-onsker" onclick="showTab('onsker')">🎁 Ønsker</button>
     </div>
     <div class="add-form" id="add-form-area">
       <input class="add-input" id="new-item-input" type="text" placeholder="Legg til vare..." autocomplete="off" />
@@ -758,6 +759,37 @@
       </div>
       <div id="deling-people"></div>
       <p class="deling-foot">Hver utgift deles likt mellom personene du velger. «Betal med Vipps» åpner Vipps og kopierer mottakers nummer – du bekrefter beløpet selv. «Marker betalt» fører oppgjøret som gjort, så det forsvinner fra lista.</p>
+    </div>
+
+    <div id="onsker-screen" style="display:none">
+      <div class="board-form">
+        <div class="board-form-title">🎁 Ønskelister</div>
+        <p style="font-size:13px;color:var(--ink2);margin:-4px 0 12px">Hver i husholdningen har sin egen ønskeliste. Legg til ønsker for deg selv eller barna. Når noen kjøper noe, krysser de det av – men eieren av lista ser ikke at det er kjøpt, så overraskelsen bevares.</p>
+
+        <label class="board-label" for="onsker-person-select">Vis ønskeliste for</label>
+        <select class="board-select board-full" id="onsker-person-select" style="margin-bottom:12px">
+          <option value="">Velg person...</option>
+        </select>
+
+        <div id="onsker-add-area" style="display:none">
+          <label class="board-label" for="onsker-navn-input">Nytt ønske</label>
+          <input class="board-input board-full" id="onsker-navn-input" type="text" placeholder="Hva ønskes? (f.eks. Lego brannbil)" />
+          <div class="board-grid" style="margin-top:6px">
+            <div>
+              <label class="board-label" for="onsker-pris-input">Ca. pris <span class="board-optional">(valgfritt)</span></label>
+              <input class="board-input" id="onsker-pris-input" type="number" min="0" placeholder="kr" />
+            </div>
+            <div>
+              <label class="board-label" for="onsker-lenke-input">Lenke <span class="board-optional">(valgfritt)</span></label>
+              <input class="board-input" id="onsker-lenke-input" type="url" placeholder="https://..." />
+            </div>
+          </div>
+          <button class="board-add-btn" id="onsker-add-btn" type="button">+ Legg til ønske</button>
+        </div>
+      </div>
+      <div id="onsker-content">
+        <div class="board-empty">Velg en person for å se ønskelista</div>
+      </div>
     </div>
 
     <!-- DELING: UTGIFT-MODAL -->
@@ -2100,7 +2132,7 @@ let LIST_ID = null;
       handleInviteParameter();
       try {
         const savedTab = localStorage.getItem("hl-active-tab");
-        if (savedTab && ["list","history","board","pakke"].includes(savedTab)) showTab(savedTab);
+        if (savedTab && ["list","history","board","pakke","deling","onsker"].includes(savedTab)) showTab(savedTab);
       } catch(e) {}
     } else {
       currentUser = null;
@@ -2123,12 +2155,15 @@ let LIST_ID = null;
     document.getElementById("tab-board").classList.toggle("active", tab === "board");
     document.getElementById("tab-pakke").classList.toggle("active", tab === "pakke");
     document.getElementById("tab-deling").classList.toggle("active", tab === "deling");
+    document.getElementById("tab-onsker").classList.toggle("active", tab === "onsker");
     document.getElementById("list-screen").style.display = tab === "list" ? "block" : "none";
     document.getElementById("history-screen").style.display = tab === "history" ? "block" : "none";
     document.getElementById("board-screen").style.display = tab === "board" ? "block" : "none";
     document.getElementById("pakke-screen").style.display = tab === "pakke" ? "block" : "none";
     document.getElementById("deling-screen").style.display = tab === "deling" ? "block" : "none";
+    document.getElementById("onsker-screen").style.display = tab === "onsker" ? "block" : "none";
     document.getElementById("add-form-area").style.display = tab === "list" ? "flex" : "none";
+    if (tab === "onsker") startListeningWishes();
     try { localStorage.setItem("hl-active-tab", tab); } catch(e) {}
   };
 
@@ -4544,6 +4579,152 @@ await addDoc(historyRef, {
       requestAnimationFrame(attachSwipeToTasks);
     });
   }
+
+  // ===== ØNSKELISTER =====
+  let wishes = [];
+  let unsubscribeWishes = null;
+  let currentWishPerson = null;
+  let wishPersons = [];
+
+  async function startListeningWishes() {
+    if (!HOUSEHOLD_ID) return;
+    await loadWishPersons();
+    if (unsubscribeWishes) unsubscribeWishes();
+    const q = query(collection(db, "lists", HOUSEHOLD_ID, "wishes"), orderBy("createdAt", "asc"));
+    unsubscribeWishes = onSnapshot(q, snap => {
+      wishes = [];
+      snap.forEach(d => wishes.push({ id: d.id, ...d.data() }));
+      renderWishes();
+    });
+  }
+
+  // Personliste for ønsker = husholdningsmedlemmer + evt. ekstra (barn) lagret på husholdningen
+  async function loadWishPersons() {
+    try {
+      const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const data = hhSnap.exists() ? hhSnap.data() : {};
+      const members = data.members || {};
+      const memberNavn = Array.isArray(members) ? [] : Object.values(members).map(n => String(n).trim()).filter(Boolean);
+      const ekstra = Array.isArray(data.wishPersons) ? data.wishPersons : [];
+      wishPersons = [...new Set([...memberNavn, ...ekstra])].sort((a, b) => a.localeCompare(b, "no"));
+      fillWishPersonSelect();
+    } catch (e) {
+      console.error("Kunne ikke laste personer for ønsker:", e);
+    }
+  }
+
+  function fillWishPersonSelect() {
+    const sel = document.getElementById("onsker-person-select");
+    if (!sel) return;
+    const prev = sel.value;
+    let html = '<option value="">Velg person...</option>';
+    wishPersons.forEach(p => { html += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`; });
+    html += '<option value="__nyperson__">+ Legg til person (barn e.l.)...</option>';
+    sel.innerHTML = html;
+    if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
+
+  document.getElementById("onsker-person-select")?.addEventListener("change", async (e) => {
+    const val = e.target.value;
+    if (val === "__nyperson__") {
+      const navn = prompt("Navn på personen (f.eks. et barn):");
+      e.target.value = currentWishPerson || "";
+      if (navn && navn.trim()) {
+        const nyttNavn = navn.trim();
+        const nye = [...new Set([...(wishPersons.filter(p => !boardMemberNames.includes(p))), nyttNavn])];
+        await updateDoc(doc(db, "households", HOUSEHOLD_ID), { wishPersons: nye });
+        await loadWishPersons();
+        document.getElementById("onsker-person-select").value = nyttNavn;
+        currentWishPerson = nyttNavn;
+        document.getElementById("onsker-add-area").style.display = "block";
+        renderWishes();
+      }
+      return;
+    }
+    currentWishPerson = val || null;
+    document.getElementById("onsker-add-area").style.display = val ? "block" : "none";
+    renderWishes();
+  });
+
+  document.getElementById("onsker-add-btn")?.addEventListener("click", async () => {
+    if (!currentWishPerson) return;
+    const navn = document.getElementById("onsker-navn-input").value.trim();
+    if (!navn) { alert("Skriv hva som ønskes."); return; }
+    const pris = document.getElementById("onsker-pris-input").value;
+    const lenke = document.getElementById("onsker-lenke-input").value.trim();
+    await addDoc(collection(db, "lists", HOUSEHOLD_ID, "wishes"), {
+      person: currentWishPerson,
+      navn,
+      pris: pris ? Number(pris) : null,
+      lenke: lenke || "",
+      kjopt: false,
+      kjoptAv: "",
+      onsketAvUid: currentUser?.uid || "",  // hvem som la inn ønsket (for skjult avkryssing)
+      createdAt: Date.now(),
+      createdByName: currentUser?.displayName || ""
+    });
+    document.getElementById("onsker-navn-input").value = "";
+    document.getElementById("onsker-pris-input").value = "";
+    document.getElementById("onsker-lenke-input").value = "";
+    document.getElementById("onsker-navn-input").focus();
+  });
+
+  function renderWishes() {
+    const container = document.getElementById("onsker-content");
+    if (!container) return;
+    if (!currentWishPerson) {
+      container.innerHTML = `<div class="board-empty">Velg en person for å se ønskelista</div>`;
+      return;
+    }
+    const personWishes = wishes.filter(w => w.person === currentWishPerson);
+    if (personWishes.length === 0) {
+      container.innerHTML = `<div class="board-empty">Ingen ønsker for ${escapeHtml(currentWishPerson)} ennå</div>`;
+      return;
+    }
+
+    // Er den innloggede eieren av denne lista? (la inn ønskene selv)
+    // Skjult avkryssing: eieren ser IKKE kjøpt-status på sine egne ønsker.
+    let html = `<div class="board-section"><div class="board-list">`;
+    personWishes.forEach(w => {
+      const erMittEget = w.onsketAvUid && w.onsketAvUid === currentUser?.uid;
+      const visKjopt = w.kjopt && !erMittEget; // skjul for eier
+      const prisStr = w.pris ? ` · ${w.pris} kr` : "";
+      const lenkeStr = w.lenke ? ` · <a href="${escapeHtml(w.lenke)}" target="_blank" rel="noopener" style="color:var(--accent)" onclick="event.stopPropagation()">lenke</a>` : "";
+
+      html += `
+        <div class="item ${visKjopt ? "done" : ""}" style="margin-bottom:6px">
+          ${erMittEget
+            ? `<div class="check-btn" style="opacity:.25;cursor:default" title="Du ser ikke om dine egne ønsker er kjøpt">🎁</div>`
+            : `<button class="check-btn" onclick="toggleWishKjopt('${w.id}', ${!!w.kjopt})">${w.kjopt ? "✓" : ""}</button>`}
+          <div class="item-main">
+            <div class="item-name">${escapeHtml(w.navn)}</div>
+            <div class="item-detail">${prisStr}${lenkeStr}${visKjopt && w.kjoptAv ? ` · kjøpt av ${escapeHtml(w.kjoptAv)}` : ""}</div>
+          </div>
+          <button class="delete-btn" onclick="deleteWish('${w.id}')" title="Fjern">×</button>
+        </div>`;
+    });
+    html += `</div></div>`;
+
+    if (personWishes.some(w => w.onsketAvUid === currentUser?.uid)) {
+      html += `<p style="font-size:12px;color:var(--ink3);padding:8px 4px">🎁 = ditt eget ønske. Du ser med vilje ikke om det er kjøpt, så overraskelsen bevares.</p>`;
+    }
+    container.innerHTML = html;
+  }
+
+  window.toggleWishKjopt = async (id, kjopt) => {
+    if (!HOUSEHOLD_ID) return;
+    await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "wishes", id), {
+      kjopt: !kjopt,
+      kjoptAv: !kjopt ? (currentUser?.displayName?.split(" ")[0] || "noen") : ""
+    });
+  };
+
+  window.deleteWish = async (id) => {
+    if (!HOUSEHOLD_ID) return;
+    const w = wishes.find(x => x.id === id);
+    if (w && !confirm(`Fjerne "${w.navn}"?`)) return;
+    await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "wishes", id));
+  };
 
   async function loadBoardMembers() {
     try {
