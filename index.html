@@ -2130,6 +2130,9 @@ let LIST_ID = null;
       renderSuggestions();
       loadHistory();
       handleInviteParameter();
+      // Delt ønskeliste-lenke? Vis mottaker-visning i stedet for vanlig app.
+      const onskeKode = new URLSearchParams(window.location.search).get("onskeliste");
+      if (onskeKode) { openSharedWishlist(onskeKode); }
       try {
         const savedTab = localStorage.getItem("hl-active-tab");
         if (savedTab && ["list","history","board","pakke","deling","onsker"].includes(savedTab)) showTab(savedTab);
@@ -4695,6 +4698,7 @@ await addDoc(historyRef, {
         <div style="font-size:13px;color:var(--ink2)">${bdStr || '<span style="color:var(--ink3)">Ingen fødselsdato satt</span>'}</div>
         <div style="display:flex;gap:6px">
           <button onclick="setWishBirthday('${escapeJsString(currentWishPerson)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink2)">${bd ? "Endre dato" : "Sett fødselsdato"}</button>
+          <button onclick="shareWishlist('${escapeJsString(currentWishPerson)}')" style="background:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:#fff">🔗 Del</button>
           <button onclick="deleteWishPerson('${escapeJsString(currentWishPerson)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink3)">Fjern person</button>
         </div>
       </div>`;
@@ -4779,6 +4783,134 @@ await addDoc(historyRef, {
     });
     await loadWishPersons();
     renderWishes();
+  };
+
+  // ===== MOTTAKER: åpne en delt ønskeliste via lenke =====
+  let sharedWishUnsub = null;
+  async function openSharedWishlist(kode) {
+    try {
+      const snap = await getDoc(doc(db, "sharedWishlists", kode));
+      if (!snap.exists()) {
+        visSharedWishError("Denne ønskelista finnes ikke lenger.");
+        return;
+      }
+      const meta = snap.data();
+      const overlay = document.getElementById("shared-wish-overlay");
+      overlay.style.display = "flex";
+      document.getElementById("shared-wish-title").textContent = `🎁 ${meta.person} sin ønskeliste`;
+      document.getElementById("shared-wish-sub").textContent = meta.ownerName ? `Delt av ${meta.ownerName}` : "";
+
+      if (sharedWishUnsub) sharedWishUnsub();
+      const q = query(
+        collection(db, "lists", meta.householdId, "wishes"),
+        orderBy("createdAt", "asc")
+      );
+      sharedWishUnsub = onSnapshot(q, snap2 => {
+        const alle = [];
+        snap2.forEach(d => alle.push({ id: d.id, ...d.data() }));
+        const personWishes = alle.filter(w => w.person === meta.person);
+        renderSharedWishes(personWishes, meta);
+      }, err => {
+        console.error(err);
+        visSharedWishError("Får ikke tilgang til ønskelista. Lenken kan være ugyldig.");
+      });
+    } catch (e) {
+      console.error("Kunne ikke åpne delt ønskeliste:", e);
+      visSharedWishError("Noe gikk galt. Prøv lenken på nytt.");
+    }
+  }
+
+  function visSharedWishError(tekst) {
+    const overlay = document.getElementById("shared-wish-overlay");
+    overlay.style.display = "flex";
+    document.getElementById("shared-wish-list").innerHTML = `<div class="board-empty">${escapeHtml(tekst)}</div>`;
+  }
+
+  function renderSharedWishes(personWishes, meta) {
+    const el = document.getElementById("shared-wish-list");
+    if (personWishes.length === 0) {
+      el.innerHTML = `<div class="board-empty">Ingen ønsker lagt til ennå.</div>`;
+      return;
+    }
+    let html = "";
+    personWishes.forEach(w => {
+      const prisStr = w.pris ? ` · ${w.pris} kr` : "";
+      const lenkeStr = w.lenke ? ` · <a href="${escapeHtml(w.lenke)}" target="_blank" rel="noopener" style="color:var(--accent)">se vare</a>` : "";
+      html += `
+        <div class="item ${w.kjopt ? "done" : ""}" style="margin-bottom:8px">
+          <button class="check-btn" onclick="toggleSharedWishKjopt('${meta.householdId}','${w.id}', ${!!w.kjopt})">${w.kjopt ? "✓" : ""}</button>
+          <div class="item-main">
+            <div class="item-name">${escapeHtml(w.navn)}</div>
+            <div class="item-detail">${prisStr}${lenkeStr}${w.kjopt && w.kjoptAv ? ` · kjøpt av ${escapeHtml(w.kjoptAv)}` : ""}</div>
+          </div>
+        </div>`;
+    });
+    html += `<p style="font-size:12px;color:var(--ink3);padding:10px 4px">Kryss av når du har kjøpt noe, så ser andre at det er tatt – og ${escapeHtml(meta.person === (currentUser?.displayName||"") ? "personen" : meta.person)} blir ikke vist hva som er kjøpt.</p>`;
+    el.innerHTML = html;
+  }
+
+  window.toggleSharedWishKjopt = async (householdId, wishId, kjopt) => {
+    await updateDoc(doc(db, "lists", householdId, "wishes", wishId), {
+      kjopt: !kjopt,
+      kjoptAv: !kjopt ? (currentUser?.displayName?.split(" ")[0] || "noen") : ""
+    });
+  };
+
+  window.lukkSharedWishlist = () => {
+    if (sharedWishUnsub) sharedWishUnsub();
+    document.getElementById("shared-wish-overlay").style.display = "none";
+    // Fjern parameteren fra URL-en
+    window.history.replaceState({}, "", window.location.pathname);
+  };
+
+  // Genererer en lang, ikke-gjettbar delingskode
+  function genShareCode() {
+    const tegn = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let kode = "";
+    const arr = new Uint32Array(20);
+    crypto.getRandomValues(arr);
+    for (let i = 0; i < 20; i++) kode += tegn[arr[i] % tegn.length];
+    return "wsh_" + kode;
+  }
+
+  window.shareWishlist = async (person) => {
+    if (!HOUSEHOLD_ID || !currentUser) return;
+    try {
+      // Gjenbruk eksisterende delingskode for denne personen hvis den finnes
+      const eksisterende = (window._sharedWishCodes || {})[person];
+      let kode = eksisterende;
+      if (!kode) {
+        kode = genShareCode();
+        await setDoc(doc(db, "sharedWishlists", kode), {
+          householdId: HOUSEHOLD_ID,
+          person: person,
+          ownerUid: currentUser.uid,
+          ownerName: currentUser.displayName || "",
+          createdAt: Date.now()
+        });
+        window._sharedWishCodes = { ...(window._sharedWishCodes || {}), [person]: kode };
+      }
+      const lenke = `${window.location.origin}${window.location.pathname}?onskeliste=${kode}`;
+      // Vis lenke med kopier-mulighet
+      const boks = document.getElementById("onsker-content");
+      const banner = document.createElement("div");
+      banner.style.cssText = "background:var(--accent-light);border:1px solid var(--accent);border-radius:12px;padding:14px;margin-bottom:12px;font-size:13px";
+      banner.innerHTML = `
+        <div style="font-weight:600;margin-bottom:6px">Delingslenke for ${escapeHtml(person)} sin ønskeliste</div>
+        <div style="color:var(--ink2);margin-bottom:8px">Send denne til familie og venner. De logger inn med Google og ser ${escapeHtml(person)} sine ønsker – og kan krysse av det de kjøper. De ser ingenting annet i appen din.</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <code style="flex:1;background:var(--card);padding:8px;border-radius:8px;font-size:11px;word-break:break-all">${escapeHtml(lenke)}</code>
+          <button id="copy-share-link" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;white-space:nowrap">Kopier</button>
+        </div>`;
+      boks.prepend(banner);
+      document.getElementById("copy-share-link").addEventListener("click", async (e) => {
+        try { await navigator.clipboard.writeText(lenke); e.target.textContent = "Kopiert!"; }
+        catch { e.target.textContent = lenke; }
+      });
+    } catch (e) {
+      console.error("Kunne ikke lage delingslenke:", e);
+      alert("Klarte ikke å lage delingslenke. Sjekk at sikkerhetsreglene er oppdatert (se neste steg).");
+    }
   };
 
   window.deleteWishPerson = async (person) => {
@@ -6039,5 +6171,16 @@ window.addEventListener('offline', () => {
   window.closeDelingModal = (id) => { const m=document.getElementById(id); if(m) m.classList.remove("open"); };
 
 </script>
+
+<!-- DELT ØNSKELISTE: MOTTAKER-VISNING -->
+<div id="shared-wish-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:10000;flex-direction:column;padding:1.5rem;overflow-y:auto">
+  <div style="max-width:600px;margin:0 auto;width:100%">
+    <button onclick="lukkSharedWishlist()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:var(--ink2);margin-bottom:1rem">‹ Lukk</button>
+    <div style="font-family:'DM Serif Display',serif;font-size:1.5rem" id="shared-wish-title">🎁 Ønskeliste</div>
+    <div style="font-size:13px;color:var(--ink3);margin-bottom:1.5rem" id="shared-wish-sub"></div>
+    <div id="shared-wish-list"><div class="board-empty">Laster...</div></div>
+  </div>
+</div>
+
 </body>
 </html>
