@@ -662,6 +662,8 @@
         <button class="board-important-toggle" id="board-important-toggle" type="button" aria-pressed="false" style="margin-top:8px">☆ Marker som viktig</button>
         <button class="board-add-btn" id="board-add-btn" type="button">+ Legg til på tavlen</button>
         <button class="board-add-btn" id="push-enable-btn" type="button" style="background:var(--accent2);margin-top:8px">🔔 Aktiver varsler</button>
+        <button class="board-add-btn" id="viking-import-btn" type="button" style="background:#13284b;margin-top:8px">⚽ Importer kampkalender (.ics)</button>
+        <input type="file" id="viking-ics-input" accept=".ics,text/calendar" style="display:none" />
       </div>
       <div id="board-content">
         <div class="board-empty">Ingen oppgaver ennå</div>
@@ -5276,12 +5278,14 @@ await addDoc(historyRef, {
   function taskTypeIcon(type) {
     if (type === "event") return "📅";
     if (type === "reminder") return "⏰";
+    if (type === "kamp") return "⚽";
     return "☐";
   }
 
   function taskTypeLabel(type) {
     if (type === "event") return "Aktivitet";
     if (type === "reminder") return "Påminnelse";
+    if (type === "kamp") return "Viking";
     return "Oppgave";
   }
 
@@ -5294,11 +5298,14 @@ await addDoc(historyRef, {
   function renderTaskCard(task) {
     const recText = recurrenceLabel(task.recurrence);
     const reminderText = task.reminder?.enabled ? `Varsel ${task.reminder.minutesBefore} min før` : "";
+    const erKamp = task.type === "kamp";
+    const kampStil = erKamp ? `style="border-left:4px solid #13284b"` : "";
+    const kampPill = erKamp ? `<span class="board-pill" style="background:#13284b;color:#fff">⚽ VIKING</span>` : `<span class="board-pill">${escapeHtml(taskTypeLabel(task.type))}</span>`;
     return `<div class="swipe-wrapper" id="swipe-task-${task.id}">
       <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
       <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
       <div class="swipe-inner">
-        <div class="board-card ${task.completed ? "done" : ""} ${task.important ? "important" : ""}">
+        <div class="board-card ${task.completed ? "done" : ""} ${task.important ? "important" : ""}" ${kampStil}>
           <button class="board-check" onclick="toggleBoardTask('${task.id}', ${!!task.completed})">${task.completed ? "✓" : ""}</button>
           <div class="board-main">
             <div class="board-title">${taskTypeIcon(task.type)} ${escapeHtml(task.title)}</div>
@@ -5308,7 +5315,7 @@ await addDoc(historyRef, {
               ${task.relatedPerson ? ` · Gjelder: ${escapeHtml(task.relatedPerson)}` : ""}
             </div>
             <div>
-              <span class="board-pill">${escapeHtml(taskTypeLabel(task.type))}</span>
+              ${kampPill}
               ${recText ? `<span class="board-pill">🔁 ${escapeHtml(recText)}</span>` : ""}
               ${reminderText ? `<span class="board-pill">🔔 ${escapeHtml(reminderText)}</span>` : ""}
             </div>
@@ -5519,6 +5526,108 @@ await addDoc(historyRef, {
 
     resetBoardForm();
   });
+
+  // ===== VIKING KAMPKALENDER-IMPORT (.ics) =====
+  document.getElementById("viking-import-btn")?.addEventListener("click", () => {
+    document.getElementById("viking-ics-input").click();
+  });
+
+  document.getElementById("viking-ics-input")?.addEventListener("change", async (e) => {
+    const fil = e.target.files?.[0];
+    if (!fil) return;
+    try {
+      const tekst = await fil.text();
+      const kamper = parseICS(tekst);
+      if (kamper.length === 0) { alert("Fant ingen kamper i filen. Er det en gyldig .ics-kalenderfil?"); e.target.value = ""; return; }
+      await importerKamper(kamper);
+    } catch (err) {
+      console.error("Import feilet:", err);
+      alert("Klarte ikke å lese kalenderfilen.");
+    }
+    e.target.value = ""; // nullstill så samme fil kan velges igjen
+  });
+
+  // Enkel iCalendar-parser: henter UID, SUMMARY, DTSTART per VEVENT
+  function parseICS(tekst) {
+    // Brett ut foldede linjer (linjer som starter med mellomrom/tab hører til forrige)
+    const linjer = tekst.replace(/\r\n[ \t]/g, "").split(/\r?\n/);
+    const hendelser = [];
+    let cur = null;
+    for (const linje of linjer) {
+      if (linje === "BEGIN:VEVENT") { cur = {}; continue; }
+      if (linje === "END:VEVENT") { if (cur && cur.uid && cur.start) hendelser.push(cur); cur = null; continue; }
+      if (!cur) continue;
+      const kolon = linje.indexOf(":");
+      if (kolon === -1) continue;
+      const venstre = linje.slice(0, kolon);
+      const verdi = linje.slice(kolon + 1);
+      const felt = venstre.split(";")[0].toUpperCase();
+      if (felt === "UID") cur.uid = verdi.trim();
+      else if (felt === "SUMMARY") cur.summary = verdi.replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\n/gi, " ").trim();
+      else if (felt === "DTSTART") cur.start = parseICSDate(verdi.trim());
+    }
+    return hendelser;
+  }
+
+  // Tolker iCal-dato: enten 20261212 (heldag) eller 20261212T190000 / med Z
+  function parseICSDate(raw) {
+    const m = raw.match(/(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/);
+    if (!m) return null;
+    const [, y, mo, d, hh, mi, , z] = m;
+    if (hh == null) {
+      return { dato: `${y}-${mo}-${d}`, tid: "" };
+    }
+    if (z) {
+      // UTC – konverter til lokal tid
+      const dt = new Date(Date.UTC(+y, +mo - 1, +d, +hh, +mi, 0));
+      const p = (n) => String(n).padStart(2, "0");
+      return { dato: `${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())}`, tid: `${p(dt.getHours())}:${p(dt.getMinutes())}` };
+    }
+    return { dato: `${y}-${mo}-${d}`, tid: `${hh}:${mi}` };
+  }
+
+  async function importerKamper(kamper) {
+    // Hent eksisterende importerte kamper for å sjekke UID
+    const eksisterende = {};
+    familyBoardItems.forEach(t => { if (t.vikingUid) eksisterende[t.vikingUid] = t; });
+
+    let nye = 0, oppdatert = 0, uendret = 0;
+    for (const k of kamper) {
+      const tittel = k.summary || "Viking-kamp";
+      const finnes = eksisterende[k.uid];
+      if (!finnes) {
+        // Ny kamp
+        await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
+          title: tittel,
+          type: "kamp",
+          vikingUid: k.uid,
+          dueDate: k.start.dato,
+          dueTime: k.start.tid || "",
+          assignedTo: "",
+          completed: false,
+          createdBy: currentUser?.uid || "",
+          createdByName: currentUser?.displayName || "",
+          createdAt: Date.now()
+        });
+        nye++;
+      } else if (finnes.dueDate !== k.start.dato || (finnes.dueTime || "") !== (k.start.tid || "")) {
+        // Omberammet – oppdater dato/tid
+        await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", finnes.id), {
+          dueDate: k.start.dato,
+          dueTime: k.start.tid || "",
+          title: tittel,
+          updatedAt: Date.now()
+        });
+        oppdatert++;
+      } else {
+        uendret++;
+      }
+    }
+    let melding = `${nye} ${nye === 1 ? "ny kamp" : "nye kamper"} lagt til.`;
+    if (oppdatert > 0) melding += ` ${oppdatert} omberammet og oppdatert.`;
+    if (uendret > 0) melding += ` ${uendret} uendret.`;
+    alert(melding);
+  }
 
   function nextRecurrenceDate(fromDateStr, frequency) {
     // Tar utgangspunkt i oppgavens dato (eller i dag hvis den mangler) og legger til ett intervall
