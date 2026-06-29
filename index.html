@@ -4779,6 +4779,28 @@ await addDoc(historyRef, {
     });
   }
 
+  // Normaliser ingrediens: håndter både gamle strenger og nye objekter
+  function normIngrediens(ing) {
+    if (typeof ing === "string") return { navn: ing, antall: 1, enhet: "stk", pris: estimatePrice(ing) || null };
+    return {
+      navn: ing.navn || "",
+      antall: ing.antall || 1,
+      enhet: ing.enhet || "stk",
+      pris: (ing.pris != null) ? ing.pris : (estimatePrice(ing.navn || "") || null)
+    };
+  }
+
+  function rettTotalpris(ingredienser) {
+    let sum = 0, harPris = false;
+    ingredienser.forEach(raw => {
+      const ing = normIngrediens(raw);
+      if (ing.pris != null) { sum += ing.pris * (ing.antall || 1); harPris = true; }
+    });
+    return harPris ? sum : null;
+  }
+
+  let middagOpenDag = null; // hvilken dag har inntastingsfeltet åpent
+
   function renderMiddag() {
     const el = document.getElementById("middag-uke");
     if (!el) return;
@@ -4786,23 +4808,118 @@ await addDoc(historyRef, {
     MIDDAG_DAGER.forEach(dag => {
       const d = middagsplan[dag] || {};
       const rett = d.rett || "";
-      const ingredienser = Array.isArray(d.ingredienser) ? d.ingredienser : [];
+      const ingredienser = (Array.isArray(d.ingredienser) ? d.ingredienser : []).map(normIngrediens);
       const dagNavn = dag.charAt(0).toUpperCase() + dag.slice(1);
+      const total = rettTotalpris(ingredienser);
+
+      let ingListe = "";
+      if (ingredienser.length) {
+        ingListe = `<div style="margin-bottom:8px">` + ingredienser.map((ing, i) => `
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;border-bottom:1px solid var(--border)">
+            <span style="flex:1">${escapeHtml(ing.navn)}</span>
+            <span style="color:var(--ink3);font-size:12px">${ing.antall} ${escapeHtml(ing.enhet)}</span>
+            <span style="color:var(--ink2);min-width:54px;text-align:right">${ing.pris != null ? (ing.pris * ing.antall).toFixed(0) + " kr" : "–"}</span>
+            <button onclick="fjernMiddagIngrediens('${dag}', ${i})" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:15px;padding:0 4px">×</button>
+          </div>`).join("") + `</div>`;
+      }
+
+      const erApen = middagOpenDag === dag;
+      const inntasting = erApen ? `
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;position:relative">
+          <input class="board-input board-full" id="middag-ing-navn-${dag}" type="text" placeholder="Ingrediens (skriv for forslag)" autocomplete="off" style="margin-bottom:6px" />
+          <div class="autocomplete-list" id="middag-ac-${dag}"></div>
+          <div style="display:flex;gap:6px">
+            <input class="board-input" id="middag-ing-antall-${dag}" type="number" min="0.1" step="0.1" value="1" placeholder="Antall" style="width:70px" />
+            <input class="board-input" id="middag-ing-enhet-${dag}" type="text" value="stk" placeholder="Enhet" style="width:70px" />
+            <input class="board-input" id="middag-ing-pris-${dag}" type="number" min="0" placeholder="Pris (auto)" style="flex:1" />
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button onclick="leggTilMiddagIngrediens('${dag}')" style="flex:1;background:var(--accent);border:none;border-radius:8px;padding:8px;font-size:12px;cursor:pointer;color:#fff">Legg til</button>
+            <button onclick="lukkMiddagInntasting()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;color:var(--ink3)">Ferdig</button>
+          </div>
+        </div>` : "";
+
       html += `
         <div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">
-          <div style="font-weight:600;font-size:13px;color:var(--ink3);margin-bottom:6px">${dagNavn}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-weight:600;font-size:13px;color:var(--ink3)">${dagNavn}</div>
+            ${total != null ? `<div style="font-size:13px;color:var(--accent);font-weight:600">${total.toFixed(0)} kr</div>` : ""}
+          </div>
           <input class="board-input board-full" value="${escapeHtml(rett)}" placeholder="Hva blir middagen?"
                  onchange="setMiddagRett('${dag}', this.value)" style="margin-bottom:8px" />
-          ${ingredienser.length ? `<div style="font-size:12px;color:var(--ink2);margin-bottom:8px">Ingredienser: ${ingredienser.map(escapeHtml).join(", ")}</div>` : ""}
+          ${ingListe}
+          ${inntasting}
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button onclick="redigerMiddagIngredienser('${dag}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink2)">${ingredienser.length ? "Endre varer" : "+ Varer"}</button>
+            ${!erApen ? `<button onclick="apneMiddagInntasting('${dag}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink2)">+ Ingrediens</button>` : ""}
             ${ingredienser.length ? `<button onclick="middagTilHandleliste('${dag}')" style="background:var(--accent);border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:#fff">🛒 Til handlelista</button>` : ""}
             ${rett || ingredienser.length ? `<button onclick="tomMiddagDag('${dag}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink3)">Tøm</button>` : ""}
           </div>
         </div>`;
     });
     el.innerHTML = html;
+
+    // Koble autocomplete til det åpne feltet
+    if (middagOpenDag) koblMiddagAutocomplete(middagOpenDag);
   }
+
+  function koblMiddagAutocomplete(dag) {
+    const inp = document.getElementById(`middag-ing-navn-${dag}`);
+    const liste = document.getElementById(`middag-ac-${dag}`);
+    const prisInp = document.getElementById(`middag-ing-pris-${dag}`);
+    if (!inp || !liste) return;
+    inp.focus();
+    inp.addEventListener("input", () => {
+      const kandidater = getAcCandidates(inp.value);
+      if (!kandidater.length) { liste.classList.remove("open"); return; }
+      liste.innerHTML = kandidater.slice(0, 6).map(navn =>
+        `<div class="autocomplete-item" onmousedown="event.preventDefault()" data-navn="${escapeHtml(navn)}">${escapeHtml(navn)}</div>`
+      ).join("");
+      liste.classList.add("open");
+      liste.querySelectorAll(".autocomplete-item").forEach(el => {
+        el.addEventListener("click", () => {
+          inp.value = el.dataset.navn;
+          liste.classList.remove("open");
+          const p = estimatePrice(el.dataset.navn);
+          if (p != null && prisInp && !prisInp.value) prisInp.value = p;
+        });
+      });
+    });
+    // Autofyll pris når man forlater navnefeltet, hvis pris ikke er satt
+    inp.addEventListener("blur", () => {
+      setTimeout(() => liste.classList.remove("open"), 150);
+      if (prisInp && !prisInp.value) {
+        const p = estimatePrice(inp.value);
+        if (p != null) prisInp.value = p;
+      }
+    });
+  }
+
+  window.apneMiddagInntasting = (dag) => { middagOpenDag = dag; renderMiddag(); };
+  window.lukkMiddagInntasting = () => { middagOpenDag = null; renderMiddag(); };
+
+  window.leggTilMiddagIngrediens = async (dag) => {
+    const navn = document.getElementById(`middag-ing-navn-${dag}`)?.value.trim();
+    if (!navn) { alert("Skriv en ingrediens."); return; }
+    const antall = parseFloat(document.getElementById(`middag-ing-antall-${dag}`)?.value) || 1;
+    const enhet = document.getElementById(`middag-ing-enhet-${dag}`)?.value.trim() || "stk";
+    const prisRaw = document.getElementById(`middag-ing-pris-${dag}`)?.value;
+    const pris = prisRaw !== "" ? Number(prisRaw) : (estimatePrice(navn) || null);
+
+    middagsplan[dag] = middagsplan[dag] || {};
+    const liste = Array.isArray(middagsplan[dag].ingredienser) ? middagsplan[dag].ingredienser.map(normIngrediens) : [];
+    liste.push({ navn, antall, enhet, pris });
+    middagsplan[dag].ingredienser = liste;
+    await lagreMiddagsplan();
+    // Hold feltet åpent for rask innlegging av flere
+    renderMiddag();
+  };
+
+  window.fjernMiddagIngrediens = async (dag, index) => {
+    const liste = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
+    liste.splice(index, 1);
+    middagsplan[dag].ingredienser = liste;
+    await lagreMiddagsplan();
+  };
 
   async function lagreMiddagsplan() {
     if (!LIST_ID) return;
@@ -4815,21 +4932,11 @@ await addDoc(historyRef, {
     await lagreMiddagsplan();
   };
 
-  window.redigerMiddagIngredienser = async (dag) => {
-    const naa = (middagsplan[dag]?.ingredienser || []).join(", ");
-    const svar = prompt(`Ingredienser for ${middagsplan[dag]?.rett || dag} (skill med komma):`, naa);
-    if (svar === null) return;
-    const liste = svar.split(",").map(s => s.trim()).filter(Boolean);
-    middagsplan[dag] = middagsplan[dag] || {};
-    middagsplan[dag].ingredienser = liste;
-    await lagreMiddagsplan();
-  };
-
   window.middagTilHandleliste = async (dag) => {
-    const ingredienser = middagsplan[dag]?.ingredienser || [];
+    const ingredienser = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
     if (ingredienser.length === 0) return;
     for (const ing of ingredienser) {
-      await addItem(ing);
+      await addItem(ing.navn, null, ing.enhet);
     }
     const rett = middagsplan[dag]?.rett || "middagen";
     alert(`${ingredienser.length} ingredienser fra "${rett}" lagt i handlelista.`);
@@ -4838,6 +4945,7 @@ await addDoc(historyRef, {
   window.tomMiddagDag = async (dag) => {
     if (!confirm(`Tømme ${dag}?`)) return;
     delete middagsplan[dag];
+    if (middagOpenDag === dag) middagOpenDag = null;
     await lagreMiddagsplan();
   };
 
