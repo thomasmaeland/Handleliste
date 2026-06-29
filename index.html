@@ -5077,6 +5077,7 @@ await addDoc(historyRef, {
             </div>
           </div>
           <button class="board-star ${task.important ? "on" : ""}" onclick="toggleTaskImportant('${task.id}', event)" title="${task.important ? "Fjern viktig" : "Merk som viktig"}">${task.important ? "★" : "☆"}</button>
+          ${task.dueDate ? `<button class="board-edit" onclick="taskToCalendar('${task.id}', event)" title="Legg i kalender">📅</button>` : ""}
           <button class="board-edit" onclick="startEditTask('${task.id}')" title="Rediger">✎</button>
         </div>
       </div>
@@ -5346,6 +5347,73 @@ await addDoc(historyRef, {
       important: !task.important,
       updatedAt: Date.now()
     });
+  };
+
+  window.taskToCalendar = (id, evt) => {
+    if (evt) evt.stopPropagation();
+    const task = familyBoardItems.find(t => t.id === id);
+    if (!task || !task.dueDate) return;
+
+    // Bygg start- og slutt-tidspunkt
+    const harTid = !!task.dueTime;
+    const startISO = `${task.dueDate}T${task.dueTime || "09:00"}`;
+    const start = new Date(startISO);
+    if (isNaN(start.getTime())) { alert("Ugyldig dato på oppgaven."); return; }
+    const slutt = new Date(start.getTime() + 60 * 60 * 1000); // 1 time varighet
+
+    // Formater til iCalendar (lokaltid uten Z, så kalenderen tolker som enhetens tid)
+    const fmt = (d) => {
+      const p = (n) => String(n).padStart(2, "0");
+      const dato = `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;
+      if (!harTid) return dato; // heldagsoppgave
+      return `${dato}T${p(d.getHours())}${p(d.getMinutes())}00`;
+    };
+
+    const uid = `${id}-${Date.now()}@handleliste`;
+    const stempel = fmt(new Date());
+    let beskrivelse = [];
+    if (task.assignedTo) beskrivelse.push(`Ansvarlig: ${task.assignedTo}`);
+    if (task.relatedPerson) beskrivelse.push(`Gjelder: ${task.relatedPerson}`);
+    const desc = beskrivelse.join("\\n");
+
+    // Bygg VEVENT
+    let linjer = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Handleliste//Tavle//NO",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${stempel}`,
+    ];
+    if (harTid) {
+      linjer.push(`DTSTART:${fmt(start)}`);
+      linjer.push(`DTEND:${fmt(slutt)}`);
+    } else {
+      linjer.push(`DTSTART;VALUE=DATE:${fmt(start)}`);
+    }
+    linjer.push(`SUMMARY:${task.title.replace(/([,;\\])/g, "\\$1")}`);
+    if (desc) linjer.push(`DESCRIPTION:${desc}`);
+
+    // Varsel (VALARM) hvis oppgaven har det
+    if (task.reminder?.enabled && task.reminder.minutesBefore) {
+      linjer.push("BEGIN:VALARM");
+      linjer.push("ACTION:DISPLAY");
+      linjer.push(`DESCRIPTION:${task.title.replace(/([,;\\])/g, "\\$1")}`);
+      linjer.push(`TRIGGER:-PT${task.reminder.minutesBefore}M`);
+      linjer.push("END:VALARM");
+    }
+    linjer.push("END:VEVENT", "END:VCALENDAR");
+
+    const ics = linjer.join("\r\n");
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${task.title.replace(/[^a-zæøåA-ZÆØÅ0-9 ]/g, "").trim() || "oppgave"}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
 
