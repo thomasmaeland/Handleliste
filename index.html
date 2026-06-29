@@ -796,8 +796,23 @@
     <div id="middag-screen" style="display:none">
       <div class="board-form">
         <div class="board-form-title">🍽️ Middagsplan</div>
-        <p style="font-size:13px;color:var(--ink2);margin:-4px 0 12px">Planlegg ukens middager. Trykk «+ varer» på en rett for å skrive inn ingrediensene og sende dem rett til handlelista.</p>
+        <p style="font-size:13px;color:var(--ink2);margin:-4px 0 12px">Planlegg ukens middager. Legg til ingredienser på hver rett, og send det du mangler til handlelista – du velger selv hva du allerede har hjemme.</p>
         <div id="middag-uke"></div>
+      </div>
+    </div>
+
+    <!-- MIDDAG: SEND TIL HANDLELISTE (velg hva du mangler) -->
+    <div id="middag-send-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;align-items:center;justify-content:center;padding:1rem">
+      <div style="background:var(--bg);border-radius:16px;max-width:420px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+          <div style="font-family:'DM Serif Display',serif;font-size:1.2rem" id="middag-send-title">Hva mangler du?</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:2px">Fjern haken på det du allerede har hjemme.</div>
+        </div>
+        <div id="middag-send-liste" style="overflow-y:auto;flex:1"></div>
+        <div style="display:flex;gap:8px;padding:1rem 1.25rem;border-top:1px solid var(--border)">
+          <button onclick="lukkMiddagSend()" style="flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--ink2)">Avbryt</button>
+          <button onclick="bekreftMiddagTilHandleliste()" style="flex:2;background:var(--accent);border:none;border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:#fff">Legg valgte i handlelista</button>
+        </div>
       </div>
     </div>
 
@@ -4932,14 +4947,40 @@ await addDoc(historyRef, {
     await lagreMiddagsplan();
   };
 
-  window.middagTilHandleliste = async (dag) => {
+  window.middagTilHandleliste = (dag) => {
     const ingredienser = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
     if (ingredienser.length === 0) return;
-    for (const ing of ingredienser) {
+    const rett = middagsplan[dag]?.rett || "middagen";
+    const overlay = document.getElementById("middag-send-overlay");
+    document.getElementById("middag-send-title").textContent = `Hva mangler du til ${rett}?`;
+    const liste = document.getElementById("middag-send-liste");
+    liste.innerHTML = ingredienser.map((ing, i) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" class="middag-send-cb" data-i="${i}" checked style="width:18px;height:18px;flex-shrink:0" />
+        <span style="flex:1">${escapeHtml(ing.navn)}</span>
+        <span style="color:var(--ink3);font-size:12px">${ing.antall} ${escapeHtml(ing.enhet)}</span>
+      </label>`).join("");
+    overlay.dataset.dag = dag;
+    overlay.style.display = "flex";
+  };
+
+  window.bekreftMiddagTilHandleliste = async () => {
+    const overlay = document.getElementById("middag-send-overlay");
+    const dag = overlay.dataset.dag;
+    const ingredienser = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
+    const valgte = [...document.querySelectorAll(".middag-send-cb")]
+      .filter(cb => cb.checked)
+      .map(cb => ingredienser[Number(cb.dataset.i)]);
+    if (valgte.length === 0) { alert("Ingen varer valgt."); return; }
+    for (const ing of valgte) {
       await addItem(ing.navn, null, ing.enhet);
     }
-    const rett = middagsplan[dag]?.rett || "middagen";
-    alert(`${ingredienser.length} ingredienser fra "${rett}" lagt i handlelista.`);
+    overlay.style.display = "none";
+    alert(`${valgte.length} ${valgte.length === 1 ? "vare" : "varer"} lagt i handlelista.`);
+  };
+
+  window.lukkMiddagSend = () => {
+    document.getElementById("middag-send-overlay").style.display = "none";
   };
 
   window.tomMiddagDag = async (dag) => {
