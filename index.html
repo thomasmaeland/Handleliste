@@ -487,6 +487,7 @@
       <button class="nav-tab" id="tab-pakke" onclick="showTab('pakke')">🧳 Pakke</button>
       <button class="nav-tab" id="tab-deling" onclick="showTab('deling')">💰 Deling</button>
       <button class="nav-tab" id="tab-onsker" onclick="showTab('onsker')">🎁 Ønsker</button>
+      <button class="nav-tab" id="tab-middag" onclick="showTab('middag')">🍽️ Middag</button>
     </div>
     <div class="add-form" id="add-form-area">
       <input class="add-input" id="new-item-input" type="text" placeholder="Legg til vare..." autocomplete="off" />
@@ -789,6 +790,14 @@
       </div>
       <div id="onsker-content">
         <div class="board-empty">Velg en person for å se ønskelista</div>
+      </div>
+    </div>
+
+    <div id="middag-screen" style="display:none">
+      <div class="board-form">
+        <div class="board-form-title">🍽️ Middagsplan</div>
+        <p style="font-size:13px;color:var(--ink2);margin:-4px 0 12px">Planlegg ukens middager. Trykk «+ varer» på en rett for å skrive inn ingrediensene og sende dem rett til handlelista.</p>
+        <div id="middag-uke"></div>
       </div>
     </div>
 
@@ -2135,7 +2144,7 @@ let LIST_ID = null;
       if (onskeKode) { openSharedWishlist(onskeKode); }
       try {
         const savedTab = localStorage.getItem("hl-active-tab");
-        if (savedTab && ["list","history","board","pakke","deling","onsker"].includes(savedTab)) showTab(savedTab);
+        if (savedTab && ["list","history","board","pakke","deling","onsker","middag"].includes(savedTab)) showTab(savedTab);
       } catch(e) {}
     } else {
       currentUser = null;
@@ -2159,14 +2168,17 @@ let LIST_ID = null;
     document.getElementById("tab-pakke").classList.toggle("active", tab === "pakke");
     document.getElementById("tab-deling").classList.toggle("active", tab === "deling");
     document.getElementById("tab-onsker").classList.toggle("active", tab === "onsker");
+    document.getElementById("tab-middag").classList.toggle("active", tab === "middag");
     document.getElementById("list-screen").style.display = tab === "list" ? "block" : "none";
     document.getElementById("history-screen").style.display = tab === "history" ? "block" : "none";
     document.getElementById("board-screen").style.display = tab === "board" ? "block" : "none";
     document.getElementById("pakke-screen").style.display = tab === "pakke" ? "block" : "none";
     document.getElementById("deling-screen").style.display = tab === "deling" ? "block" : "none";
     document.getElementById("onsker-screen").style.display = tab === "onsker" ? "block" : "none";
+    document.getElementById("middag-screen").style.display = tab === "middag" ? "block" : "none";
     document.getElementById("add-form-area").style.display = tab === "list" ? "flex" : "none";
     if (tab === "onsker") startListeningWishes();
+    if (tab === "middag") startListeningMiddag();
     try { localStorage.setItem("hl-active-tab", tab); } catch(e) {}
   };
 
@@ -4751,6 +4763,82 @@ await addDoc(historyRef, {
     const w = wishes.find(x => x.id === id);
     if (w && !confirm(`Fjerne "${w.navn}"?`)) return;
     await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "wishes", id));
+  };
+
+  // ===== MIDDAGSPLAN =====
+  const MIDDAG_DAGER = ["mandag","tirsdag","onsdag","torsdag","fredag","lørdag","søndag"];
+  let middagsplan = {};
+  let unsubscribeMiddag = null;
+
+  function startListeningMiddag() {
+    if (!LIST_ID) return;
+    if (unsubscribeMiddag) unsubscribeMiddag();
+    unsubscribeMiddag = onSnapshot(doc(db, "lists", LIST_ID, "meta", "middagsplan"), snap => {
+      middagsplan = snap.exists() ? (snap.data().dager || {}) : {};
+      renderMiddag();
+    });
+  }
+
+  function renderMiddag() {
+    const el = document.getElementById("middag-uke");
+    if (!el) return;
+    let html = "";
+    MIDDAG_DAGER.forEach(dag => {
+      const d = middagsplan[dag] || {};
+      const rett = d.rett || "";
+      const ingredienser = Array.isArray(d.ingredienser) ? d.ingredienser : [];
+      const dagNavn = dag.charAt(0).toUpperCase() + dag.slice(1);
+      html += `
+        <div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">
+          <div style="font-weight:600;font-size:13px;color:var(--ink3);margin-bottom:6px">${dagNavn}</div>
+          <input class="board-input board-full" value="${escapeHtml(rett)}" placeholder="Hva blir middagen?"
+                 onchange="setMiddagRett('${dag}', this.value)" style="margin-bottom:8px" />
+          ${ingredienser.length ? `<div style="font-size:12px;color:var(--ink2);margin-bottom:8px">Ingredienser: ${ingredienser.map(escapeHtml).join(", ")}</div>` : ""}
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button onclick="redigerMiddagIngredienser('${dag}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink2)">${ingredienser.length ? "Endre varer" : "+ Varer"}</button>
+            ${ingredienser.length ? `<button onclick="middagTilHandleliste('${dag}')" style="background:var(--accent);border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:#fff">🛒 Til handlelista</button>` : ""}
+            ${rett || ingredienser.length ? `<button onclick="tomMiddagDag('${dag}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink3)">Tøm</button>` : ""}
+          </div>
+        </div>`;
+    });
+    el.innerHTML = html;
+  }
+
+  async function lagreMiddagsplan() {
+    if (!LIST_ID) return;
+    await setDoc(doc(db, "lists", LIST_ID, "meta", "middagsplan"), { dager: middagsplan, updatedAt: Date.now() });
+  }
+
+  window.setMiddagRett = async (dag, verdi) => {
+    middagsplan[dag] = middagsplan[dag] || {};
+    middagsplan[dag].rett = verdi.trim();
+    await lagreMiddagsplan();
+  };
+
+  window.redigerMiddagIngredienser = async (dag) => {
+    const naa = (middagsplan[dag]?.ingredienser || []).join(", ");
+    const svar = prompt(`Ingredienser for ${middagsplan[dag]?.rett || dag} (skill med komma):`, naa);
+    if (svar === null) return;
+    const liste = svar.split(",").map(s => s.trim()).filter(Boolean);
+    middagsplan[dag] = middagsplan[dag] || {};
+    middagsplan[dag].ingredienser = liste;
+    await lagreMiddagsplan();
+  };
+
+  window.middagTilHandleliste = async (dag) => {
+    const ingredienser = middagsplan[dag]?.ingredienser || [];
+    if (ingredienser.length === 0) return;
+    for (const ing of ingredienser) {
+      await addItem(ing);
+    }
+    const rett = middagsplan[dag]?.rett || "middagen";
+    alert(`${ingredienser.length} ingredienser fra "${rett}" lagt i handlelista.`);
+  };
+
+  window.tomMiddagDag = async (dag) => {
+    if (!confirm(`Tømme ${dag}?`)) return;
+    delete middagsplan[dag];
+    await lagreMiddagsplan();
   };
 
   function beregnAlder(fodselsdato) {
