@@ -4076,9 +4076,10 @@ startListeningWithPrice();
     if (!q || q.length < 1) return [];
     const ql = q.toLowerCase();
  const fromHistory = Object.keys(purchaseHistory);
+ const fromList = (typeof currentItems !== "undefined" ? currentItems : []).map(i => i.name).filter(Boolean);
 const seen = new Set();
 const all = [];
-[...fromHistory, ...AC_SOURCES].forEach(n => {
+[...fromList, ...fromHistory, ...AC_SOURCES].forEach(n => {
   const norm = n.toLowerCase().trim();
   if (!seen.has(norm)) { seen.add(norm); all.push(n); }
 });
