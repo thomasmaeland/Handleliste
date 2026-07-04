@@ -5004,20 +5004,26 @@ await addDoc(historyRef, {
     const kandidater = getAcCandidates(inp.value);
     if (!kandidater.length) { liste.classList.remove("open"); liste.innerHTML = ""; return; }
     liste.innerHTML = kandidater.slice(0, 6).map(navn =>
-      `<div class="autocomplete-item" onmousedown="middagVelgEditForslag('${dag}', ${i}, this.dataset.navn)" data-navn="${escapeHtml(navn)}">${escapeHtml(navn)}</div>`
+      `<div class="autocomplete-item" onmousedown="event.preventDefault(); middagVelgEditForslag('${dag}', ${i}, ${JSON.stringify(navn).replace(/"/g, '&quot;')})">${escapeHtml(navn)}</div>`
     ).join("");
     liste.classList.add("open");
   };
 
-  // Valg fra forslagslista (onmousedown så den rekker før blur)
+  let middagEditNettoppValgt = false;
+
+  // Valg fra forslagslista (onmousedown + preventDefault så blur ikke overskriver)
   window.middagVelgEditForslag = async (dag, i, navn) => {
+    middagEditNettoppValgt = true;
     const liste = document.getElementById(`middag-edit-ac-${dag}-${i}`);
     if (liste) { liste.classList.remove("open"); liste.innerHTML = ""; }
     await endreMiddagIngrediens(dag, i, "navn", navn);
+    // Nullstill flagget etter at blur har rukket å kjøre
+    setTimeout(() => { middagEditNettoppValgt = false; }, 300);
   };
 
   // Når feltet forlates uten å velge forslag: lagre fritekst
   window.middagEditBlur = async (dag, i, verdi) => {
+    if (middagEditNettoppValgt) return; // et forslag ble nettopp valgt – ikke overskriv
     const liste = document.getElementById(`middag-edit-ac-${dag}-${i}`);
     if (liste) { liste.classList.remove("open"); liste.innerHTML = ""; }
     const naa = (middagsplan[dag]?.ingredienser || []).map(normIngrediens)[i];
