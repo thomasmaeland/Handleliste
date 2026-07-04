@@ -1,3 +1,12 @@
+// ============================================================
+//  Handleliste – Cloudflare Worker (API-proxy mot Anthropic)
+//  Endepunkter:
+//    POST /suggest-packing  – AI-pakkeforslag for en tur
+//    POST /scan             – kvitteringsscanning / kjøleskap-analyse
+//    POST /parse-menu       – tolker ukesmeny (tekst eller bilde) til struktur
+//  Alt annet serveres som statiske filer (ASSETS).
+// ============================================================
+
 // Reparerer JSON som ble avkuttet (f.eks. ved max_tokens).
 // Kutter tilbake til siste komplette objekt og lukker åpne arrays/objekter i riktig rekkefølge.
 function repairTruncatedJson(s) {
@@ -36,18 +45,40 @@ function repairTruncatedJson(s) {
   return null;
 }
 
+// Liten hjelper: standard JSON-respons
+function jsonRes(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
+// Kaller Anthropic Messages API og returnerer rå tekst + status
+async function callAnthropic(apiKey, payload) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(payload)
+  });
+  const rawText = await response.text();
+  return { ok: response.ok, status: response.status, rawText };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const apiKey = env.ANTHROPIC_API_KEY;
 
+    // -------------------------------------------------------
+    //  /suggest-packing – AI-pakkeforslag
+    // -------------------------------------------------------
     if (url.pathname === "/suggest-packing" && request.method === "POST") {
       try {
-        const apiKey = env.ANTHROPIC_API_KEY;
-        if (!apiKey) {
-          return new Response(JSON.stringify({ error: "API key not configured" }), {
-            status: 500, headers: { "Content-Type": "application/json" }
-          });
-        }
+        if (!apiKey) return jsonRes({ error: "API key not configured" }, 500);
 
         const { beskrivelse, personer } = await request.json();
         const personListe = Array.isArray(personer) && personer.length
@@ -81,74 +112,50 @@ Regler:
 - Vær praktisk og dekkende, men ikke overdriv med urealistiske mengder
 - Norsk stavemåte med æøå`;
 
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 8000,
-            system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst.",
-            messages: [{ role: "user", content: [{ type: "text", text: prompt }] }]
-          })
+        const { ok, status, rawText } = await callAnthropic(apiKey, {
+          model: "claude-sonnet-4-6",
+          max_tokens: 8000,
+          system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst.",
+          messages: [{ role: "user", content: [{ type: "text", text: prompt }] }]
         });
 
-        const rawText = await response.text();
-        if (!response.ok) {
-          return new Response(JSON.stringify({ error: "Anthropic API feil", status: response.status, detaljer: rawText }), {
-            status: 500, headers: { "Content-Type": "application/json" }
-          });
-        }
+        if (!ok) return jsonRes({ error: "Anthropic API feil", status, detaljer: rawText }, 500);
 
         const data = JSON.parse(rawText);
         const text = data.content?.[0]?.text || "";
-        const stopReason = data.stop_reason || "";
         let clean = text.replace(/```json|```/g, "").trim();
         const firstBrace = clean.indexOf("{");
         if (firstBrace !== -1) clean = clean.substring(firstBrace);
 
         if (!clean.startsWith("{")) {
-          return new Response(JSON.stringify({ forslag: [], feil: "Kunne ikke lage forslag. Prøv en tydeligere beskrivelse." }), {
-            status: 200, headers: { "Content-Type": "application/json" }
-          });
+          return jsonRes({ forslag: [], feil: "Kunne ikke lage forslag. Prøv en tydeligere beskrivelse." });
         }
 
         let parsed;
         try {
-          // Prøv vanlig parsing først (kutt etter siste hele }-objekt)
           const lastBrace = clean.lastIndexOf("}");
           parsed = JSON.parse(clean.substring(0, lastBrace + 1));
         } catch (e1) {
-          // Svaret er sannsynligvis avkuttet (stop_reason: max_tokens). Reparer.
           parsed = repairTruncatedJson(clean);
         }
 
         if (!parsed || !parsed.forslag) {
-          return new Response(JSON.stringify({ forslag: [], feil: "Forslaget ble for langt og kunne ikke leses helt. Prøv færre personer om gangen." }), {
-            status: 200, headers: { "Content-Type": "application/json" }
-          });
+          return jsonRes({ forslag: [], feil: "Forslaget ble for langt og kunne ikke leses helt. Prøv færre personer om gangen." });
         }
 
-        return new Response(JSON.stringify(parsed), { headers: { "Content-Type": "application/json" } });
+        return jsonRes(parsed);
 
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500, headers: { "Content-Type": "application/json" }
-        });
+        return jsonRes({ error: err.message }, 500);
       }
     }
 
+    // -------------------------------------------------------
+    //  /scan – kvitteringsscanning / kjøleskap-analyse
+    // -------------------------------------------------------
     if (url.pathname === "/scan" && request.method === "POST") {
       try {
-        const apiKey = env.ANTHROPIC_API_KEY;
-        if (!apiKey) {
-          return new Response(JSON.stringify({ error: "API key not configured" }), {
-            status: 500, headers: { "Content-Type": "application/json" }
-          });
-        }
+        if (!apiKey) return jsonRes({ error: "API key not configured" }, 500);
 
         const { image, mediaType, type } = await request.json();
 
@@ -221,43 +228,23 @@ Regler:
           : `Se på dette kjøleskapet. List varer som er tomme eller nesten tomme. Svar KUN med JSON:
 {"varer":[{"navn":"Melk","grunn":"nesten tom"}]}`;
 
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 4096,
-            system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst. Hvis du ikke kan analysere bildet, svar med tomt resultat i JSON-format.",
-            messages: [{
-              role: "user",
-              content: [
-                { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
-                { type: "text", text: prompt }
-              ]
-            }]
-          })
+        const { ok, status, rawText } = await callAnthropic(apiKey, {
+          model: "claude-sonnet-4-6",
+          max_tokens: 4096,
+          system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst. Hvis du ikke kan analysere bildet, svar med tomt resultat i JSON-format.",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
+              { type: "text", text: prompt }
+            ]
+          }]
         });
 
-        const rawText = await response.text();
-
-        if (!response.ok) {
-          return new Response(JSON.stringify({
-            error: "Anthropic API feil",
-            status: response.status,
-            detaljer: rawText
-          }), {
-            status: 500, headers: { "Content-Type": "application/json" }
-          });
-        }
+        if (!ok) return jsonRes({ error: "Anthropic API feil", status, detaljer: rawText }, 500);
 
         const data = JSON.parse(rawText);
         const text = data.content?.[0]?.text || "";
-
-        // Fjern markdown-blokker og finn første/siste JSON-objekt
         let clean = text.replace(/```json|```/g, "").trim();
         const firstBrace = clean.indexOf("{");
         const lastBrace = clean.lastIndexOf("}");
@@ -269,23 +256,101 @@ Regler:
           const fallback = type === "receipt"
             ? { dato: null, butikk: null, total: null, varer: [], feil: "Kunne ikke lese kvitteringen. Prøv et klarere bilde." }
             : { varer: [], feil: "Kunne ikke analysere bildet. Prøv et klarere bilde." };
-          return new Response(JSON.stringify(fallback), {
-            status: 200, headers: { "Content-Type": "application/json" }
-          });
+          return jsonRes(fallback);
         }
 
         const parsed = JSON.parse(clean);
-        return new Response(JSON.stringify(parsed), {
-          headers: { "Content-Type": "application/json" }
-        });
+        return jsonRes(parsed);
 
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500, headers: { "Content-Type": "application/json" }
-        });
+        return jsonRes({ error: err.message }, 500);
       }
     }
 
+    // -------------------------------------------------------
+    //  /parse-menu – tolker ukesmeny (tekst eller bilde)
+    // -------------------------------------------------------
+    if (url.pathname === "/parse-menu" && request.method === "POST") {
+      try {
+        if (!apiKey) return jsonRes({ error: "API key not configured" }, 500);
+
+        const { tekst, bilde, mediaType } = await request.json();
+
+        const prompt = `Du tolker en norsk ukesmeny og gjør den om til strukturerte data.
+
+Svar KUN med gyldig JSON, ingen annen tekst:
+{
+  "dager": [
+    {
+      "dag": "mandag",
+      "rett": "Laks teriyaki-bowl",
+      "ingredienser": [
+        { "navn": "Laks", "antall": 1, "enhet": "pk" },
+        { "navn": "Fullkornsris", "antall": 1, "enhet": "pk" },
+        { "navn": "Avokado", "antall": 2, "enhet": "stk" }
+      ]
+    }
+  ]
+}
+
+Regler:
+- "dag" MÅ være et norsk ukedagsnavn med små bokstaver: mandag, tirsdag, onsdag, torsdag, fredag, lørdag eller søndag
+- Ta KUN med retter som har en tydelig ukedag. Ikke dikt opp dager som ikke står i menyen
+- "rett": kort, gjenkjennelig navn på retten (ikke hele beskrivelsen)
+- "ingredienser": hovedingrediensene med kort norsk varenavn og korrekt æøå
+- "antall" og "enhet": sett fornuftige verdier hvis det fremgår, ellers antall 1 og enhet "stk"
+- "enhet" må være én av: stk, kg, g, l, dl, pk
+- IKKE ta med krydder/vann/salt/pepper med mindre det er en tydelig hovedingrediens
+- Norsk stavemåte med æøå`;
+
+        const content = bilde
+          ? [
+              { type: "image", source: { type: "base64", media_type: mediaType || "image/png", data: bilde } },
+              { type: "text", text: "Dette er et bilde av en ukesmeny. " + prompt }
+            ]
+          : [{ type: "text", text: prompt + "\n\nUkesmeny:\n" + (tekst || "(tom)") }];
+
+        const { ok, status, rawText } = await callAnthropic(apiKey, {
+          model: "claude-sonnet-4-6",
+          max_tokens: 8000,
+          system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst.",
+          messages: [{ role: "user", content }]
+        });
+
+        if (!ok) return jsonRes({ error: "Anthropic API feil", status, detaljer: rawText }, 500);
+
+        const data = JSON.parse(rawText);
+        const text = data.content?.[0]?.text || "";
+        let clean = text.replace(/```json|```/g, "").trim();
+        const firstBrace = clean.indexOf("{");
+        if (firstBrace !== -1) clean = clean.substring(firstBrace);
+
+        if (!clean.startsWith("{")) {
+          return jsonRes({ dager: [], feil: "Kunne ikke tolke menyen. Prøv å lime inn tydeligere tekst." });
+        }
+
+        let parsed;
+        try {
+          const lastBrace = clean.lastIndexOf("}");
+          parsed = JSON.parse(clean.substring(0, lastBrace + 1));
+        } catch (e1) {
+          parsed = repairTruncatedJson(clean);
+        }
+
+        if (!parsed || !parsed.dager) {
+          return jsonRes({ dager: [], feil: "Menyen ble for lang til å leses helt. Prøv færre dager om gangen." });
+        }
+
+        return jsonRes(parsed);
+
+      } catch (err) {
+        return jsonRes({ error: err.message }, 500);
+      }
+    }
+
+    // -------------------------------------------------------
+    //  Alt annet: statiske filer
+    // -------------------------------------------------------
     return env.ASSETS.fetch(request);
   }
 };
