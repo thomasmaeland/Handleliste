@@ -797,7 +797,32 @@
       <div class="board-form">
         <div class="board-form-title">🍽️ Middagsplan</div>
         <p style="font-size:13px;color:var(--ink2);margin:-4px 0 12px">Planlegg ukens middager. Legg til ingredienser på hver rett, og send det du mangler til handlelista – du velger selv hva du allerede har hjemme.</p>
+        <button class="board-add-btn" id="middag-import-btn" type="button" style="margin-bottom:12px">📋 Importer ukesmeny (fra ChatGPT e.l.)</button>
         <div id="middag-uke"></div>
+      </div>
+    </div>
+
+    <!-- MIDDAG: IMPORTER UKESMENY -->
+    <div id="middag-import-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;align-items:center;justify-content:center;padding:1rem">
+      <div style="background:var(--bg);border-radius:16px;max-width:460px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+          <div style="font-family:'DM Serif Display',serif;font-size:1.2rem">Importer ukesmeny</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:2px">Lim inn menyteksten fra ChatGPT, eller last opp et skjermbilde.</div>
+        </div>
+        <div style="overflow-y:auto;flex:1;padding:1rem 1.25rem" id="middag-import-body">
+          <textarea id="middag-import-tekst" placeholder="Lim inn ukesmenyen her (dag, rett og ingredienser)..." style="width:100%;min-height:140px;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+          <div style="text-align:center;color:var(--ink3);font-size:12px;margin:10px 0">– eller –</div>
+          <label style="display:block;border:1px dashed var(--border);border-radius:8px;padding:14px;text-align:center;font-size:13px;color:var(--ink2);cursor:pointer">
+            📷 Last opp skjermbilde av meny
+            <input type="file" id="middag-import-bilde" accept="image/*" style="display:none" />
+          </label>
+          <div id="middag-import-status" style="font-size:12px;color:var(--ink3);margin-top:10px;text-align:center"></div>
+          <div id="middag-import-preview"></div>
+        </div>
+        <div style="display:flex;gap:8px;padding:1rem 1.25rem;border-top:1px solid var(--border)">
+          <button onclick="lukkMiddagImport()" style="flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--ink2)">Avbryt</button>
+          <button id="middag-import-tolk-btn" onclick="tolkUkesmeny()" style="flex:2;background:var(--accent);border:none;border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:#fff">Tolk meny</button>
+        </div>
       </div>
     </div>
 
@@ -4981,6 +5006,123 @@ await addDoc(historyRef, {
 
   window.lukkMiddagSend = () => {
     document.getElementById("middag-send-overlay").style.display = "none";
+  };
+
+  // ===== IMPORTER UKESMENY (AI) =====
+  let importertMeny = null;      // resultat fra AI: [{dag, rett, ingredienser:[...]}]
+  let importBildeData = null;    // base64 hvis bilde er valgt
+
+  document.getElementById("middag-import-btn")?.addEventListener("click", () => {
+    document.getElementById("middag-import-tekst").value = "";
+    document.getElementById("middag-import-status").textContent = "";
+    document.getElementById("middag-import-preview").innerHTML = "";
+    importertMeny = null;
+    importBildeData = null;
+    document.getElementById("middag-import-overlay").style.display = "flex";
+  });
+
+  window.lukkMiddagImport = () => {
+    document.getElementById("middag-import-overlay").style.display = "none";
+  };
+
+  let importBildeType = "image/png";
+  document.getElementById("middag-import-bilde")?.addEventListener("change", async (e) => {
+    const fil = e.target.files?.[0];
+    if (!fil) return;
+    importBildeType = fil.type || "image/png";
+    const reader = new FileReader();
+    reader.onload = () => {
+      importBildeData = reader.result.split(",")[1]; // base64 uten prefiks
+      document.getElementById("middag-import-status").textContent = `Bilde valgt: ${fil.name}. Trykk «Tolk meny».`;
+    };
+    reader.readAsDataURL(fil);
+  });
+
+  window.tolkUkesmeny = async () => {
+    const tekst = document.getElementById("middag-import-tekst").value.trim();
+    const status = document.getElementById("middag-import-status");
+    const btn = document.getElementById("middag-import-tolk-btn");
+    if (!tekst && !importBildeData) { alert("Lim inn menytekst eller last opp et bilde først."); return; }
+
+    btn.disabled = true;
+    btn.textContent = "Tolker...";
+    status.textContent = "Sender menyen til AI for tolkning...";
+    try {
+      const body = importBildeData ? { bilde: importBildeData, mediaType: importBildeType } : { tekst };
+      const res = await fetch("/parse-menu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.error || !data.dager) {
+        const detalj = data.detaljer || data.error || "ukjent feil";
+        status.innerHTML = `<span style="color:#c0392b">Klarte ikke å tolke menyen.</span><br><span style="font-size:11px">${escapeHtml(String(detalj)).slice(0,200)}</span>`;
+        return;
+      }
+      importertMeny = data.dager;
+      status.textContent = "";
+      visMenyForhandsvisning(importertMeny);
+    } catch (e) {
+      status.innerHTML = `<span style="color:#c0392b">Noe gikk galt. Sjekk nettforbindelsen.</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Tolk meny";
+    }
+  };
+
+  function visMenyForhandsvisning(dager) {
+    const preview = document.getElementById("middag-import-preview");
+    if (!dager || dager.length === 0) {
+      preview.innerHTML = `<div style="color:var(--ink3);font-size:13px;margin-top:12px">Fant ingen retter i menyen.</div>`;
+      return;
+    }
+    let html = `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px">Velg hvilke dager som skal fylles inn:</div>`;
+    dager.forEach((d, i) => {
+      const ing = (d.ingredienser || []).map(x => typeof x === "string" ? x : x.navn).join(", ");
+      html += `
+        <label style="display:flex;gap:10px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;align-items:flex-start">
+          <input type="checkbox" class="meny-dag-cb" data-i="${i}" checked style="width:18px;height:18px;flex-shrink:0;margin-top:2px" />
+          <div style="flex:1">
+            <div style="font-size:12px;color:var(--ink3);text-transform:capitalize">${escapeHtml(d.dag || "?")}</div>
+            <div style="font-weight:600;font-size:14px">${escapeHtml(d.rett || "")}</div>
+            <div style="font-size:12px;color:var(--ink2);margin-top:2px">${escapeHtml(ing)}</div>
+          </div>
+        </label>`;
+    });
+    html += `<button onclick="bekreftMenyImport()" style="width:100%;background:var(--accent);border:none;border-radius:8px;padding:11px;font-size:13px;cursor:pointer;color:#fff;margin-top:6px">Fyll inn valgte dager</button></div>`;
+    preview.innerHTML = html;
+  }
+
+  window.bekreftMenyImport = async () => {
+    if (!importertMeny) return;
+    const valgteIdx = [...document.querySelectorAll(".meny-dag-cb")].filter(cb => cb.checked).map(cb => Number(cb.dataset.i));
+    if (valgteIdx.length === 0) { alert("Velg minst én dag."); return; }
+
+    // Map norske dagsnavn til nøklene i planen
+    const dagNokkel = (navn) => {
+      const n = (navn || "").toLowerCase();
+      const treff = MIDDAG_DAGER.find(d => n.includes(d));
+      return treff || null;
+    };
+
+    let fylt = 0;
+    for (const idx of valgteIdx) {
+      const d = importertMeny[idx];
+      const nokkel = dagNokkel(d.dag);
+      if (!nokkel) continue;
+      const ingredienser = (d.ingredienser || []).map(x => {
+        if (typeof x === "string") return { navn: x, antall: 1, enhet: "stk", pris: estimatePrice(x) || null };
+        return { navn: x.navn, antall: x.antall || 1, enhet: x.enhet || "stk", pris: (x.pris != null ? x.pris : (estimatePrice(x.navn) || null)) };
+      });
+      middagsplan[nokkel] = { rett: d.rett || "", ingredienser };
+      fylt++;
+    }
+    await lagreMiddagsplan();
+    document.getElementById("middag-import-overlay").style.display = "none";
+    renderMiddag();
+    alert(`${fylt} ${fylt === 1 ? "dag" : "dager"} fylt inn fra menyen.`);
   };
 
   window.tomMiddagDag = async (dag) => {
