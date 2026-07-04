@@ -4857,8 +4857,13 @@ await addDoc(historyRef, {
       if (ingredienser.length) {
         ingListe = `<div style="margin-bottom:8px">` + ingredienser.map((ing, i) => `
           <div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;border-bottom:1px solid var(--border)">
-            <input value="${escapeHtml(ing.navn)}" onchange="endreMiddagIngrediens('${dag}', ${i}, 'navn', this.value)"
-                   style="flex:1;border:none;background:none;font-size:13px;color:var(--ink);padding:2px 4px;border-radius:4px" title="Trykk for å endre navn" />
+            <div style="flex:1;position:relative">
+              <input id="middag-ing-edit-${dag}-${i}" value="${escapeHtml(ing.navn)}" autocomplete="off"
+                     oninput="middagEditAutocomplete('${dag}', ${i})"
+                     onblur="setTimeout(() => middagEditBlur('${dag}', ${i}, this.value), 150)"
+                     style="width:100%;border:none;background:none;font-size:13px;color:var(--ink);padding:2px 4px;border-radius:4px;box-sizing:border-box" title="Trykk for å endre navn" />
+              <div class="autocomplete-list" id="middag-edit-ac-${dag}-${i}" style="position:absolute;left:0;right:0;top:100%;z-index:50"></div>
+            </div>
             <input type="number" min="0.1" step="0.1" value="${ing.antall}" onchange="endreMiddagIngrediens('${dag}', ${i}, 'antall', this.value)"
                    style="width:44px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--ink2);padding:2px 4px;border-radius:4px;text-align:center" title="Antall" />
             <input value="${escapeHtml(ing.enhet)}" onchange="endreMiddagIngrediens('${dag}', ${i}, 'enhet', this.value)"
@@ -4989,6 +4994,36 @@ await addDoc(historyRef, {
     middagsplan[dag].ingredienser = liste;
     await lagreMiddagsplan();
     renderMiddag();
+  };
+
+  // Autocomplete på redigerbare ingrediens-felt
+  window.middagEditAutocomplete = (dag, i) => {
+    const inp = document.getElementById(`middag-ing-edit-${dag}-${i}`);
+    const liste = document.getElementById(`middag-edit-ac-${dag}-${i}`);
+    if (!inp || !liste) return;
+    const kandidater = getAcCandidates(inp.value);
+    if (!kandidater.length) { liste.classList.remove("open"); liste.innerHTML = ""; return; }
+    liste.innerHTML = kandidater.slice(0, 6).map(navn =>
+      `<div class="autocomplete-item" onmousedown="middagVelgEditForslag('${dag}', ${i}, this.dataset.navn)" data-navn="${escapeHtml(navn)}">${escapeHtml(navn)}</div>`
+    ).join("");
+    liste.classList.add("open");
+  };
+
+  // Valg fra forslagslista (onmousedown så den rekker før blur)
+  window.middagVelgEditForslag = async (dag, i, navn) => {
+    const liste = document.getElementById(`middag-edit-ac-${dag}-${i}`);
+    if (liste) { liste.classList.remove("open"); liste.innerHTML = ""; }
+    await endreMiddagIngrediens(dag, i, "navn", navn);
+  };
+
+  // Når feltet forlates uten å velge forslag: lagre fritekst
+  window.middagEditBlur = async (dag, i, verdi) => {
+    const liste = document.getElementById(`middag-edit-ac-${dag}-${i}`);
+    if (liste) { liste.classList.remove("open"); liste.innerHTML = ""; }
+    const naa = (middagsplan[dag]?.ingredienser || []).map(normIngrediens)[i];
+    if (naa && verdi.trim() && verdi.trim() !== naa.navn) {
+      await endreMiddagIngrediens(dag, i, "navn", verdi);
+    }
   };
 
   async function lagreMiddagsplan() {
