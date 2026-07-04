@@ -4856,10 +4856,15 @@ await addDoc(historyRef, {
       if (ingredienser.length) {
         ingListe = `<div style="margin-bottom:8px">` + ingredienser.map((ing, i) => `
           <div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;border-bottom:1px solid var(--border)">
-            <span style="flex:1">${escapeHtml(ing.navn)}</span>
-            <span style="color:var(--ink3);font-size:12px">${ing.antall} ${escapeHtml(ing.enhet)}</span>
-            <span style="color:var(--ink2);min-width:54px;text-align:right">${ing.pris != null ? (ing.pris * ing.antall).toFixed(0) + " kr" : "–"}</span>
-            <button onclick="fjernMiddagIngrediens('${dag}', ${i})" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:15px;padding:0 4px">×</button>
+            <input value="${escapeHtml(ing.navn)}" onchange="endreMiddagIngrediens('${dag}', ${i}, 'navn', this.value)"
+                   style="flex:1;border:none;background:none;font-size:13px;color:var(--ink);padding:2px 4px;border-radius:4px" title="Trykk for å endre navn" />
+            <input type="number" min="0.1" step="0.1" value="${ing.antall}" onchange="endreMiddagIngrediens('${dag}', ${i}, 'antall', this.value)"
+                   style="width:44px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--ink2);padding:2px 4px;border-radius:4px;text-align:center" title="Antall" />
+            <input value="${escapeHtml(ing.enhet)}" onchange="endreMiddagIngrediens('${dag}', ${i}, 'enhet', this.value)"
+                   style="width:42px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--ink2);padding:2px 4px;border-radius:4px;text-align:center" title="Enhet" />
+            <input type="number" min="0" value="${ing.pris != null ? ing.pris : ''}" placeholder="kr" onchange="endreMiddagIngrediens('${dag}', ${i}, 'pris', this.value)"
+                   style="width:50px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--ink2);padding:2px 4px;border-radius:4px;text-align:right" title="Pris per enhet" />
+            <button onclick="fjernMiddagIngrediens('${dag}', ${i})" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:15px;padding:0 4px" title="Fjern">×</button>
           </div>`).join("") + `</div>`;
       }
 
@@ -4959,6 +4964,30 @@ await addDoc(historyRef, {
     liste.splice(index, 1);
     middagsplan[dag].ingredienser = liste;
     await lagreMiddagsplan();
+  };
+
+  window.endreMiddagIngrediens = async (dag, index, felt, verdi) => {
+    const liste = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
+    if (!liste[index]) return;
+    if (felt === "navn") {
+      const nyttNavn = verdi.trim();
+      if (!nyttNavn) return;
+      liste[index].navn = nyttNavn;
+      // Prøv å hente pris automatisk hvis den ikke er satt manuelt
+      if (liste[index].pris == null) {
+        const p = estimatePrice(nyttNavn);
+        if (p != null) liste[index].pris = p;
+      }
+    } else if (felt === "antall") {
+      liste[index].antall = parseFloat(verdi) || 1;
+    } else if (felt === "enhet") {
+      liste[index].enhet = verdi.trim() || "stk";
+    } else if (felt === "pris") {
+      liste[index].pris = verdi !== "" ? Number(verdi) : null;
+    }
+    middagsplan[dag].ingredienser = liste;
+    await lagreMiddagsplan();
+    renderMiddag();
   };
 
   async function lagreMiddagsplan() {
