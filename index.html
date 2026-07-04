@@ -4831,11 +4831,21 @@ await addDoc(historyRef, {
     };
   }
 
+  // Enheter der prisen gjelder hele mengden (ikke per enhet) – ganges IKKE med antall
+  const MENGDE_ENHETER = ["g", "kg", "ml", "l", "dl"];
+  function ingLinjepris(ing) {
+    if (ing.pris == null) return null;
+    // For gram/kg/liter osv. er prisen allerede for hele mengden
+    if (MENGDE_ENHETER.includes((ing.enhet || "").toLowerCase())) return ing.pris;
+    return ing.pris * (ing.antall || 1);
+  }
+
   function rettTotalpris(ingredienser) {
     let sum = 0, harPris = false;
     ingredienser.forEach(raw => {
       const ing = normIngrediens(raw);
-      if (ing.pris != null) { sum += ing.pris * (ing.antall || 1); harPris = true; }
+      const lp = ingLinjepris(ing);
+      if (lp != null) { sum += lp; harPris = true; }
     });
     return harPris ? sum : null;
   }
