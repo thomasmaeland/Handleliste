@@ -177,6 +177,10 @@
     .clear-done-btn { background:none; border:none; font-size:12px; color:var(--ink3); cursor:pointer; padding:4px 8px; border-radius:6px; }
     .clear-done-btn:hover { color:var(--danger); }
     .items-list { display:flex; flex-direction:column; gap:6px; }
+    .list-header-actions { display:flex; align-items:center; gap:4px; }
+    .sort-toggle-btn { background:none; border:1px solid var(--ink3); font-size:11px; color:var(--ink3); cursor:pointer; padding:3px 8px; border-radius:20px; white-space:nowrap; transition:all .15s; }
+    .sort-toggle-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .item-date { font-size:10px; color:var(--ink3); white-space:nowrap; margin-left:6px; }
 
     /* CATEGORY GROUP */
     .cat-group { margin-bottom:1.25rem; }
@@ -567,7 +571,10 @@
       <div class="list-section">
         <div class="list-header">
           <div class="section-label">På listen</div>
-          <button class="clear-done-btn" id="clear-done-btn">✓ Lagre og avslutt</button>
+          <div class="list-header-actions">
+            <button class="sort-toggle-btn" id="sort-date-btn" onclick="toggleSortByDate()">🕒 Nyeste først</button>
+            <button class="clear-done-btn" id="clear-done-btn">✓ Lagre og avslutt</button>
+          </div>
         </div>
         <div class="items-list" id="items-list">
           <div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>
@@ -3242,8 +3249,36 @@ window.fjernFraHistorikk = async (navn) => {
     "Syltetøy":35,"Honning":55,"Kokosmelk":25,
   };
 
+  let sortByDateEnabled = localStorage.getItem("sortByDate") === "1";
+
+  window.toggleSortByDate = () => {
+    sortByDateEnabled = !sortByDateEnabled;
+    localStorage.setItem("sortByDate", sortByDateEnabled ? "1" : "0");
+    updateSortToggleBtn();
+    renderList(currentItems);
+  };
+
+  function updateSortToggleBtn() {
+    const btn = document.getElementById("sort-date-btn");
+    if (!btn) return;
+    btn.classList.toggle("active", sortByDateEnabled);
+  }
+
+  function formatItemDate(ts) {
+    if (!ts) return "";
+    const d = new Date(ts);
+    const now = new Date();
+    const startOfDay = (dt) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+    const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (diffDays === 0) return "i dag";
+    if (diffDays === 1) return "i går";
+    if (diffDays > 1 && diffDays < 7) return `${diffDays}d siden`;
+    return d.toLocaleDateString("no-NO", { day:"numeric", month:"numeric" });
+  }
+
   function renderList(items) {
     const container = document.getElementById("items-list");
+    updateSortToggleBtn();
     if (items.length === 0) {
       container.innerHTML = `<div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>`;
       return;
@@ -3252,22 +3287,31 @@ window.fjernFraHistorikk = async (navn) => {
     const active = items.filter(i=>!i.done);
     const done = items.filter(i=>i.done);
 
-    // Grupper aktive etter kategori
-    const groups = {};
-    active.forEach(item => {
-      const cat = item.cat || guessCategory(item.name);
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(item);
-    });
-
     let html = "";
-    CAT_ORDER.forEach(cat => {
-      if (!groups[cat]) return;
+
+    if (sortByDateEnabled) {
+      // Flat liste sortert etter nyeste lagt til, uten kategorigruppering
+      const sorted = [...active].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
       html += `<div class="cat-group">
-        <div class="cat-group-label">${CAT_LABELS[cat]}</div>
-        ${groups[cat].map(item => renderItem(item)).join("")}
+        ${sorted.map(item => renderItem(item)).join("")}
       </div>`;
-    });
+    } else {
+      // Grupper aktive etter kategori (original rekkefølge)
+      const groups = {};
+      active.forEach(item => {
+        const cat = item.cat || guessCategory(item.name);
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(item);
+      });
+
+      CAT_ORDER.forEach(cat => {
+        if (!groups[cat]) return;
+        html += `<div class="cat-group">
+          <div class="cat-group-label">${CAT_LABELS[cat]}</div>
+          ${groups[cat].map(item => renderItem(item)).join("")}
+        </div>`;
+      });
+    }
 
     // Avkryssede på bunnen
     if (done.length > 0) {
@@ -3318,6 +3362,8 @@ window.fjernFraHistorikk = async (navn) => {
       const farge = opp ? "#c0392b" : "#2d8a4e";
       endringMerke = `<span class="pris-endring" title="${opp ? "Opp" : "Ned"} fra ${Math.round(endring.fra)} til ${Math.round(endring.til)} kr på ${escapeHtml(endring.butikk)}" style="font-size:11px;color:${farge};border:1px solid ${farge}33;background:${farge}11;border-radius:6px;padding:1px 6px;margin-left:6px;white-space:nowrap">${diffStr}</span>`;
     }
+    const dateStr = formatItemDate(item.createdAt);
+    const dateBadge = dateStr ? `<span class="item-date" title="Lagt til handlelisten">${dateStr}</span>` : "";
     return `<div class="swipe-wrapper" id="swipe-${item.id}">
       <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
       <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
@@ -3326,7 +3372,7 @@ window.fjernFraHistorikk = async (navn) => {
           <button class="check-btn" onclick="toggleItem('${item.id}',${item.done})">${item.done?"✓":""}</button>
           <div class="item-main" onclick="openEdit('${item.id}')" style="cursor:pointer">
             <div class="item-name">${item.name}${endringMerke}</div>
-            <div class="item-detail">${detail}</div>
+            <div class="item-detail">${detail}${dateBadge}</div>
           </div>
           ${initials ? `<span class="by-whom">${initials}</span>` : ""}
           <div class="qty-wrap">
