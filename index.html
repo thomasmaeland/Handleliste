@@ -562,6 +562,23 @@
     <button class="smart-cancel-btn" id="live-price-cancel">Lukk</button>
   </div>
 </div>
+<button class="smart-list-btn" id="pris-sok-btn">
+  <span class="btn-icon">🔍</span>
+  Søk og sammenlign pris
+  <span class="btn-sub">finn billigste butikk for en vare</span>
+</button>
+<div class="smart-preview" id="pris-sok-preview">
+  <div style="display:flex;gap:6px;padding:4px 0 8px">
+    <input id="pris-sok-input" type="text" placeholder="Skriv vare, f.eks. melk..." autocomplete="off"
+      style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--card);color:var(--ink)" />
+    <button id="pris-sok-go" style="background:var(--accent);border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:#fff">Søk</button>
+  </div>
+  <div class="smart-preview-title" id="pris-sok-title"></div>
+  <div id="pris-sok-items"></div>
+  <div class="smart-preview-actions">
+    <button class="smart-cancel-btn" id="pris-sok-cancel">Lukk</button>
+  </div>
+</div>
         </div>
       <div class="list-actions">
         <button class="list-action-btn" id="share-list-btn" type="button">↗ Del handleliste</button>
@@ -4271,12 +4288,12 @@ document.getElementById("live-price-btn").addEventListener("click", async () => 
         <strong style="color:var(--accent)">~${s.total} kr</strong>
       </div>`).join("");
 
-    html += `<div style="margin-top:10px;margin-bottom:4px;font-size:12px;font-weight:500;color:var(--ink3)">Billigste treff per vare:</div>`;
+    html += `<div style="margin-top:10px;margin-bottom:4px;font-size:12px;font-weight:500;color:var(--ink3)">Billigste treff per vare (trykk for å legge til):</div>`;
     html += rows.map(r => r.none
       ? `<div style="font-size:12px;color:var(--ink3);padding:3px 0">– ${escapeHtml(r.navn)}: ingen treff</div>`
-      : `<div style="font-size:13px;padding:3px 0;display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+      : `<div onclick="leggTilFraPris(${escapeHtml(JSON.stringify(r.best.name))}, ${r.best.price})" style="font-size:13px;padding:6px 4px;display:flex;justify-content:space-between;gap:8px;align-items:baseline;cursor:pointer;border-radius:6px" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background='transparent'">
            <span style="min-width:0">${escapeHtml(r.navn)}<br><span style="opacity:.5;font-size:11px">${escapeHtml(r.best.name.slice(0, 42))}</span></span>
-           <span style="white-space:nowrap;text-align:right"><strong>${r.best.price} kr</strong><br><span style="opacity:.6;font-size:11px">${escapeHtml(r.best.store)}</span></span>
+           <span style="white-space:nowrap;text-align:right"><strong>${r.best.price} kr</strong> ＋<br><span style="opacity:.6;font-size:11px">${escapeHtml(r.best.store)}</span></span>
          </div>`).join("");
     html += `<div style="margin-top:8px;font-size:10px;color:var(--ink3)">Priser fra Kassalapp — hovedsakelig nettbutikkpriser, kan avvike fra din lokale butikk</div>`;
     area.innerHTML = html;
@@ -4289,6 +4306,91 @@ document.getElementById("live-price-btn").addEventListener("click", async () => 
 });
 document.getElementById("live-price-cancel").addEventListener("click", () => {
   document.getElementById("live-price-preview").classList.remove("open");
+});
+
+// Legg til vare fra prisvisning (klikk på rad i Dagens priser eller prissøk)
+window.leggTilFraPris = async (navn, pris) => {
+  await addItem(navn);
+  // Vis en kort bekreftelse uten å stenge panelet
+  const melding = document.createElement("div");
+  melding.textContent = `✓ "${navn}" lagt til`;
+  melding.style.cssText = "position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;pointer-events:none";
+  document.body.appendChild(melding);
+  setTimeout(() => melding.remove(), 2000);
+};
+
+// ===== PRISSØK =====
+document.getElementById("pris-sok-btn")?.addEventListener("click", () => {
+  const preview = document.getElementById("pris-sok-preview");
+  if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
+  preview.classList.add("open");
+  document.getElementById("pris-sok-input").focus();
+});
+
+document.getElementById("pris-sok-cancel")?.addEventListener("click", () => {
+  document.getElementById("pris-sok-preview").classList.remove("open");
+});
+
+document.getElementById("pris-sok-input")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("pris-sok-go").click();
+});
+
+document.getElementById("pris-sok-go")?.addEventListener("click", async () => {
+  const q = document.getElementById("pris-sok-input").value.trim();
+  if (!q) return;
+  const title = document.getElementById("pris-sok-title");
+  const area = document.getElementById("pris-sok-items");
+  title.textContent = `Søker etter "${q}"...`;
+  area.innerHTML = `<p class="smart-thin-msg">Henter priser 🏷️</p>`;
+
+  try {
+    const res = await fetch("/price-lookup", {
+      method: "POST",
+      headers: await aiHeaders(),
+      body: JSON.stringify({ queries: [q] })
+    });
+    const data = await res.json();
+    if (data.error || !data.results) throw new Error(data.error || "Ukjent feil");
+
+    const matches = data.results[0]?.matches || [];
+    if (matches.length === 0) {
+      title.textContent = `Ingen treff for "${q}"`;
+      area.innerHTML = `<p class="smart-thin-msg">Prøv et enklere søkeord, f.eks. "melk" i stedet for merkenavn.</p>`;
+      return;
+    }
+
+    // Grupper per butikk — vis billigste per butikk
+    const perButikk = {};
+    matches.forEach(m => {
+      if (!perButikk[m.store] || m.price < perButikk[m.store].price) {
+        perButikk[m.store] = m;
+      }
+    });
+
+    const sorted = Object.values(perButikk).sort((a, b) => a.price - b.price);
+    title.textContent = `Priser for "${q}" (${sorted.length} butikker):`;
+
+    area.innerHTML = sorted.map((m, i) => `
+      <div onclick="leggTilFraPris(${JSON.stringify(escapeHtml(m.name))}, ${m.price})"
+           style="display:flex;justify-content:space-between;align-items:center;padding:8px 6px;border-radius:8px;cursor:pointer;gap:8px"
+           onmouseover="this.style.background='var(--surface)'"
+           onmouseout="this.style.background='transparent'">
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:${i===0?'600':'400'}">${i===0?'🥇 ':''}${escapeHtml(m.store)}</div>
+          <div style="font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.name.slice(0,50))}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:14px;font-weight:600;color:${i===0?'var(--accent)':'var(--ink)'}">${m.price} kr</div>
+          <div style="font-size:11px;color:var(--ink3)">＋ legg til</div>
+        </div>
+      </div>`).join("") +
+      `<div style="margin-top:6px;font-size:10px;color:var(--ink3)">Trykk på en rad for å legge varen i handlelista. Priser fra Kassalapp.</div>`;
+
+  } catch (e) {
+    console.warn("prissøk:", e);
+    title.textContent = "Kunne ikke hente priser";
+    area.innerHTML = `<p class="smart-thin-msg">${escapeHtml(e.message)}</p>`;
+  }
 });
   
   document.getElementById("smart-list-btn").addEventListener("click", () => {
