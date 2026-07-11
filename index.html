@@ -601,6 +601,7 @@
         <div class="smart-preview-actions" id="receipt-actions" style="display:none">
           <button class="smart-confirm-btn" id="receipt-confirm-btn">Lagre kvittering</button>
           <button class="smart-cancel-btn" id="receipt-cancel-btn">Avbryt</button>
+          <button class="smart-cancel-btn" id="receipt-sparing-btn" style="background:var(--surface);border:1px solid var(--border)">💰 Hva kunne du spart?</button>
         </div>
       </div>
 
@@ -870,6 +871,21 @@
         <div style="display:flex;gap:8px;padding:1rem 1.25rem;border-top:1px solid var(--border)">
           <button onclick="lukkMiddagImport()" style="flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--ink2)">Avbryt</button>
           <button id="middag-import-tolk-btn" onclick="tolkUkesmeny()" style="flex:2;background:var(--accent);border:none;border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:#fff">Tolk meny</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- KVITTERING: HVA KUNNE DU SPART? -->
+    <div id="sparing-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10001;align-items:center;justify-content:center;padding:1rem">
+      <div style="background:var(--bg);border-radius:16px;max-width:440px;width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+          <div style="font-family:'DM Serif Display',serif;font-size:1.1rem">💰 Hva kunne du spart?</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:2px" id="sparing-undertittel">Sammenligner mot billigste alternativ...</div>
+        </div>
+        <div id="sparing-liste" style="overflow-y:auto;flex:1;padding:0.75rem 1rem"></div>
+        <div style="padding:1rem 1.25rem;border-top:1px solid var(--border)">
+          <div id="sparing-sum" style="font-size:14px;font-weight:600;color:var(--accent);margin-bottom:10px"></div>
+          <button onclick="document.getElementById('sparing-overlay').style.display='none'" style="width:100%;background:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--ink2)">Lukk</button>
         </div>
       </div>
     </div>
@@ -5208,6 +5224,114 @@ if (h?.priserPerButikk) {
 
     e.target.value = "";
   });
+
+  document.getElementById("receipt-sparing-btn")?.addEventListener("click", () => visKvitteringSparing());
+
+  async function visKvitteringSparing() {
+    if (scannedReceipt.length === 0) return;
+    const overlay = document.getElementById("sparing-overlay");
+    const liste = document.getElementById("sparing-liste");
+    const sum = document.getElementById("sparing-sum");
+    const undertittel = document.getElementById("sparing-undertittel");
+
+    overlay.style.display = "flex";
+    liste.innerHTML = `<p style="text-align:center;padding:1.5rem;color:var(--ink3);font-size:13px">Slår opp priser på ${scannedReceipt.length} varer... ⏳</p>`;
+    sum.textContent = "";
+    undertittel.textContent = "Sammenligner mot billigste alternativ i Kassalapp";
+
+    // Slå opp maks 10 varer (rate-limit hensyn)
+    const varer = scannedReceipt.slice(0, 10).filter(v => v.pris && v.pris > 0);
+    const resultater = [];
+
+    for (const v of varer) {
+      try {
+        // Søk på navn først
+        const sokRes = await fetch("/ean-search", {
+          method: "POST",
+          headers: await aiHeaders(),
+          body: JSON.stringify({ query: v.navn })
+        });
+        const sokData = await sokRes.json();
+        const produkter = sokData.produkter || [];
+        if (produkter.length === 0) { resultater.push({ navn: v.navn, betalt: v.pris, billigst: null }); continue; }
+
+        // Ta beste EAN-match og hent priser
+        const beste = produkter[0];
+        const prisRes = await fetch("/ean-search", {
+          method: "POST",
+          headers: await aiHeaders(),
+          body: JSON.stringify({ ean: beste.ean })
+        });
+        const prisData = await prisRes.json();
+        const butikker = prisData.butikker || [];
+        const billigst = butikker.length > 0 ? butikker[0] : null;
+
+        resultater.push({
+          navn: v.navn,
+          betalt: v.pris,
+          billigstPris: billigst?.price || null,
+          billigstButikk: billigst?.store || null,
+          kassalNavn: beste.name
+        });
+
+        // Liten delay for å unngå rate-limit
+        await new Promise(r => setTimeout(r, 500));
+      } catch(e) {
+        resultater.push({ navn: v.navn, betalt: v.pris, billigstPris: null });
+      }
+    }
+
+    // Bygg visning
+    let totalBetalt = 0, totalBilligst = 0, sparingTotal = 0;
+    liste.innerHTML = "";
+
+    resultater.forEach(r => {
+      const rad = document.createElement("div");
+      rad.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);gap:8px";
+
+      totalBetalt += r.betalt || 0;
+
+      if (r.billigstPris && r.betalt) {
+        const spart = r.betalt - r.billigstPris;
+        totalBilligst += r.billigstPris;
+        sparingTotal += Math.max(0, spart);
+
+        const farge = spart > 0.5 ? "#c0392b" : spart < -0.5 ? "#2d8a4e" : "var(--ink3)";
+        const spartTekst = spart > 0.5 ? `<span style="color:#2d8a4e;font-size:11px">Spar ${spart.toFixed(0)} kr → ${escapeHtml(r.billigstButikk || "")}</span>`
+          : spart < -0.5 ? `<span style="color:var(--ink3);font-size:11px">Billigst! (${escapeHtml(r.billigstButikk || "")})</span>`
+          : `<span style="color:var(--ink3);font-size:11px">Lik pris (${escapeHtml(r.billigstButikk || "")})</span>`;
+
+        rad.innerHTML = `
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px">${escapeHtml(r.navn)}</div>
+            <div style="font-size:11px;color:var(--ink3)">${escapeHtml(r.kassalNavn || "")}</div>
+            ${spartTekst}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:13px;font-weight:600">${r.betalt.toFixed(0)} kr</div>
+            ${r.billigstPris !== r.betalt ? `<div style="font-size:11px;color:var(--ink3)">Billigst: ${r.billigstPris.toFixed(0)} kr</div>` : ''}
+          </div>`;
+      } else {
+        rad.innerHTML = `
+          <div style="flex:1"><div style="font-size:13px">${escapeHtml(r.navn)}</div><div style="font-size:11px;color:var(--ink3)">Ingen sammenligning funnet</div></div>
+          <div style="font-size:13px;font-weight:600">${r.betalt ? r.betalt.toFixed(0) + ' kr' : '–'}</div>`;
+      }
+      liste.appendChild(rad);
+    });
+
+    if (sparingTotal > 1) {
+      sum.textContent = `💰 Du kunne spart ca. ${sparingTotal.toFixed(0)} kr ved å handle billigst på disse ${resultater.filter(r=>r.billigstPris).length} varene.`;
+    } else {
+      sum.textContent = `✅ Du handlet til gode priser — ingen vesentlig besparelse funnet.`;
+    }
+
+    if (scannedReceipt.length > 10) {
+      const note = document.createElement("div");
+      note.style.cssText = "font-size:11px;color:var(--ink3);margin-top:8px;text-align:center";
+      note.textContent = `Viser 10 av ${scannedReceipt.length} varer (API-begrensning).`;
+      liste.appendChild(note);
+    }
+  }
 
   document.getElementById("receipt-confirm-btn").addEventListener("click", async () => {
     // Alle scannede varer brukes nå til pris-/kjøpshistorikk og fremtidige forslag.
