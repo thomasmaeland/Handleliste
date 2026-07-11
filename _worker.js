@@ -409,13 +409,16 @@ Regler:
         // STEG 2: Søk på navn — hent unike produkter (én per EAN)
         if (!query) return jsonRes({ error: "Mangler query eller ean" }, 400);
         const searchRes = await fetch(
-          `https://kassal.app/api/v1/products?search=${encodeURIComponent(query)}&size=20`,
+          `https://kassal.app/api/v1/products?search=${encodeURIComponent(query)}&size=30&sort=name_asc`,
           { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } }
         );
         if (!searchRes.ok) return jsonRes({ error: "Kassalapp-feil ved søk" }, 500);
         const searchData = await searchRes.json();
 
-        const alleProduktер = (searchData.data || [])
+        const q = query.toLowerCase().trim();
+        const qOrd = q.split(/\s+/);
+
+        const alleProdukt = (searchData.data || [])
           .filter(p => p.ean)
           .map(p => {
             const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
@@ -428,14 +431,22 @@ Regler:
               vendor: p.vendor || ""
             };
           })
-          .filter(p => p.price != null && p.price > 0);
+          .filter(p => p.price != null && p.price > 0)
+          // Filtrer: produktnavnet må starte med søkeordet, ELLER alle søkeordene må finnes tidlig i navn
+          .filter(p => {
+            const navn = p.name.toLowerCase();
+            if (navn.startsWith(q)) return true;
+            // Alle søkeord må forekomme i de første 30 tegnene av produktnavnet
+            const start = navn.slice(0, 35);
+            return qOrd.every(ord => start.includes(ord));
+          });
 
         // Dedupliser på EAN — behold én per EAN (laveste pris)
         const sett = {};
-        alleProduktер.forEach(p => {
+        alleProdukt.forEach(p => {
           if (!sett[p.ean] || p.price < sett[p.ean].price) sett[p.ean] = p;
         });
-        const produkter = Object.values(sett).slice(0, 10);
+        const produkter = Object.values(sett).slice(0, 8);
 
         return jsonRes({ type: "produkter", produkter });
 
