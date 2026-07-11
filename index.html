@@ -562,42 +562,21 @@
     <button class="smart-cancel-btn" id="live-price-cancel">Lukk</button>
   </div>
 </div>
-<button class="smart-list-btn" id="pris-sok-btn">
+<button class="smart-list-btn" id="ean-pris-btn">
   <span class="btn-icon">🔍</span>
-  Søk og sammenlign pris
-  <span class="btn-sub">finn billigste butikk for en vare</span>
+  Sammenlign priser
+  <span class="btn-sub">søk vare → se pris i alle butikker</span>
 </button>
-<div class="smart-preview" id="pris-sok-preview">
-  <div style="display:flex;gap:6px;padding:4px 0 8px">
-    <input id="pris-sok-input" type="text" placeholder="Skriv vare, f.eks. melk..." autocomplete="off"
+<div class="smart-preview" id="ean-pris-preview">
+  <div style="display:flex;gap:6px;padding:4px 0 10px">
+    <input id="ean-pris-input" type="text" placeholder="Søk vare, f.eks. lettmelk..." autocomplete="off"
       style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--card);color:var(--ink)" />
-    <button id="pris-sok-go" style="background:var(--accent);border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:#fff">Søk</button>
+    <button id="ean-pris-go" style="background:var(--accent);border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:#fff">Søk</button>
   </div>
-  <div class="smart-preview-title" id="pris-sok-title"></div>
-  <div id="pris-sok-items"></div>
+  <div class="smart-preview-title" id="ean-pris-title"></div>
+  <div id="ean-pris-items"></div>
   <div class="smart-preview-actions">
-    <button class="smart-cancel-btn" id="pris-sok-cancel">Lukk</button>
-  </div>
-</div>
-<button class="smart-list-btn" id="butikk-tilbud-btn">
-  <span class="btn-icon">🏪</span>
-  Beste priser per butikk
-  <span class="btn-sub">velg butikk og se billigste varer</span>
-</button>
-<div class="smart-preview" id="butikk-tilbud-preview">
-  <div style="display:flex;gap:6px;flex-wrap:wrap;padding:4px 0 10px">
-    <button class="butikk-velg-btn" data-butikk="Meny" onclick="velgButikkTilbud('Meny')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Meny</button>
-    <button class="butikk-velg-btn" data-butikk="KIWI" onclick="velgButikkTilbud('KIWI')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">KIWI</button>
-    <button class="butikk-velg-btn" data-butikk="Rema 1000" onclick="velgButikkTilbud('Rema 1000')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Rema 1000</button>
-    <button class="butikk-velg-btn" data-butikk="Spar" onclick="velgButikkTilbud('Spar')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Spar</button>
-    <button class="butikk-velg-btn" data-butikk="Bunnpris" onclick="velgButikkTilbud('Bunnpris')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Bunnpris</button>
-    <button class="butikk-velg-btn" data-butikk="Joker" onclick="velgButikkTilbud('Joker')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Joker</button>
-    <button class="butikk-velg-btn" data-butikk="Coop Extra" onclick="velgButikkTilbud('Coop Extra')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Coop Extra</button>
-  </div>
-  <div class="smart-preview-title" id="butikk-tilbud-title">Velg en butikk over</div>
-  <div id="butikk-tilbud-items"></div>
-  <div class="smart-preview-actions">
-    <button class="smart-cancel-btn" id="butikk-tilbud-cancel">Lukk</button>
+    <button class="smart-cancel-btn" id="ean-pris-cancel">Lukk</button>
   </div>
 </div>
         </div>
@@ -4341,156 +4320,125 @@ window.leggTilFraPris = async (navn, pris) => {
 };
 
 // ===== PRISSØK =====
-document.getElementById("pris-sok-btn")?.addEventListener("click", () => {
-  const preview = document.getElementById("pris-sok-preview");
+// ===== EAN-BASERT PRISSAMMENLIGNER =====
+document.getElementById("ean-pris-btn")?.addEventListener("click", () => {
+  const preview = document.getElementById("ean-pris-preview");
   if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
   preview.classList.add("open");
-  document.getElementById("pris-sok-input").focus();
+  document.getElementById("ean-pris-input").focus();
 });
 
-document.getElementById("pris-sok-cancel")?.addEventListener("click", () => {
-  document.getElementById("pris-sok-preview").classList.remove("open");
+document.getElementById("ean-pris-cancel")?.addEventListener("click", () => {
+  document.getElementById("ean-pris-preview").classList.remove("open");
 });
 
-document.getElementById("pris-sok-input")?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") document.getElementById("pris-sok-go").click();
+document.getElementById("ean-pris-input")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("ean-pris-go").click();
 });
 
-document.getElementById("pris-sok-go")?.addEventListener("click", async () => {
-  const q = document.getElementById("pris-sok-input").value.trim();
+document.getElementById("ean-pris-go")?.addEventListener("click", async () => {
+  const q = document.getElementById("ean-pris-input").value.trim();
   if (!q) return;
-  const title = document.getElementById("pris-sok-title");
-  const area = document.getElementById("pris-sok-items");
+  const title = document.getElementById("ean-pris-title");
+  const area = document.getElementById("ean-pris-items");
   title.textContent = `Søker etter "${q}"...`;
-  area.innerHTML = `<p class="smart-thin-msg">Henter priser 🏷️</p>`;
-
-  try {
-    const res = await fetch("/price-lookup", {
-      method: "POST",
-      headers: await aiHeaders(),
-      body: JSON.stringify({ queries: [q] })
-    });
-    const data = await res.json();
-    if (data.error || !data.results) throw new Error(data.error || "Ukjent feil");
-
-    const matches = data.results[0]?.matches || [];
-    if (matches.length === 0) {
-      title.textContent = `Ingen treff for "${q}"`;
-      area.innerHTML = `<p class="smart-thin-msg">Prøv et enklere søkeord, f.eks. "melk" i stedet for merkenavn.</p>`;
-      return;
-    }
-
-    // Grupper per butikk — vis billigste per butikk
-    const perButikk = {};
-    matches.forEach(m => {
-      if (!perButikk[m.store] || m.price < perButikk[m.store].price) {
-        perButikk[m.store] = m;
-      }
-    });
-
-    const sorted = Object.values(perButikk).sort((a, b) => a.price - b.price);
-    title.textContent = `Priser for "${q}" (${sorted.length} butikker):`;
-
-    area.innerHTML = sorted.map((m, i) => `
-      <div onclick="leggTilFraPris(${JSON.stringify(escapeHtml(m.name))}, ${m.price})"
-           style="display:flex;justify-content:space-between;align-items:center;padding:8px 6px;border-radius:8px;cursor:pointer;gap:8px"
-           onmouseover="this.style.background='var(--surface)'"
-           onmouseout="this.style.background='transparent'">
-        <div style="min-width:0">
-          <div style="font-size:13px;font-weight:${i===0?'600':'400'}">${i===0?'🥇 ':''}${escapeHtml(m.store)}</div>
-          <div style="font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(m.name.slice(0,50))}</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:14px;font-weight:600;color:${i===0?'var(--accent)':'var(--ink)'}">${m.price} kr</div>
-          <div style="font-size:11px;color:var(--ink3)">＋ legg til</div>
-        </div>
-      </div>`).join("") +
-      `<div style="margin-top:6px;font-size:10px;color:var(--ink3)">Trykk på en rad for å legge varen i handlelista. Priser fra Kassalapp.</div>`;
-
-  } catch (e) {
-    console.warn("prissøk:", e);
-    title.textContent = "Kunne ikke hente priser";
-    area.innerHTML = `<p class="smart-thin-msg">${escapeHtml(e.message)}</p>`;
-  }
-});
-  
-document.getElementById("butikk-tilbud-btn")?.addEventListener("click", () => {
-  const preview = document.getElementById("butikk-tilbud-preview");
-  if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
-  preview.classList.add("open");
-});
-
-document.getElementById("butikk-tilbud-cancel")?.addEventListener("click", () => {
-  document.getElementById("butikk-tilbud-preview").classList.remove("open");
-});
-
-window.velgButikkTilbud = async (butikk) => {
-  // Marker aktiv knapp
-  document.querySelectorAll(".butikk-velg-btn").forEach(b => {
-    b.style.background = b.dataset.butikk === butikk ? "var(--accent)" : "var(--card)";
-    b.style.color = b.dataset.butikk === butikk ? "#fff" : "var(--ink)";
-    b.style.borderColor = b.dataset.butikk === butikk ? "var(--accent)" : "var(--border)";
-  });
-
-  const title = document.getElementById("butikk-tilbud-title");
-  const area = document.getElementById("butikk-tilbud-items");
-  title.textContent = `Henter billigste varer fra ${butikk}...`;
   area.innerHTML = `<p class="smart-thin-msg">Laster 🏷️</p>`;
 
   try {
-    const res = await fetch("/butikk-tilbud", {
+    const res = await fetch("/ean-search", {
       method: "POST",
       headers: await aiHeaders(),
-      body: JSON.stringify({ butikk })
+      body: JSON.stringify({ query: q })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
     const produkter = data.produkter || [];
     if (produkter.length === 0) {
-      title.textContent = `Ingen treff for ${butikk}`;
-      area.innerHTML = `<p class="smart-thin-msg">Fant ingen produkter. Kassalapp har kanskje ikke data for denne butikken akkurat nå.</p>`;
+      title.textContent = `Ingen treff for "${q}"`;
+      area.innerHTML = `<p class="smart-thin-msg">Prøv et enklere søkeord, f.eks. "melk" i stedet for fullt merkenavn.</p>`;
       return;
     }
 
-    title.textContent = `Billigste varer fra ${butikk} (${produkter.length} treff):`;
-    area.innerHTML = produkter.map(p => {
-      const enhetspris = p.unitPrice ? ` · ${p.unitPrice.toFixed(0)} kr/enhet` : "";
-      const vekt = p.weight && p.weightUnit ? ` ${p.weight}${p.weightUnit}` : "";
-      return `<div onclick="leggTilFraButikk(${JSON.stringify(p.name)}, ${p.price}, ${JSON.stringify(butikk)})"
-           style="display:flex;justify-content:space-between;align-items:center;padding:8px 6px;border-radius:8px;cursor:pointer;gap:8px"
+    title.textContent = `Velg riktig produkt for "${q}":`;
+    area.innerHTML = produkter.map((p, i) => `
+      <div onclick="visEanPriser(${JSON.stringify(escapeHtml(p.ean))}, ${JSON.stringify(escapeHtml(p.name))})"
+           style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer;border-bottom:1px solid var(--border)"
            onmouseover="this.style.background='var(--surface)'"
            onmouseout="this.style.background='transparent'">
-        <div style="min-width:0;flex:1">
-          <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name)}</div>
-          <div style="font-size:11px;color:var(--ink3)">${escapeHtml(vekt)}${escapeHtml(enhetspris)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500">${escapeHtml(p.name)}</div>
+          <div style="font-size:11px;color:var(--ink3)">${escapeHtml(p.vendor || "")} · Fra ${p.price} kr</div>
         </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:14px;font-weight:600;color:var(--accent)">${p.price} kr</div>
-          <div style="font-size:11px;color:var(--ink3)">＋ legg til</div>
-        </div>
-      </div>`;
-    }).join("") + `<div style="margin-top:6px;font-size:10px;color:var(--ink3)">Priser fra Kassalapp — daglige nettpriser, kan avvike fra din lokale butikk.</div>`;
+        <div style="font-size:12px;color:var(--accent)">Se priser ›</div>
+      </div>`).join("") +
+      `<div style="margin-top:6px;font-size:10px;color:var(--ink3)">Priser fra Kassalapp. Trykk for å se i alle butikker.</div>`;
 
   } catch (e) {
-    console.warn("butikk-tilbud:", e);
+    console.warn("ean-søk:", e);
     title.textContent = "Kunne ikke hente priser";
-    area.innerHTML = `<p class="smart-thin-msg">${escapeHtml(e.message)}</p>`;
+    area.innerHTML = `<p class="smart-thin-msg">${escapeHtml(String(e.message))}</p>`;
+  }
+});
+
+window.visEanPriser = async (ean, produktnavn) => {
+  const title = document.getElementById("ean-pris-title");
+  const area = document.getElementById("ean-pris-items");
+  title.textContent = `Henter priser for ${produktnavn}...`;
+  area.innerHTML = `<p class="smart-thin-msg">Slår opp i alle butikker 🏪</p>`;
+
+  try {
+    const res = await fetch("/ean-search", {
+      method: "POST",
+      headers: await aiHeaders(),
+      body: JSON.stringify({ ean })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const butikker = data.butikker || [];
+    if (butikker.length === 0) {
+      title.textContent = `Ingen butikkpriser funnet for ${produktnavn}`;
+      area.innerHTML = `<p class="smart-thin-msg">Kassalapp har ikke prisdata for denne EAN-koden akkurat nå.</p>`;
+      return;
+    }
+
+    const billigst = butikker[0].price;
+    title.textContent = `${produktnavn} — ${butikker.length} butikker:`;
+    area.innerHTML = `
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:6px">Trykk på en butikk for å legge varen i handlelista med butikknavn og pris.</div>` +
+      butikker.map((b, i) => `
+        <div onclick="leggTilMedButikk(${JSON.stringify(escapeHtml(produktnavn))}, ${b.price}, ${JSON.stringify(escapeHtml(b.store))})"
+             style="display:flex;justify-content:space-between;align-items:center;padding:8px 6px;border-radius:8px;cursor:pointer;gap:8px"
+             onmouseover="this.style.background='var(--surface)'"
+             onmouseout="this.style.background='transparent'">
+          <div style="font-size:13px;font-weight:${i===0?'600':'400'}">${i===0?'🥇 ':''}${escapeHtml(b.store)}</div>
+          <div style="text-align:right">
+            <span style="font-size:14px;font-weight:600;color:${b.price === billigst ? 'var(--accent)' : 'var(--ink)'}">${b.price} kr</span>
+            ${b.price > billigst ? `<span style="font-size:11px;color:var(--ink3);margin-left:4px">+${(b.price - billigst).toFixed(2)}</span>` : ''}
+          </div>
+        </div>`).join("") +
+      `<button onclick="document.getElementById('ean-pris-go').click()" style="width:100%;margin-top:8px;background:none;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;cursor:pointer;color:var(--ink2)">← Nytt søk</button>
+       <div style="margin-top:6px;font-size:10px;color:var(--ink3)">Priser fra Kassalapp — nettbutikkpriser, kan avvike lokalt.</div>`;
+
+  } catch (e) {
+    console.warn("ean-priser:", e);
+    title.textContent = "Feil ved henting av priser";
+    area.innerHTML = `<p class="smart-thin-msg">${escapeHtml(String(e.message))}</p>`;
   }
 };
 
-// Legg til fra butikktilbud — med butikknavn på varen
-window.leggTilFraButikk = async (navn, pris, butikk) => {
+window.leggTilMedButikk = async (navn, pris, butikk) => {
   const vare = `${navn} (${butikk})`;
   await addItem(vare);
   const melding = document.createElement("div");
-  melding.textContent = `✓ Lagt til fra ${butikk}`;
-  melding.style.cssText = "position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;pointer-events:none";
+  melding.textContent = `✓ ${navn} fra ${butikk} lagt til`;
+  melding.style.cssText = "position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;pointer-events:none;white-space:nowrap";
   document.body.appendChild(melding);
-  setTimeout(() => melding.remove(), 2000);
+  setTimeout(() => melding.remove(), 2500);
 };
 
-  document.getElementById("smart-list-btn").addEventListener("click", () => {
+    document.getElementById("smart-list-btn").addEventListener("click", () => {
     const preview = document.getElementById("smart-preview");
     if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
     const { items, thin } = buildSmartList();
