@@ -53,6 +53,66 @@ function jsonRes(obj, status = 200) {
   });
 }
 
+// ============================================================
+//  Firebase-autentisering av AI-endepunktene
+//  Verifiserer Firebase ID-token (RS256-JWT) mot Googles
+//  offentlige nøkler, uten eksterne biblioteker.
+// ============================================================
+const FIREBASE_PROJECT_ID = "handleliste-64ec3";
+
+let jwksCache = { keys: null, expires: 0 };
+async function getGoogleJwks() {
+  if (jwksCache.keys && Date.now() < jwksCache.expires) return jwksCache.keys;
+  const res = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
+  if (!res.ok) throw new Error("Kunne ikke hente Google-nøkler");
+  const data = await res.json();
+  jwksCache = { keys: data.keys || [], expires: Date.now() + 6 * 60 * 60 * 1000 };
+  return jwksCache.keys;
+}
+
+function b64urlToBytes(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = s.length % 4 ? "=".repeat(4 - (s.length % 4)) : "";
+  const bin = atob(s + pad);
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+// Returnerer token-payload hvis gyldig, ellers null
+async function verifyFirebaseIdToken(request) {
+  try {
+    const authHeader = request.headers.get("Authorization") || "";
+    const m = authHeader.match(/^Bearer (.+)$/);
+    if (!m) return null;
+    const parts = m[1].split(".");
+    if (parts.length !== 3) return null;
+
+    const header = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[0])));
+    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[1])));
+
+    if (header.alg !== "RS256" || !header.kid) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.aud !== FIREBASE_PROJECT_ID) return null;
+    if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) return null;
+    if (!payload.exp || payload.exp < now) return null;
+    if (!payload.sub) return null;
+
+    const keys = await getGoogleJwks();
+    const jwk = keys.find(k => k.kid === header.kid);
+    if (!jwk) return null;
+
+    const key = await crypto.subtle.importKey(
+      "jwk", jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false, ["verify"]
+    );
+    const data = new TextEncoder().encode(parts[0] + "." + parts[1]);
+    const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64urlToBytes(parts[2]), data);
+    return valid ? payload : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Kaller Anthropic Messages API og returnerer rå tekst + status
 async function callAnthropic(apiKey, payload) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -72,6 +132,24 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const apiKey = env.ANTHROPIC_API_KEY;
+
+    // -------------------------------------------------------
+    //  Beskyttelse av AI-endepunktene: krever gyldig Firebase-
+    //  innlogging og begrenser forespørselsstørrelse, slik at
+    //  uvedkommende ikke kan bruke Anthropic-kreditten.
+    // -------------------------------------------------------
+    const AI_ENDPOINTS = ["/scan", "/suggest-packing", "/parse-menu"];
+    if (AI_ENDPOINTS.includes(url.pathname)) {
+      if (request.method !== "POST") return jsonRes({ error: "Method not allowed" }, 405);
+      const contentLength = parseInt(request.headers.get("Content-Length") || "0", 10);
+      if (contentLength > 10 * 1024 * 1024) {
+        return jsonRes({ error: "Forespørselen er for stor (maks 10 MB)" }, 413);
+      }
+      const user = await verifyFirebaseIdToken(request);
+      if (!user) {
+        return jsonRes({ error: "Ikke innlogget – last siden på nytt og prøv igjen" }, 401);
+      }
+    }
 
     // -------------------------------------------------------
     //  /suggest-packing – AI-pakkeforslag
