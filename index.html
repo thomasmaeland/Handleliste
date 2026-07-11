@@ -983,6 +983,21 @@
   </div>
 </div>
 
+<!-- NY UNDERLISTE MODAL (lister innenfor husholdningen) -->
+<div class="modal-overlay" id="sub-list-modal">
+  <div class="modal">
+    <div class="modal-title">Ny liste i husholdningen</div>
+    <div class="modal-row">
+      <label class="modal-label">Navn</label>
+      <input class="modal-input" id="sub-list-name-input" type="text" placeholder="F.eks. Gaver, Verktøy" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1rem">
+      <button class="modal-input" id="sub-list-create-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
+      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('sub-list-modal').classList.remove('open')">Avbryt</button>
+    </div>
+  </div>
+</div>
+
 <!-- CREATE SHARED HANDLELISTE MODAL -->
 <div class="modal-overlay" id="create-shared-list-modal">
   <div class="modal">
@@ -1272,6 +1287,7 @@ let LIST_ID = null;
   let activeSubList = null;        // null = hovedlisten (Handleliste), ellers {id, name}
   let subLists = [];               // cache av underlister for gjeldende husholdning
   let unsubscribeSubLists = null;
+  let subListRestored = false;     // gjenopprett sist brukte underliste kun én gang per økt
 
   function itemsColRef() {
     return activeSubList
@@ -1539,6 +1555,25 @@ let LIST_ID = null;
     unsubscribeSubLists = onSnapshot(q, snap => {
       subLists = [];
       snap.forEach(d => subLists.push({ id: d.id, ...d.data() }));
+
+      // Gjenopprett sist brukte underliste (én gang, ved oppstart)
+      if (!subListRestored) {
+        subListRestored = true;
+        try {
+          const savedId = localStorage.getItem("lastSubListId");
+          if (savedId && currentListType === "private") {
+            const found = subLists.find(s => s.id === savedId);
+            if (found) { activeSubList = found; startListeningWithPrice(); }
+          }
+        } catch(e) { console.warn("restore sublist:", e); }
+      }
+
+      // Hvis aktiv underliste ble slettet (f.eks. av Katrine), fall tilbake til hovedlisten
+      if (activeSubList && !subLists.find(s => s.id === activeSubList.id)) {
+        activeSubList = null;
+        startListeningWithPrice();
+      }
+
       renderListSwitcher();
     });
   }
@@ -1557,6 +1592,9 @@ let LIST_ID = null;
       html += `<button class="list-pill ${isActive ? 'active' : ''}" onclick="switchToSubList('${sl.id}')">${escapeHtml(sl.name)}</button>`;
     });
     html += `<button class="list-pill list-pill-new" onclick="createSubList()">+ Ny liste</button>`;
+    if (activeSubList) {
+      html += `<button class="list-pill list-pill-new" onclick="deleteSubList()" title="Slett denne listen" style="color:var(--danger)">🗑</button>`;
+    }
     bar.innerHTML = html;
     bar.style.scrollSnapType = "x proximity";
 
@@ -1574,19 +1612,57 @@ let LIST_ID = null;
 
   window.switchToSubList = (subListId) => {
     activeSubList = subListId ? subLists.find(s => s.id === subListId) || null : null;
+    try { localStorage.setItem("lastSubListId", activeSubList ? activeSubList.id : ""); } catch(e) {}
     renderListSwitcher();
     startListeningWithPrice();
+    renderSuggestions();
   };
 
-  window.createSubList = async () => {
-    const name = prompt("Navn på ny liste (f.eks. Gaver, Verktøy):");
-    const trimmed = (name || "").trim();
-    if (!trimmed) return;
-    const ref = await addDoc(collection(db, "lists", HOUSEHOLD_ID, "handlelister"), {
-      name: trimmed, createdAt: Date.now(), createdBy: currentUser?.displayName || ""
-    });
-    activeSubList = { id: ref.id, name: trimmed };
-    startListeningWithPrice();
+  window.createSubList = () => {
+    const input = document.getElementById("sub-list-name-input");
+    input.value = "";
+    document.getElementById("sub-list-modal").classList.add("open");
+    setTimeout(() => input.focus(), 50);
+  };
+
+  async function confirmCreateSubList() {
+    const input = document.getElementById("sub-list-name-input");
+    const trimmed = input.value.trim();
+    if (!trimmed) { input.focus(); return; }
+    document.getElementById("sub-list-modal").classList.remove("open");
+    try {
+      const ref = await addDoc(collection(db, "lists", HOUSEHOLD_ID, "handlelister"), {
+        name: trimmed, createdAt: Date.now(), createdBy: currentUser?.displayName || ""
+      });
+      activeSubList = { id: ref.id, name: trimmed };
+      try { localStorage.setItem("lastSubListId", ref.id); } catch(e) {}
+      startListeningWithPrice();
+      renderSuggestions();
+    } catch(e) {
+      console.warn("confirmCreateSubList:", e);
+      alert("Kunne ikke opprette listen. Prøv igjen.");
+    }
+  }
+  document.getElementById("sub-list-create-btn").addEventListener("click", confirmCreateSubList);
+  document.getElementById("sub-list-name-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") confirmCreateSubList();
+  });
+
+  window.deleteSubList = async () => {
+    if (!activeSubList) return;
+    const sl = activeSubList;
+    if (!confirm(`Slette listen "${sl.name}" og alle varene på den? Dette kan ikke angres.`)) return;
+    try {
+      const itemsSnap = await getDocs(collection(db, "lists", HOUSEHOLD_ID, "handlelister", sl.id, "items"));
+      for (const d of itemsSnap.docs) await deleteDoc(d.ref);
+      await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "handlelister", sl.id));
+    } catch(e) {
+      console.warn("deleteSubList:", e);
+      alert("Kunne ikke slette listen. Prøv igjen.");
+      return;
+    }
+    try { localStorage.removeItem("lastSubListId"); } catch(e) {}
+    switchToSubList(null);
   };
 
   function updateListSwitcherUI() {
@@ -2309,11 +2385,13 @@ let LIST_ID = null;
       HOUSEHOLD_ID = null;
       document.getElementById("login-screen").style.display = "flex";
       document.getElementById("app-screen").style.display = "none";
-      if (unsubscribeList) unsubscribeList();
-      if (unsubscribeTasks) unsubscribeTasks();
-      if (unsubscribeTasks) unsubscribeTasks();
-      if (unsubscribeTours) unsubscribeTours();
-      if (unsubscribePackItems) unsubscribePackItems();
+      if (unsubscribeList) { unsubscribeList(); unsubscribeList = null; }
+      if (unsubscribeTasks) { unsubscribeTasks(); unsubscribeTasks = null; }
+      if (unsubscribeWishes) { unsubscribeWishes(); unsubscribeWishes = null; }
+      if (unsubscribeMiddag) { unsubscribeMiddag(); unsubscribeMiddag = null; }
+      if (unsubscribeTours) { unsubscribeTours(); unsubscribeTours = null; }
+      if (unsubscribePackItems) { unsubscribePackItems(); unsubscribePackItems = null; }
+      if (unsubscribeSubLists) { unsubscribeSubLists(); unsubscribeSubLists = null; }
       stopListeningDeling();
     }
   });
@@ -2888,7 +2966,7 @@ let LIST_ID = null;
     try {
       const res = await fetch("/suggest-packing", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await aiHeaders(),
         body: JSON.stringify({ beskrivelse, personer: persons })
       });
       const data = await res.json();
@@ -3193,17 +3271,19 @@ let LIST_ID = null;
   // PURCHASE HISTORY
   async function loadPurchaseHistory() {
     try {
-      const ref = doc(db, "lists", LIST_ID, "meta", "history2");
+      // Kjøpshistorikk følger husholdningen (fast), ikke aktiv liste — ellers
+      // overskrives delte listers historikk når man bytter liste.
+      const ref = doc(db, "lists", HOUSEHOLD_ID || LIST_ID, "meta", "history2");
       const snap = await getDoc(ref);
       if (snap.exists()) purchaseHistory = snap.data();
-    } catch(e) {}
+    } catch(e) { console.warn("loadPurchaseHistory:", e); }
   }
 
   async function savePurchaseHistory() {
     try {
-      const ref = doc(db, "lists", LIST_ID, "meta", "history2");
+      const ref = doc(db, "lists", HOUSEHOLD_ID || LIST_ID, "meta", "history2");
       await setDoc(ref, purchaseHistory);
-    } catch(e) {}
+    } catch(e) { console.warn("savePurchaseHistory:", e); }
   }
 
   function avgInterval(navn) {
@@ -3264,6 +3344,8 @@ let LIST_ID = null;
     const now = Date.now();
     const container = document.getElementById("chips-container");
     const section = document.getElementById("suggestions-section");
+    // Dagligvareforslag gir ikke mening på underlister (Gaver, Verktøy osv.)
+    if (activeSubList) { if (section) section.style.display = "none"; return; }
     const onList = new Set(currentItems.filter(i=>!i.done).map(i=>cleanName(i.name).toLowerCase()));
     const suggestions = [];
 
@@ -3307,8 +3389,8 @@ let LIST_ID = null;
     container.innerHTML = top.map(s => {
       const bg = s.reason==="mønster" ? "#FFF3E0" : "#f0f0f0";
       const tc = s.reason==="mønster" ? "#E65100" : "var(--ink3)";
-      return `<button class="chip" onclick="addFromSuggestion('${s.navn}','${s.ikon}')">
-        <span>${s.ikon}</span>${s.navn}
+      return `<button class="chip" onclick="addFromSuggestion('${escapeHtml(escapeJsString(s.navn))}','${s.ikon}')">
+        <span>${s.ikon}</span>${escapeHtml(s.navn)}
         <span class="chip-days" style="background:${bg};color:${tc}">${s.label}</span>
         <span onclick="event.stopPropagation(); fjernFraHistorikk('${escapeJsString(s.navn)}')" style="margin-left:4px;opacity:.5;font-size:14px;line-height:1">×</span>
       </button>`;
@@ -3324,6 +3406,7 @@ window.fjernFraHistorikk = async (navn) => {
 };
   // LIST
   function startListening() {
+    if (unsubscribeList) { unsubscribeList(); unsubscribeList = null; }
     const q = query(itemsColRef(), orderBy("createdAt","asc"));
     unsubscribeList = onSnapshot(q, snapshot => {
       currentItems = [];
@@ -3481,10 +3564,10 @@ window.fjernFraHistorikk = async (navn) => {
         <div class="item ${item.done?'done':''}" id="item-${item.id}">
           <button class="check-btn" onclick="toggleItem('${item.id}',${item.done})">${item.done?"✓":""}</button>
           <div class="item-main" onclick="openEdit('${item.id}')" style="cursor:pointer">
-            <div class="item-name">${item.name}${endringMerke}</div>
+            <div class="item-name">${escapeHtml(item.name)}${endringMerke}</div>
             <div class="item-detail">${detail}${dateBadge}</div>
           </div>
-          ${initials ? `<span class="by-whom">${initials}</span>` : ""}
+          ${initials ? `<span class="by-whom">${escapeHtml(initials)}</span>` : ""}
           <div class="qty-wrap">
             <button class="qty-btn" onclick="changeQty('${item.id}',${qty},-1)">−</button>
             <span class="qty-num">${qty}</span>
@@ -3513,7 +3596,7 @@ window.fjernFraHistorikk = async (navn) => {
 
   window.toggleItem = async (id, currentDone) => {
     await updateDoc(itemDocRef(id), { done: !currentDone });
-    if (!currentDone) {
+    if (!currentDone && !activeSubList) {
       const doneItems = currentItems.filter(i=>i.done||i.id===id).map(i=>i.name);
       learnFromPurchase(doneItems);
       await savePurchaseHistory();
@@ -3593,7 +3676,8 @@ window.fjernFraHistorikk = async (navn) => {
     if (!name) return;
     await updateDoc(itemDocRef(editingItemId), { name, qty, unit, cat, price });
     // Lagre prisen i purchaseHistory så den huskes til neste gang
-    if (price) {
+    // (men ikke fra underlister — gaver/verktøy skal ikke inn i dagligvarehistorikken)
+    if (price && !activeSubList) {
       const cleanN = cleanName(name);
       if (!purchaseHistory[cleanN]) purchaseHistory[cleanN] = { lastBought: null, intervals: [], partners: {} };
       purchaseHistory[cleanN].lastPrice = price;
@@ -3629,6 +3713,16 @@ window.fjernFraHistorikk = async (navn) => {
   document.getElementById("clear-done-btn").addEventListener("click", async () => {
     const doneItems = currentItems.filter(i=>i.done);
     if (doneItems.length === 0) { alert("Ingen avkryssede varer å lagre."); return; }
+
+    // Underlister (Gaver, Verktøy osv.) skal ikke inn i dagligvarehistorikken —
+    // fjern bare de avkryssede varene.
+    if (activeSubList) {
+      if (!confirm(`Fjerne ${doneItems.length} avkryssede varer fra "${activeSubList.name}"?`)) return;
+      for (const item of doneItems) {
+        await deleteDoc(itemDocRef(item.id));
+      }
+      return;
+    }
 
     // Lagre snapshot til historikk
     const dateStr = new Date().toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" });
@@ -3676,7 +3770,7 @@ window.fjernFraHistorikk = async (navn) => {
       snap.forEach(d => trips.push({ id:d.id, ...d.data() }));
       historyTripsCache = trips;
       renderHistory(trips);
-    } catch(e) {}
+    } catch(e) { console.warn("loadHistory:", e); }
   }
 
 
@@ -3726,7 +3820,7 @@ window.fjernFraHistorikk = async (navn) => {
         <div style="display:flex;flex-wrap:wrap;gap:5px">
           ${groups[cat].map(({ item, index }) => `
             <button class="history-item-chip" onclick="event.stopPropagation(); openHistoryItemEdit('${trip.id}', ${index})" style="cursor:pointer;border:1px solid var(--border)">
-              ${item.name}${item.price ? " · " + item.price + " kr" : ""}${item.qty>1 ? " " + item.qty + " " + (item.unit || "stk") : ""}
+              ${escapeHtml(item.name)}${item.price ? " · " + item.price + " kr" : ""}${item.qty>1 ? " " + item.qty + " " + (item.unit || "stk") : ""}
             </button>
           `).join("")}
         </div>
@@ -4424,6 +4518,15 @@ if (h?.priserPerButikk) {
   }
 
 
+  // Headers til AI-endepunktene i workeren — inkluderer Firebase ID-token
+  async function aiHeaders() {
+    const headers = { "Content-Type": "application/json" };
+    try {
+      if (currentUser) headers["Authorization"] = "Bearer " + await currentUser.getIdToken();
+    } catch(e) { console.warn("getIdToken feilet:", e); }
+    return headers;
+  }
+
   function escapeJsString(value) {
     return String(value ?? "")
       .replace(/\\/g, "\\\\")
@@ -4648,7 +4751,7 @@ if (h?.priserPerButikk) {
 
       const response = await fetch("/scan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await aiHeaders(),
         body: JSON.stringify({
           image: base64,
           mediaType,
@@ -5332,7 +5435,7 @@ await addDoc(historyRef, {
       const body = importBildeData ? { bilde: importBildeData, mediaType: importBildeType } : { tekst };
       const res = await fetch("/parse-menu", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await aiHeaders(),
         body: JSON.stringify(body)
       });
       const data = await res.json();
@@ -6395,8 +6498,10 @@ await addDoc(historyRef, {
   // ── END SWIPE ─────────────────────────────────────────────────────────────
 
   // Hook price summary into list updates
-  const _origSnap = startListening;
   function startListeningWithPrice() {
+    // VIKTIG: koble fra forrige lytter først — ellers fortsetter gamle lyttere å fyre
+    // og overskriver currentItems med data fra forrige liste (og lekker minne/lesekvote)
+    if (unsubscribeList) { unsubscribeList(); unsubscribeList = null; }
     const q = query(itemsColRef(), orderBy("createdAt","asc"));
     unsubscribeList = onSnapshot(q, snapshot => {
       currentItems = [];
@@ -6425,7 +6530,7 @@ window.closeShoppingMode = () => {
 
 window.toggleShoppingModeItem = async (id, currentDone) => {
   await updateDoc(itemDocRef(id), { done: !currentDone });
-  if (!currentDone) {
+  if (!currentDone && !activeSubList) {
     const item = currentItems.find(i => i.id === id);
     if (item) {
       learnFromPurchase([item.name]);
@@ -6475,7 +6580,7 @@ function renderShoppingMode() {
     return `<div class="shop-item ${item.done ? "done" : ""}" onclick="toggleShoppingModeItem('${item.id}', ${item.done})">
       <div class="shop-checkbox">${item.done ? "✓" : ""}</div>
       <div style="flex:1">
-        <div class="shop-item-name">${item.name}</div>
+        <div class="shop-item-name">${escapeHtml(item.name)}</div>
         ${detail ? `<div class="shop-item-detail">${detail}</div>` : ""}
       </div>
     </div>`;
