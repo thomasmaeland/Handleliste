@@ -605,7 +605,10 @@
         <div class="price-summary-sub" id="price-sub"></div>
       </div>
 
-      <!-- SPARINGS-BANNER fjernet herfra - vises over varelista -->
+      <!-- SPARINGS-BANNER -->
+      <div id="sparing-banner" style="display:none;background:#f0faf4;border:1px solid #2d8a4e44;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#1a5c35">
+        <div id="sparing-banner-tekst"></div>
+      </div>
 
       <!-- RECEIPT SCAN -->
       <input type="file" id="receipt-input" accept="image/*" capture="environment" style="display:none" />
@@ -631,10 +634,6 @@
             <button class="sort-toggle-btn" id="sort-date-btn" onclick="toggleSortByDate()">🕒 Nyeste først</button>
             <button class="clear-done-btn" id="clear-done-btn">✓ Lagre og avslutt</button>
           </div>
-        </div>
-        <!-- SPARINGS-BANNER: vises når varer har prissammenligningsdata -->
-        <div id="sparing-banner" style="display:none;background:#f0faf4;border:1px solid #2d8a4e44;border-radius:10px;padding:10px 14px;margin:8px 0;font-size:13px;color:#1a5c35">
-          <div id="sparing-banner-tekst"></div>
         </div>
         <div class="items-list" id="items-list">
           <div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>
@@ -3660,7 +3659,7 @@ window.fjernFraHistorikk = async (navn) => {
     </div>`;
   }
 
-  async function addItem(name, cat, unit) {
+  async function addItem(name, cat, unit, ekstra = {}) {
     const trimmed = name.trim();
     if (!trimmed) return;
     const category = cat || guessCategory(trimmed);
@@ -3668,6 +3667,7 @@ window.fjernFraHistorikk = async (navn) => {
       name: trimmed, done: false, qty: 1,
       unit: unit || "stk", cat: category,
       createdAt: Date.now(), addedBy: currentUser?.displayName || "",
+      ...ekstra
     });
   }
 
@@ -4619,6 +4619,10 @@ window.visEanPriser = async (ean, produktnavn) => {
     title.textContent = `${produktnavn} — ${butikker.length} butikker:`;
     area.innerHTML = "";
 
+    // Bygg alleButikker-objekt for å lagre alle priser på varen
+    const alleButikkPriser = {};
+    butikker.forEach(bk => { alleButikkPriser[bk.store] = bk.price; });
+
     const hint = document.createElement("div");
     hint.style.cssText = "font-size:11px;color:var(--ink3);margin-bottom:6px";
     hint.textContent = "Trykk på en butikk for å legge varen i handlelista.";
@@ -4631,7 +4635,7 @@ window.visEanPriser = async (ean, produktnavn) => {
       rad.innerHTML = `<div style="font-size:13px;font-weight:${i===0?'600':'400'}">${i===0?'🥇 ':''}${escapeHtml(b.store)}</div><div style="text-align:right"><span style="font-size:14px;font-weight:600;color:${b.price === billigst ? 'var(--accent)' : 'var(--ink)'}">${b.price} kr</span>${diff}</div>`;
       rad.addEventListener("mouseover", () => rad.style.background = "var(--surface)");
       rad.addEventListener("mouseout", () => rad.style.background = "transparent");
-      rad.addEventListener("click", () => leggTilMedButikk(produktnavn, b.price, b.store));
+      rad.addEventListener("click", () => leggTilMedButikk(produktnavn, b.price, b.store, alleButikkPriser));
       area.appendChild(rad);
     });
 
@@ -4653,11 +4657,10 @@ window.visEanPriser = async (ean, produktnavn) => {
   }
 };
 
-window.leggTilMedButikk = async (navn, pris, butikk) => {
-  const vare = `${navn} (${butikk})`;
-  await addItem(vare);
+window.leggTilMedButikk = async (navn, pris, butikk, alleButikker = {}) => {
+  await addItem(navn, null, null, { kassalPris: pris, kassalButikk: butikk, kassalAlleButikker: alleButikker });
   const melding = document.createElement("div");
-  melding.textContent = `✓ ${navn} fra ${butikk} lagt til`;
+  melding.textContent = `✓ ${navn} lagt til (${butikk} ${pris} kr)`;
   melding.style.cssText = "position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;z-index:9999;pointer-events:none;white-space:nowrap";
   document.body.appendChild(melding);
   setTimeout(() => melding.remove(), 2500);
