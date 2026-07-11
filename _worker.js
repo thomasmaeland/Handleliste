@@ -53,66 +53,6 @@ function jsonRes(obj, status = 200) {
   });
 }
 
-// ============================================================
-//  Firebase-autentisering av AI-endepunktene
-//  Verifiserer Firebase ID-token (RS256-JWT) mot Googles
-//  offentlige nøkler, uten eksterne biblioteker.
-// ============================================================
-const FIREBASE_PROJECT_ID = "handleliste-64ec3";
-
-let jwksCache = { keys: null, expires: 0 };
-async function getGoogleJwks() {
-  if (jwksCache.keys && Date.now() < jwksCache.expires) return jwksCache.keys;
-  const res = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
-  if (!res.ok) throw new Error("Kunne ikke hente Google-nøkler");
-  const data = await res.json();
-  jwksCache = { keys: data.keys || [], expires: Date.now() + 6 * 60 * 60 * 1000 };
-  return jwksCache.keys;
-}
-
-function b64urlToBytes(s) {
-  s = s.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = s.length % 4 ? "=".repeat(4 - (s.length % 4)) : "";
-  const bin = atob(s + pad);
-  return Uint8Array.from(bin, c => c.charCodeAt(0));
-}
-
-// Returnerer token-payload hvis gyldig, ellers null
-async function verifyFirebaseIdToken(request) {
-  try {
-    const authHeader = request.headers.get("Authorization") || "";
-    const m = authHeader.match(/^Bearer (.+)$/);
-    if (!m) return null;
-    const parts = m[1].split(".");
-    if (parts.length !== 3) return null;
-
-    const header = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[0])));
-    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[1])));
-
-    if (header.alg !== "RS256" || !header.kid) return null;
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.aud !== FIREBASE_PROJECT_ID) return null;
-    if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) return null;
-    if (!payload.exp || payload.exp < now) return null;
-    if (!payload.sub) return null;
-
-    const keys = await getGoogleJwks();
-    const jwk = keys.find(k => k.kid === header.kid);
-    if (!jwk) return null;
-
-    const key = await crypto.subtle.importKey(
-      "jwk", jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false, ["verify"]
-    );
-    const data = new TextEncoder().encode(parts[0] + "." + parts[1]);
-    const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64urlToBytes(parts[2]), data);
-    return valid ? payload : null;
-  } catch (e) {
-    return null;
-  }
-}
-
 // Kaller Anthropic Messages API og returnerer rå tekst + status
 async function callAnthropic(apiKey, payload) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -132,24 +72,6 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const apiKey = env.ANTHROPIC_API_KEY;
-
-    // -------------------------------------------------------
-    //  Beskyttelse av AI-endepunktene: krever gyldig Firebase-
-    //  innlogging og begrenser forespørselsstørrelse, slik at
-    //  uvedkommende ikke kan bruke Anthropic-kreditten.
-    // -------------------------------------------------------
-    const AI_ENDPOINTS = ["/scan", "/suggest-packing", "/parse-menu", "/price-lookup"];
-    if (AI_ENDPOINTS.includes(url.pathname)) {
-      if (request.method !== "POST") return jsonRes({ error: "Method not allowed" }, 405);
-      const contentLength = parseInt(request.headers.get("Content-Length") || "0", 10);
-      if (contentLength > 10 * 1024 * 1024) {
-        return jsonRes({ error: "Forespørselen er for stor (maks 10 MB)" }, 413);
-      }
-      const user = await verifyFirebaseIdToken(request);
-      if (!user) {
-        return jsonRes({ error: "Ikke innlogget – last siden på nytt og prøv igjen" }, 401);
-      }
-    }
 
     // -------------------------------------------------------
     //  /suggest-packing – AI-pakkeforslag
@@ -427,50 +349,87 @@ Regler:
     }
 
     // -------------------------------------------------------
-    //  /price-lookup – ekte butikkpriser via Kassalapp
-    //  Krever KASSALAPP_API_KEY som miljøvariabel i Cloudflare.
-    //  Gratis-tier: 60 kall/min, kun ikke-kommersiell bruk.
+    //  /price-lookup – slå opp priser på varenavn via Kassalapp
     // -------------------------------------------------------
     if (url.pathname === "/price-lookup" && request.method === "POST") {
       try {
         const kassalKey = env.KASSALAPP_API_KEY;
-        if (!kassalKey) {
-          return jsonRes({ error: "Kassalapp er ikke konfigurert ennå (mangler KASSALAPP_API_KEY i Cloudflare)" }, 500);
-        }
+        if (!kassalKey) return jsonRes({ error: "Kassalapp er ikke konfigurert (mangler KASSALAPP_API_KEY)" }, 500);
 
         const { queries } = await request.json();
-        if (!Array.isArray(queries) || queries.length === 0) {
-          return jsonRes({ error: "Ingen varer å slå opp" }, 400);
-        }
+        if (!Array.isArray(queries) || queries.length === 0) return jsonRes({ error: "Ingen varer å slå opp" }, 400);
         const limited = queries.slice(0, 15).map(q => String(q || "").trim()).filter(Boolean);
 
         const lookupOne = async (q) => {
           const apiUrl = "https://kassal.app/api/v1/products?search=" + encodeURIComponent(q) + "&size=8";
-          const res = await fetch(apiUrl, {
-            headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" }
-          });
+          const res = await fetch(apiUrl, { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } });
           if (!res.ok) return { query: q, matches: [] };
           const data = await res.json();
           const matches = (data.data || []).map(p => ({
             name: p.name || "",
             store: p.store?.name || "Ukjent butikk",
-            price: typeof p.current_price === "number"
-              ? p.current_price
-              : (p.current_price?.price ?? null),
-            ean: p.ean || null
+            storeCode: p.store?.code || "",
+            price: typeof p.current_price === "number" ? p.current_price : (p.current_price?.price ?? null),
+            ean: p.ean || null,
+            image: p.image || null
           })).filter(m => m.price != null && m.price > 0);
           return { query: q, matches };
         };
 
-        // Småbatcher for å holde oss under Kassalapp sin rate-limit (60/min på gratis-tier)
         const results = [];
         for (let i = 0; i < limited.length; i += 5) {
           const batch = limited.slice(i, i + 5);
           const batchResults = await Promise.all(batch.map(lookupOne));
           results.push(...batchResults);
         }
-
         return jsonRes({ results });
+      } catch (err) {
+        return jsonRes({ error: err.message }, 500);
+      }
+    }
+
+    // -------------------------------------------------------
+    //  /butikk-tilbud – henter billigste varer fra én butikkjede
+    // -------------------------------------------------------
+    if (url.pathname === "/butikk-tilbud" && request.method === "POST") {
+      try {
+        const kassalKey = env.KASSALAPP_API_KEY;
+        if (!kassalKey) return jsonRes({ error: "Kassalapp er ikke konfigurert (mangler KASSALAPP_API_KEY)" }, 500);
+
+        const { butikk, side } = await request.json();
+        if (!butikk) return jsonRes({ error: "Mangler butikk" }, 400);
+
+        // Hent billigste produkter sortert på pris, filtrer på butikkjede klientside
+        // Vi henter 3 sider (30 produkter) for å få nok treff fra riktig butikk
+        const pageNum = side || 1;
+        const apiUrl = `https://kassal.app/api/v1/products?sort=price_asc&size=50&page=${pageNum}`;
+        const res = await fetch(apiUrl, { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } });
+        if (!res.ok) return jsonRes({ error: "Kassalapp-feil", status: res.status }, 500);
+        const data = await res.json();
+
+        // Filtrer til valgt butikk
+        const butikkNavn = butikk.toLowerCase();
+        const produkter = (data.data || [])
+          .filter(p => (p.store?.name || "").toLowerCase().includes(butikkNavn) || (p.store?.code || "").toLowerCase().includes(butikkNavn.replace(/\s/g, "_")))
+          .filter(p => {
+            const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
+            return pris != null && pris > 0;
+          })
+          .map(p => ({
+            name: p.name || "",
+            store: p.store?.name || butikk,
+            storeCode: p.store?.code || "",
+            price: typeof p.current_price === "number" ? p.current_price : p.current_price?.price,
+            unitPrice: p.current_unit_price || null,
+            weight: p.weight || null,
+            weightUnit: p.weight_unit || null,
+            image: p.image || null,
+            ean: p.ean || null
+          }))
+          .sort((a, b) => a.price - b.price)
+          .slice(0, 20);
+
+        return jsonRes({ butikk, produkter });
       } catch (err) {
         return jsonRes({ error: err.message }, 500);
       }
