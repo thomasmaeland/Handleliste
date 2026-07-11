@@ -370,15 +370,27 @@ Regler:
           if (!priceRes.ok) return jsonRes({ error: "Kassalapp-feil ved EAN-oppslag" }, 500);
           const priceData = await priceRes.json();
 
-          const butikker = (priceData.data || [])
-            .map(p => {
-              const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
-              return { store: p.store?.name || "Ukjent", price: pris, name: p.name || "" };
-            })
+          // Debug: logg hva vi faktisk får fra Kassalapp
+          // priceData kan være { data: [...] } eller { data: { products: [...] } }
+          let produktliste = [];
+          if (Array.isArray(priceData.data)) {
+            produktliste = priceData.data;
+          } else if (priceData.data && Array.isArray(priceData.data.products)) {
+            produktliste = priceData.data.products;
+          } else if (Array.isArray(priceData)) {
+            produktliste = priceData;
+          }
+
+          const butikker = produktliste
+            .map(p => ({
+              store: p.store?.name || "Ukjent",
+              price: p.current_price != null ? Number(p.current_price) : null,
+              name: p.name || ""
+            }))
             .filter(p => p.price != null && p.price > 0)
             .sort((a, b) => a.price - b.price);
 
-          return jsonRes({ type: "priser", ean, butikker });
+          return jsonRes({ type: "priser", ean, butikker, debug: typeof priceData.data });
         }
 
         // STEG 2: Søk på navn — hent unike produkter (én per EAN)
