@@ -4360,22 +4360,48 @@ document.getElementById("ean-pris-go")?.addEventListener("click", async () => {
       return;
     }
 
-    title.textContent = `Velg riktig produkt for "${q}":`;
-    const rader = produkter.map((p, i) => {
-      const div = document.createElement("div");
-      div.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer;border-bottom:1px solid var(--border)";
-      div.innerHTML = `<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${escapeHtml(p.name)}</div><div style="font-size:11px;color:var(--ink3)">${escapeHtml(p.vendor || "")} · Fra ${p.price} kr</div></div><div style="font-size:12px;color:var(--accent)">Se priser ›</div>`;
-      div.addEventListener("mouseover", () => div.style.background = "var(--surface)");
-      div.addEventListener("mouseout", () => div.style.background = "transparent");
-      div.addEventListener("click", () => visEanPriser(p.ean, p.name));
-      return div;
-    });
+    title.textContent = `Velg riktig produkt for "${q}" — trykk ＋ for å legge til, eller Se priser for å sammenligne:`;
     area.innerHTML = "";
-    rader.forEach(r => area.appendChild(r));
-    const info = document.createElement("div");
-    info.style.cssText = "margin-top:6px;font-size:10px;color:var(--ink3)";
-    info.textContent = "Priser fra Kassalapp. Trykk for å se i alle butikker.";
-    area.appendChild(info);
+    produkter.forEach((p, i) => {
+      const div = document.createElement("div");
+      div.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid var(--border)";
+
+      // Produktinfo (venstre)
+      const info = document.createElement("div");
+      info.style.cssText = "flex:1;min-width:0;cursor:pointer";
+      info.innerHTML = `<div style="font-size:13px;font-weight:500">${escapeHtml(p.name)}</div><div style="font-size:11px;color:var(--ink3)">${escapeHtml(p.vendor || "")} · Fra ${p.price} kr</div>`;
+      info.addEventListener("mouseover", () => info.style.opacity = "0.7");
+      info.addEventListener("mouseout", () => info.style.opacity = "1");
+      info.addEventListener("click", () => visEanPriser(p.ean, p.name));
+      div.appendChild(info);
+
+      // Se priser-knapp
+      const prisBtn = document.createElement("button");
+      prisBtn.textContent = "Se priser";
+      prisBtn.style.cssText = "background:none;border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:11px;cursor:pointer;color:var(--accent);white-space:nowrap;flex-shrink:0";
+      prisBtn.addEventListener("click", (e) => { e.stopPropagation(); visEanPriser(p.ean, p.name); });
+      div.appendChild(prisBtn);
+
+      // Legg til-knapp
+      const leggTilBtn = document.createElement("button");
+      leggTilBtn.textContent = "＋";
+      leggTilBtn.title = "Legg til i handlelista";
+      leggTilBtn.style.cssText = "background:var(--accent);border:none;border-radius:8px;padding:5px 10px;font-size:15px;cursor:pointer;color:#fff;flex-shrink:0;font-weight:600";
+      leggTilBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await addItem(p.name);
+        leggTilBtn.textContent = "✓";
+        leggTilBtn.style.background = "var(--ink3)";
+        setTimeout(() => { leggTilBtn.textContent = "＋"; leggTilBtn.style.background = "var(--accent)"; }, 2000);
+      });
+      div.appendChild(leggTilBtn);
+
+      area.appendChild(div);
+    });
+    const infoDiv = document.createElement("div");
+    infoDiv.style.cssText = "margin-top:6px;font-size:10px;color:var(--ink3)";
+    infoDiv.textContent = "Priser fra Kassalapp. Trykk 'Se priser' for sammenligning, eller ＋ for å legge til direkte.";
+    area.appendChild(infoDiv);
 
   } catch (e) {
     console.warn("ean-søk:", e);
