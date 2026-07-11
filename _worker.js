@@ -406,10 +406,10 @@ Regler:
           return jsonRes({ type: "priser", ean, butikker });
         }
 
-        // STEG 2: Søk på navn — hent unike produkter (én per EAN)
+        // STEG 2: Søk på navn — hent unike produkter (én per EAN), sorter på relevans
         if (!query) return jsonRes({ error: "Mangler query eller ean" }, 400);
         const searchRes = await fetch(
-          `https://kassal.app/api/v1/products?search=${encodeURIComponent(query)}&size=30&sort=name_asc`,
+          `https://kassal.app/api/v1/products?search=${encodeURIComponent(query)}&size=40`,
           { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } }
         );
         if (!searchRes.ok) return jsonRes({ error: "Kassalapp-feil ved søk" }, 500);
@@ -418,35 +418,47 @@ Regler:
         const q = query.toLowerCase().trim();
         const qOrd = q.split(/\s+/);
 
-        const alleProdukt = (searchData.data || [])
+        // Skår relevans: 0=beste match, 999=ikke relevant
+        function relevansSkaar(navn) {
+          const n = navn.toLowerCase();
+          const forsteOrd = n.split(" ")[0];
+          // Enkeltords-søk: første ord i produktnavnet må starte med søkeordet
+          if (qOrd.length === 1) {
+            if (forsteOrd.startsWith(q)) return 0;  // "Sukker 1kg", "Sukkerbiter" — ja
+            return 999;                              // "0% Sukker Ispinne" — nei
+          }
+          // Flerords-søk (f.eks. "tine lettmelk"): alle ord må finnes i produktnavnet
+          if (qOrd.every(ord => n.includes(ord))) return 0;
+          return 999;
+        }
+
+        const medSkaar = (searchData.data || [])
           .filter(p => p.ean)
           .map(p => {
             const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
+            const skaar = relevansSkaar(p.name || "");
             return {
               name: p.name || "",
               ean: p.ean,
               price: pris,
               store: p.store?.name || "",
-              image: p.image || null,
-              vendor: p.vendor || ""
+              vendor: p.vendor || "",
+              skaar
             };
           })
-          .filter(p => p.price != null && p.price > 0)
-          // Filtrer: produktnavnet må starte med søkeordet, ELLER alle søkeordene må finnes tidlig i navn
-          .filter(p => {
-            const navn = p.name.toLowerCase();
-            if (navn.startsWith(q)) return true;
-            // Alle søkeord må forekomme i de første 30 tegnene av produktnavnet
-            const start = navn.slice(0, 35);
-            return qOrd.every(ord => start.includes(ord));
-          });
+          .filter(p => p.price != null && p.price > 0 && p.skaar < 999);
 
         // Dedupliser på EAN — behold én per EAN (laveste pris)
         const sett = {};
-        alleProdukt.forEach(p => {
-          if (!sett[p.ean] || p.price < sett[p.ean].price) sett[p.ean] = p;
+        medSkaar.forEach(p => {
+          if (!sett[p.ean] || p.price < sett[p.ean].price) sett[p.ean] = { ...p };
         });
-        const produkter = Object.values(sett).slice(0, 8);
+
+        // Sorter: best relevans først, deretter pris
+        const produkter = Object.values(sett)
+          .sort((a, b) => a.skaar - b.skaar || a.price - b.price)
+          .slice(0, 8)
+          .map(({ skaar, ...rest }) => rest);
 
         return jsonRes({ type: "produkter", produkter });
 
