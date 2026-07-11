@@ -1,434 +1,7124 @@
-// ============================================================
-//  Handleliste – Cloudflare Worker (API-proxy mot Anthropic)
-//  Endepunkter:
-//    POST /suggest-packing  – AI-pakkeforslag for en tur
-//    POST /scan             – kvitteringsscanning / kjøleskap-analyse
-//    POST /parse-menu       – tolker ukesmeny (tekst eller bilde) til struktur
-//  Alt annet serveres som statiske filer (ASSETS).
-// ============================================================
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Handleliste</title>
+  <meta name="theme-color" content="#2d6a4f" id="theme-color-meta" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-// Reparerer JSON som ble avkuttet (f.eks. ved max_tokens).
-// Kutter tilbake til siste komplette objekt og lukker åpne arrays/objekter i riktig rekkefølge.
-function repairTruncatedJson(s) {
-  let lastComplete = s.lastIndexOf("}");
-  if (lastComplete === -1) return null;
-  let candidate = s.substring(0, lastComplete + 1);
+    /* LYST TEMA (standard) */
+    :root {
+      --bg: #f7f5f0; --surface: #fff; --ink: #1c1c1e; --ink2: #6b6b6b; --ink3: #aeaead;
+      --accent: #2d6a4f; --accent-light: #d8f3dc; --accent2: #e07a2f;
+      --danger: #c0392b; --border: #e8e4dc; --radius: 12px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.07);
+      --gold: #a07828; --gold-dim: #fdf3e0; --border-gold: rgba(160,120,40,0.2);
+    }
 
-  for (let attempt = 0; attempt < 200; attempt++) {
+    /* MØRKT TEMA */
+    body.dark {
+      --bg: #080d14; --surface: #0d1520; --ink: #e6edf8; --ink2: #7a94b0; --ink3: #3d5570;
+      --accent: #52b788; --accent-light: #163024; --accent2: #f59e0b;
+      --danger: #ef4444; --border: rgba(255,255,255,0.06); --radius: 12px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.4);
+      --gold: #c9a84c; --gold-dim: #1e1608; --border-gold: rgba(201,168,76,0.2);
+    }
+
+    /* TEKSTSTØRRELSER */
+    body.text-stor { zoom: 1.2; }
+    body.text-xl   { zoom: 1.45; }
+
+    /* SVG-IKONER (hydreres fra emoji ved runtime) */
+    .ic-host { display:inline; }
+    .ic { display:inline-block; width:1.05em; height:1.05em; vertical-align:-0.16em; flex-shrink:0; }
+
+    /* DELING / KOSTNADSDELING */
+    .deling-summary { font-size:13px; color:var(--ink2); margin-bottom:.6rem; }
+    .deling-summary strong { color:var(--ink); }
+    .deling-btn-row { display:flex; gap:8px; margin-bottom:1rem; }
+    .deling-add-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); padding:11px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+    .deling-add-secondary { background:var(--accent-light); color:var(--accent); }
+    .deling-section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--ink3); margin:0 0 .5rem; }
+    .deling-card { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:11px 13px; margin-bottom:8px; }
+    .deling-card-main { flex:1; min-width:0; }
+    .deling-card-name { font-size:14px; font-weight:600; color:var(--ink); }
+    .deling-card-sub { font-size:12px; color:var(--ink2); margin-top:2px; }
+    .deling-card-actions { display:flex; gap:2px; }
+    .deling-icon-btn { background:none; border:none; cursor:pointer; color:var(--ink3); font-size:14px; padding:4px 6px; border-radius:8px; line-height:1; }
+    .deling-icon-btn:hover { background:var(--accent-light); color:var(--accent); }
+    .deling-exp-row { display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--border); }
+    .deling-exp-info { flex:1; min-width:0; }
+    .deling-exp-desc { font-size:14px; color:var(--ink); }
+    .deling-exp-who { font-size:11px; color:var(--ink2); margin-top:1px; }
+    .deling-exp-amt { font-size:14px; font-weight:600; color:var(--ink); white-space:nowrap; }
+    .deling-transfer { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:11px 13px; margin-bottom:8px; }
+    .deling-transfer-line { display:flex; align-items:center; gap:7px; font-size:14px; }
+    .deling-transfer-from { color:var(--ink2); }
+    .deling-transfer-arrow { color:var(--ink3); }
+    .deling-transfer-to { color:var(--ink); font-weight:600; }
+    .deling-transfer-amt { margin-left:auto; font-weight:700; color:var(--ink); white-space:nowrap; }
+    .deling-transfer-action { margin-top:9px; display:flex; gap:8px; }
+    .deling-vipps-btn { flex:1; background:#ff5b24; color:#fff; border:none; border-radius:8px; padding:9px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+    .deling-mark-btn { flex:1; background:var(--bg); color:var(--ink2); border:1px solid var(--border); border-radius:8px; padding:9px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; cursor:pointer; }
+    .deling-settled { background:var(--accent-light); color:var(--accent); border-radius:var(--radius); padding:13px; text-align:center; font-size:13px; font-weight:500; }
+    .deling-muted { color:var(--ink3); font-size:13px; }
+    .deling-foot { font-size:11px; color:var(--ink3); margin-top:1.25rem; line-height:1.5; }
+    .deling-members-box { display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; }
+    .deling-check { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink); cursor:pointer; }
+    .deling-check input { width:16px; height:16px; accent-color:var(--accent); }
+    .deling-settled-note { background:var(--accent-light); color:var(--accent); border-radius:var(--radius); padding:13px; text-align:center; font-size:13px; font-weight:500; }
+    .deling-paid-row { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border); }
+    .deling-paid-text { flex:1; font-size:13px; color:var(--ink2); }
+    .deling-bal { font-size:12px; font-weight:600; padding:1px 7px; border-radius:999px; margin-left:4px; white-space:nowrap; }
+    .deling-bal.pos { background:var(--accent-light); color:var(--accent); }
+    .deling-bal.neg { background:rgba(192,57,43,.12); color:var(--danger); }
+    .deling-bal.zero { background:var(--border); color:var(--ink2); }
+    .deling-people-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:1.25rem 0 .5rem; flex-wrap:wrap; }
+    .deling-people-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .deling-mini-btn { background:var(--accent-light); color:var(--accent); border:none; border-radius:999px; padding:6px 11px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; cursor:pointer; }
+    .deling-toggle-all { font-size:12px; color:var(--ink3); }
+    .deling-toggle-all button { background:none; border:none; color:var(--accent); font-size:12px; font-weight:600; cursor:pointer; padding:0 2px; font-family:'DM Sans',sans-serif; }
+
+    body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--ink); min-height:100dvh; max-width:480px; margin:0 auto; transition:background .25s, color .25s; }
+
+    /* LOGIN */
+    #login-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:2rem; gap:2rem; }
+    .login-logo { font-family:'DM Serif Display',serif; font-size:2.8rem; color:var(--ink); text-align:center; line-height:1.1; }
+    .login-logo span { display:block; font-family:'DM Sans',sans-serif; font-size:1rem; font-weight:300; color:var(--ink2); margin-top:.5rem; }
+    .login-btn { display:flex; align-items:center; gap:12px; background:var(--surface); border:1.5px solid var(--border); border-radius:50px; padding:14px 28px; font-family:'DM Sans',sans-serif; font-size:1rem; font-weight:500; cursor:pointer; color:var(--ink); transition:all .2s; box-shadow:var(--shadow); }
+    .login-btn:hover { transform:translateY(-1px); box-shadow:0 4px 20px rgba(0,0,0,.12); }
+    .google-icon { width:20px; height:20px; }
+
+    /* APP */
+    #app-screen { display:none; flex-direction:column; min-height:100dvh; }
+    header { background:var(--surface); border-bottom:1px solid var(--border); padding:1rem 1.25rem .75rem; position:sticky; top:0; z-index:10; }
+    .header-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+    .app-title { font-family:'DM Serif Display',serif; font-size:1.5rem; color:var(--ink); }
+    .user-area { display:flex; align-items:center; gap:8px; position:relative; }
+    .avatar { width:32px; height:32px; border-radius:50%; background:var(--accent-light); color:var(--accent); font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1.5px solid var(--accent); transition:background .25s, color .25s, border-color .25s; user-select:none; }
+    body.dark .avatar { background:var(--gold-dim); color:var(--gold); border-color:var(--border-gold); }
+
+    /* OFFLINE INDICATOR */
+    #offline-banner { display:none; background:#ff9500; color:white; padding:8px 1.25rem; text-align:center; font-size:13px; font-weight:500; }
+    #offline-banner.show { display:block; }
+    .settings-dropdown { display:none; position:absolute; top:40px; right:0; background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; min-width:185px; z-index:200; box-shadow:var(--shadow); }
+    .settings-dropdown.open { display:block; }
+    .dd-section-label { font-size:10px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); padding:10px 14px 4px; }
+    .dd-opt { display:flex; align-items:center; gap:10px; padding:9px 14px; font-size:13.5px; color:var(--ink2); cursor:pointer; background:none; border:none; width:100%; text-align:left; font-family:'DM Sans',sans-serif; transition:background .1s; }
+    .dd-opt:hover { background:var(--accent-light); color:var(--ink); }
+    .dd-opt.active { color:var(--accent); font-weight:500; }
+    .dd-opt.active::after { content:'✓'; margin-left:auto; font-size:12px; }
+    .dd-divider { height:1px; background:var(--border); margin:3px 0; }
+    .dd-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .dot-dark { background:#1a2a40; border:1px solid #3d5570; }
+    .dot-light { background:#f0ece4; border:1px solid #c8bfb0; }
+    .dd-opt-danger { color:var(--danger) !important; }
+    .dd-opt-share { color:var(--accent); }
+
+    /* NAV TABS */
+    .nav-tabs { display:flex; gap:4px; margin-bottom:.75rem; }
+    .nav-tab { flex:1; background:none; border:1px solid var(--border); border-radius:8px; padding:7px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500; color:var(--ink2); cursor:pointer; transition:all .15s; }
+    .nav-tab.active { background:var(--accent); border-color:var(--accent); color:white; }
+
+    /* ADD FORM */
+    .add-form { display:flex; gap:8px; position:relative; }
+    .add-input { flex:1; border:1.5px solid var(--border); border-radius:50px; padding:10px 16px; font-family:'DM Sans',sans-serif; font-size:15px; background:var(--bg); color:var(--ink); outline:none; transition:border-color .2s; }
+    .add-input:focus { border-color:var(--accent); background:white; }
+    .add-btn { background:var(--accent); color:white; border:none; border-radius:50px; width:42px; height:42px; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .2s; }
+    .add-btn:hover { background:#235c42; }
+    .add-btn:active { transform:scale(.95); }
+
+    /* AUTOCOMPLETE */
+    .autocomplete-list { position:absolute; top:calc(100% + 6px); left:0; right:52px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); z-index:100; overflow:hidden; display:none; }
+    .autocomplete-list.open { display:block; }
+    .autocomplete-item { display:flex; align-items:center; gap:10px; padding:10px 16px; font-size:14px; cursor:pointer; color:var(--ink); transition:background .1s; }
+    .autocomplete-item:hover, .autocomplete-item.ac-active { background:var(--accent-light); color:var(--accent); }
+    .autocomplete-item .ac-sub { color:var(--ink3); font-size:11px; margin-left:auto; }
+
+    /* MAIN */
+    main { flex:1; padding:1rem 1.25rem 6rem; }
+
+    /* SMART BTN */
+    .smart-list-btn { display:flex; align-items:center; gap:8px; width:100%; background:var(--accent); color:white; border:none; border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; box-shadow:0 2px 8px rgba(45,106,79,.25); }
+    .smart-list-btn:hover { transform:translateY(-1px); box-shadow:0 4px 16px rgba(45,106,79,.35); }
+    .smart-list-btn .btn-icon { font-size:18px; }
+    .smart-list-btn .btn-sub { font-size:11px; opacity:.8; margin-left:auto; }
+    .smart-preview { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin-bottom:1rem; display:none; }
+    .smart-preview.open { display:block; }
+    .smart-preview-title { font-size:12px; font-weight:500; color:var(--ink2); margin-bottom:.75rem; }
+    .smart-preview-items { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:.75rem; }
+    .smart-preview-item { display:flex; align-items:center; gap:4px; background:var(--accent-light); color:var(--accent); border-radius:20px; padding:4px 10px; font-size:13px; }
+    .smart-preview-actions { display:flex; gap:8px; }
+    .smart-confirm-btn { flex:1; background:var(--accent); color:white; border:none; border-radius:8px; padding:9px; font-size:13px; font-weight:500; cursor:pointer; }
+    .smart-cancel-btn { background:none; border:1px solid var(--border); color:var(--ink2); border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer; }
+    .smart-thin-msg { font-size:12px; color:var(--ink3); text-align:center; padding:.5rem; }
+
+
+    /* LIST ACTIONS */
+    .list-actions { display:flex; gap:8px; margin-bottom:1rem; }
+    .list-action-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius); padding:11px 14px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; color:var(--ink2); cursor:pointer; transition:all .15s; }
+    .list-action-btn:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-light); }
+
+    /* SUGGESTIONS */
+    .suggestions-section { margin-bottom:1.5rem; }
+    .section-label { font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:.6rem; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .chip { display:flex; align-items:center; gap:5px; background:var(--surface); border:1.5px solid var(--border); border-radius:50px; padding:6px 12px; font-size:13px; color:var(--ink2); cursor:pointer; transition:all .15s; }
+    #list-switcher-bar::-webkit-scrollbar { display:none; }
+    .list-pill { flex:none; display:flex; align-items:center; gap:4px; background:var(--surface); border:1.5px solid var(--border); border-radius:50px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--ink2); cursor:pointer; white-space:nowrap; scroll-snap-align:start; }
+    .list-pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .list-pill-new { background:transparent; border-style:dashed; color:var(--ink3); }
+    .chip:hover { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
+    .chip-days { font-size:10px; background:#f0f0f0; border-radius:10px; padding:1px 5px; color:var(--ink3); }
+
+    /* LIST */
+    .list-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem; }
+    .clear-done-btn { background:none; border:none; font-size:12px; color:var(--ink3); cursor:pointer; padding:4px 8px; border-radius:6px; }
+    .clear-done-btn:hover { color:var(--danger); }
+    .items-list { display:flex; flex-direction:column; gap:6px; }
+    .list-header-actions { display:flex; align-items:center; gap:4px; }
+    .sort-toggle-btn { background:none; border:1px solid var(--ink3); font-size:11px; color:var(--ink3); cursor:pointer; padding:3px 8px; border-radius:20px; white-space:nowrap; transition:all .15s; }
+    .sort-toggle-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .item-date { font-size:10px; color:var(--ink3); white-space:nowrap; margin-left:6px; }
+
+    /* CATEGORY GROUP */
+    .cat-group { margin-bottom:1.25rem; }
+    .cat-group-label { font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:.5rem; display:flex; align-items:center; gap:6px; }
+
+    /* ITEM */
+    .item { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; transition:all .2s; animation:slideIn .2s ease; }
+    @keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+    .item.done { opacity:.4; background:var(--bg); }
+    .item.done .item-name { text-decoration:line-through; color:var(--ink3); }
+    .check-btn { width:24px; height:24px; border-radius:50%; border:2px solid var(--border); background:none; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:all .15s; font-size:13px; }
+    .item.done .check-btn { background:var(--accent); border-color:var(--accent); color:white; }
+    .check-btn:hover { border-color:var(--accent); }
+    .item-main { flex:1; min-width:0; }
+    .item-name { font-size:15px; font-weight:400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .qty-btn { width:26px; height:26px; border:1px solid var(--border); background:var(--card); border-radius:6px; cursor:pointer; font-size:16px; line-height:1; color:var(--ink2); display:flex; align-items:center; justify-content:center; padding:0; }
+    .qty-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .pack-progress { border:1px solid var(--border); background:var(--card); border-radius:14px; padding:3px 10px; font-size:12px; color:var(--ink2); cursor:pointer; flex-shrink:0; min-width:38px; }
+    .pack-progress:hover { border-color:var(--accent); color:var(--accent); }
+    .pack-progress.full { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
+    .item-detail { font-size:11px; color:var(--ink3); margin-top:1px; }
+    .by-whom { font-size:10px; color:var(--accent2); font-weight:500; letter-spacing:.04em; flex-shrink:0; }
+    .qty-wrap { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+    .qty-btn { background:none; border:1px solid var(--border); width:22px; height:22px; border-radius:6px; font-size:14px; cursor:pointer; color:var(--ink2); display:flex; align-items:center; justify-content:center; line-height:1; transition:all .15s; }
+    .qty-btn:hover { background:var(--accent-light); border-color:var(--accent); color:var(--accent); }
+    .qty-num { font-size:13px; font-weight:500; min-width:18px; text-align:center; color:var(--ink); }
+    .delete-btn { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:18px; padding:2px 4px; border-radius:6px; line-height:1; transition:color .15s; }
+    .delete-btn:hover { color:var(--danger); }
+    .empty-state { text-align:center; padding:3rem 1rem; color:var(--ink3); }
+    .empty-state .big { font-size:2.5rem; margin-bottom:.5rem; }
+    .empty-state p { font-size:14px; }
+
+    /* UNIT PICKER (inline on item) */
+    .unit-select { font-size:11px; border:1px solid var(--border); border-radius:6px; padding:2px 5px; background:var(--bg); color:var(--ink2); cursor:pointer; }
+
+    /* HISTORY TAB */
+    #history-screen { display:none; }
+    .history-list { display:flex; flex-direction:column; gap:8px; }
+    .history-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; cursor:pointer; }
+    .history-card-header { display:flex; align-items:center; justify-content:space-between; padding:13px 16px; }
+    .history-date { font-weight:500; font-size:14px; }
+    .history-count { font-size:12px; color:var(--ink3); }
+    .history-chevron { color:var(--ink3); font-size:16px; transition:transform .2s; }
+    .history-card.open .history-chevron { transform:rotate(90deg); }
+    .history-items { display:none; padding:0 16px 12px; flex-wrap:wrap; gap:5px; }
+    .history-card.open .history-items { display:flex; }
+    .history-item-chip { font-size:12px; background:var(--bg); border:1px solid var(--border); border-radius:20px; padding:3px 10px; color:var(--ink2); }
+    .history-empty { text-align:center; padding:3rem 1rem; color:var(--ink3); }
+    .month-summary { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin-bottom:1rem; box-shadow:var(--shadow); }
+    .month-summary-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:.75rem; }
+    .month-summary-title { font-family:'DM Serif Display',serif; font-size:1.15rem; color:var(--ink); }
+    .month-summary-select { border:1.5px solid var(--border); border-radius:8px; padding:7px 10px; background:var(--bg); color:var(--ink); font-family:'DM Sans',sans-serif; font-size:13px; }
+    .month-summary-total { display:flex; align-items:flex-end; justify-content:space-between; border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:.65rem 0; margin-bottom:.65rem; }
+    .month-summary-total span { font-size:12px; color:var(--ink2); }
+    .month-summary-total strong { font-family:'DM Serif Display',serif; font-size:1.55rem; color:var(--accent); }
+    .month-summary-row { display:flex; justify-content:space-between; gap:10px; font-size:12px; padding:3px 0; }
+    .month-summary-row span { color:var(--ink2); }
+    .month-summary-row strong { color:var(--ink); }
+    .month-summary-empty { font-size:13px; color:var(--ink3); text-align:center; padding:.75rem 0; }
+
+
+
+    /* FAMILY BOARD */
+    #board-screen { display:none; }
+    .board-form { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin-bottom:1rem; box-shadow:var(--shadow); }
+    .board-form-title { font-family:'DM Serif Display',serif; font-size:1.15rem; margin-bottom:.8rem; }
+    .board-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+    .board-input, .board-select { width:100%; border:1.5px solid var(--border); border-radius:9px; padding:9px 10px; font-family:'DM Sans',sans-serif; font-size:13px; background:var(--bg); color:var(--ink); outline:none; }
+    .board-input:focus, .board-select:focus { border-color:var(--accent); background:white; }
+    .board-full { grid-column:1 / -1; }
+    .board-label { display:block; font-size:12px; font-weight:600; color:var(--ink2); margin-bottom:3px; }
+    .board-optional { font-weight:400; color:var(--ink3); font-size:11px; }
+    .board-more-toggle { width:100%; background:none; border:none; color:var(--accent); font-size:13px; font-weight:600; cursor:pointer; padding:8px; margin-top:8px; }
+    .board-more-toggle:hover { text-decoration:underline; }
+    .board-add-btn { width:100%; background:var(--accent); color:white; border:none; border-radius:10px; padding:11px; font-size:14px; font-weight:500; cursor:pointer; margin-top:4px; }
+    .board-section { margin-bottom:1.25rem; }
+    .board-section-title { font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:.55rem; }
+    .board-list { display:flex; flex-direction:column; gap:7px; }
+    .board-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:11px 12px; display:flex; gap:10px; align-items:flex-start; }
+    .board-card.done { opacity:.55; background:var(--bg); }
+    .board-check { width:24px; height:24px; border-radius:50%; border:2px solid var(--border); background:none; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+    .board-edit { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:16px; padding:4px 6px; flex-shrink:0; align-self:flex-start; }
+    .board-star { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:17px; padding:4px 4px; flex-shrink:0; align-self:flex-start; line-height:1; }
+    .board-star.on { color:var(--gold, #d4a843); }
+    .board-card.important { border-left:3px solid var(--gold, #d4a843); }
+    .board-card.important.done { border-left-color:var(--border); }
+    .board-important-toggle { width:100%; background:none; border:1.5px solid var(--border); border-radius:10px; padding:9px; font-size:13px; color:var(--ink2); cursor:pointer; margin-top:4px; }
+    .board-important-toggle.on { border-color:var(--gold); color:var(--gold); background:var(--gold-dim); }
+    .board-edit:hover { color:var(--accent); }
+    .board-show-all { width:100%; background:none; border:1px solid var(--border); border-radius:8px; padding:8px; color:var(--ink2); font-size:12px; cursor:pointer; margin-top:4px; }
+    .board-card.done .board-check { background:var(--accent); border-color:var(--accent); color:white; }
+    .board-main { flex:1; min-width:0; }
+    .board-title { font-size:14px; font-weight:500; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .board-card.done .board-title { text-decoration:line-through; color:var(--ink3); }
+    .board-meta { font-size:11px; color:var(--ink3); margin-top:3px; line-height:1.35; }
+    .board-pill { display:inline-block; background:var(--accent-light); color:var(--accent); border-radius:999px; padding:2px 7px; font-size:10px; margin-right:4px; margin-top:4px; }
+    .board-delete { background:none; border:none; color:var(--ink3); cursor:pointer; font-size:18px; line-height:1; padding:0 3px; }
+    .board-delete:hover { color:var(--danger); }
+    .board-empty { text-align:center; padding:1.5rem 1rem; color:var(--ink3); font-size:14px; }
+    .board-person-filters { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:1rem; }
+    .board-filter-chip { background:var(--surface); border:1.5px solid var(--border); border-radius:999px; padding:6px 11px; font-size:12px; color:var(--ink2); cursor:pointer; }
+    .board-filter-chip.active { background:var(--accent); border-color:var(--accent); color:white; }
+
+    /* RECEIPT SCAN */
+    .receipt-btn { display:flex; align-items:center; gap:8px; width:100%; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius); padding:13px 18px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:1rem; transition:all .2s; color:var(--ink2); }
+    .receipt-btn:hover { border-color:var(--accent2); color:var(--accent2); background:#FFF8F3; }
+    .receipt-btn .btn-icon { font-size:18px; }
+    .receipt-btn .btn-sub { font-size:11px; opacity:.7; margin-left:auto; }
+    .receipt-preview { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin-bottom:1rem; display:none; }
+    .receipt-preview.open { display:block; }
+    .receipt-preview-title { font-size:12px; font-weight:500; color:var(--ink2); margin-bottom:.75rem; }
+    .receipt-items-list { display:flex; flex-direction:column; gap:6px; margin-bottom:.75rem; max-height:300px; overflow-y:auto; }
+    .receipt-item-row { display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--bg); border-radius:8px; }
+    .receipt-item-check { accent-color:var(--accent); width:16px; height:16px; cursor:pointer; }
+    .receipt-item-name { flex:1; font-size:13px; }
+    .receipt-item-price { font-size:13px; font-weight:500; color:var(--accent); }
+    .receipt-cat-group { margin-bottom:.75rem; }
+    .receipt-cat-label { font-size:10px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin:.35rem 0 .35rem; }
+    .receipt-item-row { cursor:pointer; }
+    .receipt-item-row:hover { background:var(--accent-light); }
+    .receipt-edit-hint { font-size:10px; color:var(--ink3); margin-top:2px; }
+    .receipt-edit-small { font-size:11px; color:var(--ink3); }
+    .receipt-scanning { text-align:center; padding:1.5rem; color:var(--ink3); font-size:14px; }
+    .receipt-scanning .spin { display:inline-block; animation:spin .7s linear infinite; font-size:24px; margin-bottom:.5rem; }
+
+    /* PRICE SUMMARY */
+    .price-summary { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1rem; display:flex; align-items:center; justify-content:space-between; }
+    .price-summary-label { font-size:12px; color:var(--ink2); }
+    .price-summary-total { font-family:'DM Serif Display',serif; font-size:1.4rem; color:var(--accent); }
+    .price-summary-sub { font-size:11px; color:var(--ink3); text-align:right; }
+
+    /* SHARING MODAL */
+    .share-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:300; display:none; align-items:flex-end; justify-content:center; }
+    .share-modal-overlay.open { display:flex; }
+    .share-modal { background:var(--surface); border-radius:20px 20px 0 0; padding:1.5rem 1.25rem 2.5rem; width:100%; max-width:480px; }
+    .share-modal-title { font-family:'DM Serif Display',serif; font-size:1.2rem; margin-bottom:.5rem; }
+    .share-modal-sub { font-size:13px; color:var(--ink2); margin-bottom:1.25rem; }
+    .share-code-box { background:var(--accent-light); border:1.5px solid var(--accent); border-radius:var(--radius); padding:1rem; text-align:center; margin-bottom:1rem; }
+    .share-code-label { font-size:11px; color:var(--accent); font-weight:500; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; }
+    .share-code-value { font-family:'DM Serif Display',serif; font-size:1.8rem; color:var(--accent); letter-spacing:.05em; }
+    .share-copy-btn { width:100%; background:var(--accent); color:white; border:none; border-radius:10px; padding:12px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; margin-bottom:.75rem; }
+    .share-divider { text-align:center; font-size:12px; color:var(--ink3); margin:.75rem 0; }
+    .share-join-row { display:flex; gap:8px; }
+    .share-join-input { flex:1; border:1.5px solid var(--border); border-radius:10px; padding:10px 14px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; text-transform:none; letter-spacing:.02em; }
+    .share-join-input:focus { border-color:var(--accent); }
+    .share-join-btn { background:var(--accent); color:white; border:none; border-radius:10px; padding:10px 16px; font-size:14px; cursor:pointer; white-space:nowrap; }
+    .share-close-btn { width:100%; background:none; border:none; font-size:13px; color:var(--ink3); cursor:pointer; padding:8px; margin-top:.5rem; }
+
+    /* LOADING */
+    #loading { display:flex; align-items:center; justify-content:center; min-height:100dvh; }
+    .spinner { width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; margin-bottom:1rem; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    /* ITEM EDIT MODAL */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:200; display:none; align-items:flex-end; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal { background:var(--surface); border-radius:20px 20px 0 0; padding:1.5rem 1.25rem 2rem; width:100%; max-width:480px; }
+    .modal-title { font-family:'DM Serif Display',serif; font-size:1.2rem; margin-bottom:1.25rem; }
+    .modal-row { display:flex; gap:8px; margin-bottom:.75rem; align-items:center; }
+    .modal-label { font-size:12px; color:var(--ink2); width:70px; flex-shrink:0; }
+    .modal-input { flex:1; border:1.5px solid var(--border); border-radius:8px; padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; }
+    .modal-input:focus { border-color:var(--accent); }
+    .modal-select { flex:1; border:1.5px solid var(--border); border-radius:8px; padding:8px 12px; font-family:'DM Sans',sans-serif; font-size:14px; background:var(--bg); color:var(--ink); outline:none; }
+    .modal-actions { display:flex; gap:8px; margin-top:1rem; }
+    .modal-save { flex:1; background:var(--accent); color:white; border:none; border-radius:10px; padding:12px; font-size:14px; font-weight:500; cursor:pointer; }
+    .modal-delete { background:var(--danger); color:white; border:none; border-radius:10px; padding:12px 16px; font-size:14px; font-weight:500; cursor:pointer; }
+    .modal-cancel { background:none; border:1px solid var(--border); color:var(--ink2); border-radius:10px; padding:12px 16px; font-size:14px; cursor:pointer; }
+
+    /* SWIPE */
+    .swipe-wrapper { position:relative; overflow:hidden; border-radius:var(--radius); }
+    .swipe-bg { position:absolute; inset:0; display:flex; align-items:center; border-radius:var(--radius); transition:opacity .2s; opacity:0; pointer-events:none; }
+    .swipe-bg-done { background:#27ae60; justify-content:flex-start; padding-left:22px; }
+    .swipe-bg-delete { background:var(--danger); justify-content:flex-end; padding-right:22px; }
+    .swipe-bg-icon { color:white; font-size:22px; font-weight:600; }
+    .swipe-inner { position:relative; transition:transform .35s cubic-bezier(.25,.46,.45,.94); touch-action:pan-y; will-change:transform; }
+    .swipe-wrapper.swiping .swipe-inner { transition:none; }
+    .swipe-wrapper.snap-back .swipe-inner { transition:transform .4s cubic-bezier(.25,.46,.45,.94); }
+    .swipe-wrapper.committing .swipe-inner { transition:transform .45s cubic-bezier(.55,0,1,.6); }
+
+/* HANDLEMODUS */
+.shop-overlay { position:fixed; inset:0; background:var(--bg); z-index:400; display:none; flex-direction:column; }
+.shop-overlay.open { display:flex; }
+.shop-header { background:var(--accent); color:white; padding:1rem 1.25rem; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.shop-header-title { font-family:'DM Serif Display',serif; font-size:1.3rem; }
+.shop-header-sub { font-size:12px; opacity:.8; margin-top:2px; }
+.shop-close-btn { background:rgba(255,255,255,.2); border:none; color:white; border-radius:10px; padding:8px 14px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; cursor:pointer; }
+.shop-body { flex:1; overflow-y:auto; padding:1rem 1.25rem 2rem; }
+.shop-cat-label { font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin:1.25rem 0 .5rem; }
+.shop-cat-label:first-child { margin-top:0; }
+.shop-item { display:flex; align-items:center; gap:14px; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius); padding:14px 16px; margin-bottom:8px; cursor:pointer; transition:all .15s; -webkit-tap-highlight-color:transparent; }
+.shop-item.done { opacity:.4; background:var(--bg); border-color:transparent; }
+.shop-item.done .shop-item-name { text-decoration:line-through; color:var(--ink3); }
+.shop-checkbox { width:32px; height:32px; border-radius:50%; border:2.5px solid var(--border); background:none; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:16px; transition:all .15s; }
+.shop-item.done .shop-checkbox { background:var(--accent); border-color:var(--accent); color:white; }
+.shop-item-name { font-size:18px; font-weight:400; flex:1; }
+.shop-item-detail { font-size:13px; color:var(--ink3); }
+.shop-footer { background:var(--surface); border-top:1px solid var(--border); padding:1rem 1.25rem; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; }
+.shop-footer-left { font-size:13px; color:var(--ink2); }
+.shop-footer-total { font-family:'DM Serif Display',serif; font-size:1.6rem; color:var(--accent); }
+.shop-footer-done-btn { background:var(--accent); color:white; border:none; border-radius:10px; padding:12px 20px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; }
+    
+    /* UNDO TOAST */
+    #undo-toast { position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(20px); background:#1c1c1e; color:white; border-radius:12px; padding:12px 16px; display:flex; align-items:center; gap:14px; font-size:14px; box-shadow:0 4px 20px rgba(0,0,0,.35); z-index:500; opacity:0; transition:opacity .25s, transform .25s; pointer-events:none; white-space:nowrap; }
+    #undo-toast.show { opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+    #undo-toast-btn { background:none; border:none; color:#4fc3f7; font-size:14px; font-weight:600; cursor:pointer; padding:0; font-family:inherit; }
+    #undo-toast-bar { position:absolute; bottom:0; left:0; height:3px; background:#4fc3f7; border-radius:0 0 12px 12px; width:100%; transform-origin:left; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div style="text-align:center">
+    <div class="spinner"></div>
+    <p style="font-size:14px;color:var(--ink3)">Laster...</p>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="login-screen" style="display:none">
+  <div class="login-logo">Handleliste<span>Del listen med den du handler med</span></div>
+  <div id="inapp-warning" style="display:none;max-width:340px;background:#fff3cd;border:1px solid #e0c068;border-radius:12px;padding:1rem 1.25rem;color:#5c4a1a;font-size:14px;line-height:1.5;text-align:center">
+    <div style="font-weight:600;margin-bottom:.4rem">Åpne i nettleseren din</div>
+    Du har åpnet appen inne i en annen app (f.eks. Messenger). Google-innlogging fungerer ikke her.<br><br>
+    Trykk på <strong>menyen (⋯ eller ⋮)</strong> øverst og velg <strong>«Åpne i nettleser»</strong> — eller kopier lenken til Chrome eller Safari.
+    <button id="inapp-copy-btn" style="margin-top:.85rem;width:100%;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;cursor:pointer">Kopier lenken</button>
+  </div>
+  <button class="login-btn" id="google-login-btn">
+    <svg class="google-icon" viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+    </svg>
+    Logg inn med Google
+  </button>
+</div>
+
+<!-- APP -->
+<!-- UNDO TOAST -->
+<div id="undo-toast">
+  <span id="undo-toast-msg">Vare slettet</span>
+  <button id="undo-toast-btn" onclick="undoLastAction()">Angre</button>
+  <div id="undo-toast-bar"></div>
+</div>
+
+<!-- HANDLEMODUS OVERLAY -->
+<div class="shop-overlay" id="shop-overlay">
+  <div class="shop-header">
+    <div>
+      <div class="shop-header-title">🛒 Handler nå</div>
+      <div class="shop-header-sub" id="shop-header-sub">0 varer igjen</div>
+    </div>
+    <button class="shop-close-btn" onclick="closeShoppingMode()">✕ Avslutt</button>
+  </div>
+  <div class="shop-body" id="shop-body"></div>
+  <div class="shop-footer">
+    <div class="shop-footer-left" id="shop-footer-left">Estimert total</div>
+    <div class="shop-footer-total" id="shop-footer-total">0 kr</div>
+  </div>
+</div>
+
+<div id="app-screen" style="display:none">
+  <div id="offline-banner">📵 Du er offline – endringer synkroniseres når nett kommer tilbake</div>
+  <header>
+    <div class="header-top">
+      <div class="app-title">Handleliste</div>
+      <div class="user-area">
+        <div class="avatar" id="user-avatar" onclick="toggleSettingsDropdown()" title="Innstillinger">?</div>
+        <div class="settings-dropdown" id="settings-dropdown">
+          <div class="dd-section-label">Tema</div>
+          <button class="dd-opt active" id="opt-light" onclick="setTheme('light')"><span class="dd-dot dot-light"></span> Lyst</button>
+          <button class="dd-opt" id="opt-dark" onclick="setTheme('dark')"><span class="dd-dot dot-dark"></span> Mørkt</button>
+          <div class="dd-divider"></div>
+          <div class="dd-section-label">Tekststørrelse</div>
+          <button class="dd-opt active" id="opt-normal" onclick="setFontSize('normal')">Aa Normal</button>
+          <button class="dd-opt" id="opt-stor" onclick="setFontSize('stor')">Aa Stor</button>
+          <button class="dd-opt" id="opt-xl" onclick="setFontSize('xl')">Aa Ekstra stor</button>
+          <div class="dd-divider"></div>
+          <div class="dd-section-label">Lister</div>
+          <select id="list-selector-menu" class="dd-opt" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--ink);cursor:pointer">
+            <option value="">Velg liste...</option>
+          </select>
+          <!-- Liste info panel -->
+          <div id="list-info-panel" style="display:none;margin-top:12px;padding:12px;background:var(--surface-hover);border-radius:6px;font-size:14px;border-left:3px solid var(--accent)">
+            <div id="list-info-content"></div>
+          </div>
+          <div class="dd-divider"></div>
+          <div class="dd-section-label">Husholdning</div>
+          <div id="household-info" style="padding:4px 8px 8px;font-size:13px;color:var(--ink2)">
+            <div id="household-members">Laster...</div>
+            <div style="margin-top:8px;font-size:12px;color:var(--ink3)">Husholdningskode</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+              <code id="household-code" style="background:var(--surface-hover);padding:3px 8px;border-radius:6px;font-size:13px">—</code>
+              <button onclick="copyHouseholdCode(event)" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--ink2)">Kopier</button>
+            </div>
+          </div>
+          <button class="dd-opt" onclick="closeSettingsDropdown(); openCreateSharedListModal()">+ Delt handleliste</button>
+          <button class="dd-opt" id="share-btn" onclick="closeSettingsDropdown(); openShareModal()">👥 Del</button>
+          <div class="dd-divider"></div>
+          <button class="dd-opt dd-opt-danger" id="signout-btn">Logg ut</button>
+        </div>
+      </div>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="tab-list" onclick="showTab('list')">🛒 Liste</button>
+      <button class="nav-tab" id="tab-history" onclick="showTab('history')">📋 Historikk</button>
+      <button class="nav-tab" id="tab-board" onclick="showTab('board')">👨‍👩‍👧‍👦 Tavle</button>
+      <button class="nav-tab" id="tab-pakke" onclick="showTab('pakke')">🧳 Pakke</button>
+      <button class="nav-tab" id="tab-deling" onclick="showTab('deling')">💰 Deling</button>
+      <button class="nav-tab" id="tab-onsker" onclick="showTab('onsker')">🎁 Ønsker</button>
+      <button class="nav-tab" id="tab-middag" onclick="showTab('middag')">🍽️ Middag</button>
+    </div>
+    <div class="add-form" id="add-form-area">
+      <input class="add-input" id="new-item-input" type="text" placeholder="Legg til vare..." autocomplete="off" />
+      <button class="add-btn" id="add-btn">+</button>
+      <div class="autocomplete-list" id="autocomplete-list"></div>
+    </div>
+  </header>
+
+  <main>
+    <!-- LIST TAB -->
+    <div id="list-screen">
+      <button class="list-action-btn" id="shop-mode-btn" onclick="openShoppingMode()" style="margin-bottom:1rem;background:var(--accent);border-color:var(--accent);color:white;font-size:14px;padding:13px 18px;justify-content:flex-start;gap:10px;width:100%">
+        <span style="font-size:18px">🛒</span> Start handel
+        <span style="font-size:11px;opacity:.75;margin-left:auto">fullskjerm</span>
+      </button>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="list-action-btn" id="tools-toggle-btn" onclick="toggleTools()" style="flex:1;margin-bottom:0">
+          <span class="btn-icon">⚙️</span> Verktøy
+          <span class="btn-sub">smartliste · dagens priser</span>
+          <span id="tools-chevron" style="margin-left:auto">›</span>
+        </button>
+        <button class="list-action-btn" id="list-switcher-toggle-btn" onclick="toggleListSwitcher()" style="flex:1;margin-bottom:0">
+          <span class="btn-icon">📋</span> Lister
+          <span class="btn-sub" id="list-switcher-current-label">Handleliste</span>
+          <span id="list-switcher-chevron" style="margin-left:auto;transition:transform .15s">›</span>
+        </button>
+      </div>
+      <div id="list-switcher-bar" style="display:none;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 2px 10px;scrollbar-width:none"></div>
+      <div id="tools-panel" style="display:none">
+      <button class="smart-list-btn" id="smart-list-btn">
+        <span class="btn-icon">✨</span>
+        Fyll liste automatisk
+        <span class="btn-sub">basert på historikk</span>
+      </button>
+      <div class="smart-preview" id="smart-preview">
+        <div class="smart-preview-title" id="smart-preview-title"></div>
+        <div class="smart-preview-items" id="smart-preview-items"></div>
+        <div class="smart-preview-actions">
+          <button class="smart-confirm-btn" id="smart-confirm-btn">Legg til valgte</button>
+          <button class="smart-cancel-btn" id="smart-cancel-btn">Avbryt</button>
+        </div>
+      </div>
+<button class="smart-list-btn" id="store-compare-btn">
+  <span class="btn-icon">🏪</span>
+  Billigste butikk
+  <span class="btn-sub">for denne listen</span>
+</button>
+<div class="smart-preview" id="store-compare-preview">
+  <div class="smart-preview-title" id="store-compare-title"></div>
+  <div id="store-compare-items"></div>
+  <div class="smart-preview-actions">
+    <button class="smart-cancel-btn" id="store-compare-cancel">Lukk</button>
+  </div>
+</div>
+<button class="smart-list-btn" id="live-price-btn">
+  <span class="btn-icon">🏷️</span>
+  Dagens priser
+  <span class="btn-sub">ekte priser fra norske butikker</span>
+</button>
+<div class="smart-preview" id="live-price-preview">
+  <div class="smart-preview-title" id="live-price-title"></div>
+  <div id="live-price-items"></div>
+  <div class="smart-preview-actions">
+    <button class="smart-cancel-btn" id="live-price-cancel">Lukk</button>
+  </div>
+</div>
+        </div>
+      <div class="list-actions">
+        <button class="list-action-btn" id="share-list-btn" type="button">↗ Del handleliste</button>
+      </div>
+
+      <!-- PRICE SUMMARY -->
+      <div class="price-summary" id="price-summary" style="display:none">
+        <div>
+          <div class="price-summary-label">Estimert handletur</div>
+          <div class="price-summary-total" id="price-total">0 kr</div>
+        </div>
+        <div class="price-summary-sub" id="price-sub"></div>
+      </div>
+
+      <!-- RECEIPT SCAN -->
+      <input type="file" id="receipt-input" accept="image/*" capture="environment" style="display:none" />
+      <div class="receipt-preview" id="receipt-preview">
+        <div class="receipt-preview-title" id="receipt-preview-title">Skanner kvittering...</div>
+        <div id="receipt-items-area"></div>
+        <div class="smart-preview-actions" id="receipt-actions" style="display:none">
+          <button class="smart-confirm-btn" id="receipt-confirm-btn">Lagre kvittering</button>
+          <button class="smart-cancel-btn" id="receipt-cancel-btn">Avbryt</button>
+        </div>
+      </div>
+
+      <div class="suggestions-section" id="suggestions-section">
+        <div class="section-label">Kanskje på tide å kjøpe?</div>
+        <div class="chips" id="chips-container"></div>
+      </div>
+
+      <div class="list-section">
+        <div class="list-header">
+          <div class="section-label">På listen</div>
+          <div class="list-header-actions">
+            <button class="sort-toggle-btn" id="sort-date-btn" onclick="toggleSortByDate()">🕒 Nyeste først</button>
+            <button class="clear-done-btn" id="clear-done-btn">✓ Lagre og avslutt</button>
+          </div>
+        </div>
+        <div class="items-list" id="items-list">
+          <div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY TAB -->
+    <div id="history-screen">
+     <div class="section-label" style="margin-bottom:.75rem">Tidligere handleturer</div>
+      <button class="receipt-btn" id="receipt-btn" style="margin-bottom:1rem">
+        <span class="btn-icon">📷</span>
+        Scan ny kvittering
+        <span class="btn-sub">legg til i historikk</span>
+      </button>
+      <div class="month-summary" id="month-summary" style="display:none"></div>
+      <div class="history-list" id="history-list">
+        <div class="history-empty"><div style="font-size:2rem;margin-bottom:.5rem">📋</div><p style="font-size:14px">Ingen historikk ennå</p></div>
+      </div>
+    </div>
+
+    <!-- FAMILY BOARD TAB -->
+    <div id="board-screen">
+      <div class="board-form">
+        <div class="board-form-title">Familietavle</div>
+
+        <label class="board-label" for="board-title-input">Hva skal huskes?</label>
+        <input class="board-input board-full" id="board-title-input" type="text" placeholder="F.eks. Ta ut søppel, tannlege, kjøp bursdagsgave" />
+
+        <div class="board-grid" style="margin-top:8px">
+          <div>
+            <label class="board-label" for="board-type-input">Type</label>
+            <select class="board-select" id="board-type-input">
+              <option value="task">Oppgave</option>
+              <option value="event">Aktivitet</option>
+              <option value="reminder">Påminnelse</option>
+            </select>
+          </div>
+          <div>
+            <label class="board-label" for="board-assigned-input">Ansvarlig</label>
+            <select class="board-select" id="board-assigned-input">
+              <option value="">Velg ansvarlig</option>
+            </select>
+          </div>
+        </div>
+        <input class="board-input board-full" id="board-assigned-other" type="text" placeholder="Skriv ansvarlig" style="display:none;margin-top:6px" />
+
+        <button class="board-more-toggle" id="board-more-toggle" type="button" aria-expanded="false">Flere valg ▾</button>
+
+        <div id="board-more-fields" style="display:none">
+          <div class="board-grid">
+            <div>
+              <label class="board-label" for="board-date-input">Frist <span class="board-optional">(valgfritt)</span></label>
+              <input class="board-input" id="board-date-input" type="date" />
+            </div>
+            <div>
+              <label class="board-label" for="board-person-input">Gjelder hvem <span class="board-optional">(valgfritt)</span></label>
+              <select class="board-select" id="board-person-input">
+                <option value="">Ingen valgt</option>
+              </select>
+            </div>
+          </div>
+          <input class="board-input board-full" id="board-person-other" type="text" placeholder="Skriv hvem det gjelder" style="display:none;margin-top:6px" />
+
+          <div class="board-grid" style="margin-top:8px">
+            <div>
+              <label class="board-label" for="board-time-input">Klokkeslett <span class="board-optional">(valgfritt)</span></label>
+              <input class="board-input" id="board-time-input" type="time" />
+            </div>
+            <div>
+              <label class="board-label" for="board-repeat-input">Gjentakelse</label>
+              <select class="board-select" id="board-repeat-input">
+                <option value="none">Ingen gjentakelse</option>
+                <option value="daily">Daglig</option>
+                <option value="weekly">Ukentlig</option>
+                <option value="monthly">Månedlig</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top:8px">
+            <label class="board-label" for="board-reminder-input">Varsel <span class="board-optional">(krever at varsler er aktivert)</span></label>
+            <select class="board-select board-full" id="board-reminder-input">
+              <option value="none">Ingen varsel</option>
+              <option value="15">15 min før</option>
+              <option value="60">1 time før</option>
+              <option value="1440">1 dag før</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="board-important-toggle" id="board-important-toggle" type="button" aria-pressed="false" style="margin-top:8px">☆ Marker som viktig</button>
+        <button class="board-add-btn" id="board-add-btn" type="button">+ Legg til på tavlen</button>
+        <button class="board-add-btn" id="push-enable-btn" type="button" style="background:var(--accent2);margin-top:8px">🔔 Aktiver varsler</button>
+      </div>
+      <div id="board-content">
+        <div class="board-empty">Ingen oppgaver ennå</div>
+      </div>
+    </div>
+
+    <!-- PAKKELISTE TAB -->
+    <div id="pakke-screen" style="display:none">
+      <!-- Tours List View -->
+      <div id="pakke-tours-view">
+        <button class="list-action-btn" id="pakke-new-tour-btn" style="margin-bottom:1rem">
+          <span class="btn-icon">🧳</span>
+          Ny tur
+        </button>
+        <div id="pakke-tours-list">
+          <div class="empty-state"><div class="big">🧳</div><p>Ingen turer ennå</p></div>
+        </div>
+      </div>
+
+      <!-- Tour Detail View -->
+      <div id="pakke-detail-view" style="display:none">
+        <button class="list-action-btn" id="pakke-back-btn" style="margin-bottom:1rem;color:var(--ink3)">
+          <span>‹ Tilbake</span>
+        </button>
+        <div id="pakke-tour-header" style="margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+          <div style="font-family:'DM Serif Display',serif;font-size:1.2rem;margin-bottom:.25rem" id="pakke-tour-title">—</div>
+          <div style="font-size:12px;color:var(--ink3)" id="pakke-tour-date">—</div>
+          <div style="font-size:13px;color:var(--ink2);margin-top:.5rem" id="pakke-tour-desc">—</div>
+        </div>
+
+        <button class="list-action-btn" id="pakke-ai-btn" type="button" style="width:100%;margin-bottom:1rem;justify-content:center;border:1px solid var(--gold);color:var(--gold);background:var(--gold-dim)">✨ Foreslå pakkeliste med AI</button>
+        <div id="pakke-ai-input-panel" style="display:none;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+          <div style="font-size:13px;color:var(--ink2);margin-bottom:.5rem">Fortell om turen — hvor, hvor lenge, hvem som er med og alder, og hva dere skal gjøre. Jo mer du skriver, jo bedre forslag.</div>
+          <textarea id="pakke-ai-text" rows="5" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;box-sizing:border-box" placeholder="F.eks: Danmark i 2,5 uker i juli. Katrine (voksen), Selma 5 år, Selma 2 år, Abel 10 uker. Mye strand og bading, leid sommerhus, kjører bil ned."></textarea>
+          <div style="display:flex;gap:8px;margin-top:.75rem">
+            <button class="add-btn" type="button" style="flex:1" id="pakke-ai-generate">✨ Lag forslag</button>
+            <button class="list-action-btn" type="button" style="border:1px solid var(--border)" id="pakke-ai-cancel">Avbryt</button>
+          </div>
+        </div>
+        <div id="pakke-ai-suggestions" style="display:none;margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)"></div>
+
+        <div id="pakke-new-person-area" style="margin-bottom:1rem;padding:1rem;background:var(--accent-light);border-radius:var(--radius)">
+          <div id="pakke-member-quickadd" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.6rem"></div>
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:.5rem">Legg til ny person på turen</div>
+          <div class="add-form">
+            <input class="add-input" id="pakke-new-person-input" type="text" placeholder="Navn" autocomplete="off" />
+            <button class="add-btn" id="pakke-new-person-btn" type="button">+</button>
+          </div>
+        </div>
+
+        <div id="pakke-add-area" style="margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius)">
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:.5rem">Legg til ting</div>
+          <select class="modal-select" id="pakke-cat-input" style="margin-bottom:.5rem;width:100%">
+            <option value="klar">👕 Klær</option>
+            <option value="toalett">🧴 Toalettsaker</option>
+            <option value="dokumenter">📄 Dokumenter</option>
+            <option value="elektronikk">🔌 Elektronikk</option>
+            <option value="barn">🧸 Barn</option>
+            <option value="diverse" selected>📦 Diverse</option>
+          </select>
+          <div class="add-form" style="margin-bottom:.6rem">
+            <input class="add-input" id="pakke-item-input" type="text" placeholder="Hva skal pakkes?" autocomplete="off" />
+            <input class="add-input" id="pakke-qty-input" type="number" min="1" value="1" inputmode="numeric" style="max-width:60px;text-align:center" title="Antall" />
+          </div>
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:.4rem">Hvem skal ha det?</div>
+          <div id="pakke-who-buttons" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:.4rem">Vis</div>
+        <select class="modal-select" id="pakke-person-select" style="margin-bottom:1rem;width:100%">
+          <option value="">Velg person...</option>
+        </select>
+
+        <div id="pakke-items-area">
+          <div id="pakke-items-list">
+            <div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Velg visning over</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELING / KOSTNADSDELING -->
+    <div id="deling-screen" style="display:none">
+      <div id="deling-summary" class="deling-summary"></div>
+      <button class="deling-add-btn" style="width:100%;margin-bottom:1rem" onclick="openExpenseModal()">➕ Ny utgift</button>
+      <div id="deling-settlement"></div>
+      <div id="deling-settled-list"></div>
+      <div class="deling-section-title" style="margin-top:1.25rem">Utgifter</div>
+      <div id="deling-expenses"></div>
+      <div class="deling-people-head">
+        <div class="deling-section-title" style="margin:0">Personer</div>
+        <div class="deling-people-btns">
+          <button class="deling-mini-btn" onclick="hentFraMedlemmer()">👥 Hent fra medlemmer</button>
+          <button class="deling-mini-btn" onclick="openPersonModal()">➕ Ny person</button>
+        </div>
+      </div>
+      <div id="deling-people"></div>
+      <p class="deling-foot">Hver utgift deles likt mellom personene du velger. «Betal med Vipps» åpner Vipps og kopierer mottakers nummer – du bekrefter beløpet selv. «Marker betalt» fører oppgjøret som gjort, så det forsvinner fra lista.</p>
+    </div>
+
+    <div id="onsker-screen" style="display:none">
+      <div class="board-form">
+        <div class="board-form-title">🎁 Ønskelister</div>
+        <p style="font-size:13px;color:var(--ink2);margin:-4px 0 12px">Hver i husholdningen har sin egen ønskeliste. Legg til ønsker for deg selv eller barna. Når noen kjøper noe, krysser de det av – men eieren av lista ser ikke at det er kjøpt, så overraskelsen bevares.</p>
+
+        <label class="board-label" for="onsker-person-select">Vis ønskeliste for</label>
+        <select class="board-select board-full" id="onsker-person-select" style="margin-bottom:12px">
+          <option value="">Velg person...</option>
+        </select>
+
+        <div id="onsker-add-area" style="display:none">
+          <label class="board-label" for="onsker-navn-input">Nytt ønske</label>
+          <input class="board-input board-full" id="onsker-navn-input" type="text" placeholder="Hva ønskes? (f.eks. Lego brannbil)" />
+          <div class="board-grid" style="margin-top:6px">
+            <div>
+              <label class="board-label" for="onsker-pris-input">Ca. pris <span class="board-optional">(valgfritt)</span></label>
+              <input class="board-input" id="onsker-pris-input" type="number" min="0" placeholder="kr" />
+            </div>
+            <div>
+              <label class="board-label" for="onsker-lenke-input">Lenke <span class="board-optional">(valgfritt)</span></label>
+              <input class="board-input" id="onsker-lenke-input" type="url" placeholder="https://..." />
+            </div>
+          </div>
+          <button class="board-add-btn" id="onsker-add-btn" type="button">+ Legg til ønske</button>
+        </div>
+      </div>
+      <div id="onsker-content">
+        <div class="board-empty">Velg en person for å se ønskelista</div>
+      </div>
+    </div>
+
+    <div id="middag-screen" style="display:none">
+      <div class="board-form">
+        <div class="board-form-title">🍽️ Middagsplan</div>
+        <p style="font-size:13px;color:var(--ink2);margin:-4px 0 12px">Planlegg ukens middager. Legg til ingredienser på hver rett, og send det du mangler til handlelista – du velger selv hva du allerede har hjemme.</p>
+        <button class="board-add-btn" id="middag-import-btn" type="button" style="margin-bottom:12px">📋 Importer ukesmeny (fra ChatGPT e.l.)</button>
+        <div id="middag-uke"></div>
+      </div>
+    </div>
+
+    <!-- MIDDAG: IMPORTER UKESMENY -->
+    <div id="middag-import-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;align-items:center;justify-content:center;padding:1rem">
+      <div style="background:var(--bg);border-radius:16px;max-width:460px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+          <div style="font-family:'DM Serif Display',serif;font-size:1.2rem">Importer ukesmeny</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:2px">Lim inn menyteksten fra ChatGPT, eller last opp et skjermbilde.</div>
+        </div>
+        <div style="overflow-y:auto;flex:1;padding:1rem 1.25rem" id="middag-import-body">
+          <textarea id="middag-import-tekst" placeholder="Lim inn ukesmenyen her (dag, rett og ingredienser)..." style="width:100%;min-height:140px;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+          <div style="text-align:center;color:var(--ink3);font-size:12px;margin:10px 0">– eller –</div>
+          <label style="display:block;border:1px dashed var(--border);border-radius:8px;padding:14px;text-align:center;font-size:13px;color:var(--ink2);cursor:pointer">
+            📷 Last opp skjermbilde av meny
+            <input type="file" id="middag-import-bilde" accept="image/*" style="display:none" />
+          </label>
+          <div id="middag-import-status" style="font-size:12px;color:var(--ink3);margin-top:10px;text-align:center"></div>
+          <div id="middag-import-preview"></div>
+        </div>
+        <div style="display:flex;gap:8px;padding:1rem 1.25rem;border-top:1px solid var(--border)">
+          <button onclick="lukkMiddagImport()" style="flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--ink2)">Avbryt</button>
+          <button id="middag-import-tolk-btn" onclick="tolkUkesmeny()" style="flex:2;background:var(--accent);border:none;border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:#fff">Tolk meny</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIDDAG: SEND TIL HANDLELISTE (velg hva du mangler) -->
+    <div id="middag-send-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;align-items:center;justify-content:center;padding:1rem">
+      <div style="background:var(--bg);border-radius:16px;max-width:420px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+          <div style="font-family:'DM Serif Display',serif;font-size:1.2rem" id="middag-send-title">Hva mangler du?</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:2px">Fjern haken på det du allerede har hjemme.</div>
+        </div>
+        <div id="middag-send-liste" style="overflow-y:auto;flex:1"></div>
+        <div style="display:flex;gap:8px;padding:1rem 1.25rem;border-top:1px solid var(--border)">
+          <button onclick="lukkMiddagSend()" style="flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--ink2)">Avbryt</button>
+          <button onclick="bekreftMiddagTilHandleliste()" style="flex:2;background:var(--accent);border:none;border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:#fff">Legg valgte i handlelista</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELING: UTGIFT-MODAL -->
+    <div class="modal-overlay" id="deling-expense-modal">
+      <div class="modal">
+        <div class="modal-title" id="deling-expense-title">Ny utgift</div>
+        <div class="modal-row">
+          <label class="modal-label">Beskrivelse</label>
+          <input class="modal-input" id="deling-expense-desc" type="text" placeholder="f.eks. To is" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Beløp (kr)</label>
+          <input class="modal-input" id="deling-expense-amount" type="text" inputmode="decimal" placeholder="0" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">La ut</label>
+          <select class="modal-input" id="deling-expense-paidby"></select>
+        </div>
+        <div class="modal-row" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <label class="modal-label">Deles mellom</label>
+            <span class="deling-toggle-all"><button type="button" onclick="toggleAlleDeler(true)">Alle</button> · <button type="button" onclick="toggleAlleDeler(false)">Ingen</button></span>
+          </div>
+          <div id="deling-expense-shared" class="deling-members-box"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:1rem">
+          <button class="modal-input" onclick="saveExpense()" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Lagre</button>
+          <button class="modal-input" onclick="closeDelingModal('deling-expense-modal')" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELING: PERSON-MODAL -->
+    <div class="modal-overlay" id="deling-person-modal">
+      <div class="modal">
+        <div class="modal-title" id="deling-person-title">Ny person</div>
+        <div class="modal-row">
+          <label class="modal-label">Navn</label>
+          <input class="modal-input" id="deling-person-name" type="text" placeholder="f.eks. Katrine" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Vipps-nr</label>
+          <input class="modal-input" id="deling-person-vipps" type="tel" inputmode="numeric" placeholder="valgfritt – for betalingsknapp" />
+        </div>
+        <div style="display:flex;gap:8px;margin-top:1rem">
+          <button class="modal-input" onclick="savePerson()" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Lagre</button>
+          <button class="modal-input" onclick="closeDelingModal('deling-person-modal')" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW TOUR MODAL -->
+    <div class="modal-overlay" id="pakke-tour-modal">
+      <div class="modal">
+        <div class="modal-title">Ny tur</div>
+        <div class="modal-row">
+          <label class="modal-label">Navn</label>
+          <input class="modal-input" id="pakke-modal-name" type="text" placeholder="f.eks. Sommerferie" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Dato</label>
+          <input class="modal-input" id="pakke-modal-date" type="date" />
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Beskrivelse</label>
+          <input class="modal-input" id="pakke-modal-desc" type="text" placeholder="f.eks. Spania, 14 dager" />
+        </div>
+        <div style="display:flex;gap:8px;margin-top:1rem">
+          <button class="modal-input" id="pakke-modal-create" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
+          <button class="modal-input" id="pakke-modal-cancel" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px">Avbryt</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- SHARING MODAL -->
+<div class="share-modal-overlay" id="share-modal">
+  <div class="share-modal">
+    <div class="share-modal-title">Del husholdning</div>
+    <div class="share-modal-sub">Del koden med de du vil handle med</div>
+    <div class="share-code-box">
+      <div class="share-code-label">Din husholdningskode</div>
+      <div class="share-code-value" id="share-code-value">...</div>
+    </div>
+    <button class="share-copy-btn" id="share-copy-btn">📋 Kopier kode</button>
+    <div class="share-divider">— eller bli med i en annen husholdning —</div>
+    <div class="share-join-row">
+      <input class="share-join-input" id="share-join-input" type="text" placeholder="Skriv inn kode (f.eks. hjem)" maxlength="20" />
+      <button class="share-join-btn" id="share-join-btn">Bli med</button>
+    </div>
+    <button class="share-close-btn" id="share-close-btn">Lukk</button>
+  </div>
+</div>
+
+<!-- INVITE MODAL -->
+<div class="modal-overlay" id="invite-modal">
+  <div class="modal">
+    <div class="modal-title">Del liste</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:1rem">Kopier denne linken og del med venner:</div>
+    
+    <!-- Invite Link -->
+    <div style="background:var(--bg);padding:12px;border-radius:8px;margin-bottom:1rem;word-break:break-all">
+      <input class="modal-input" id="invite-link-input" type="text" readonly style="border:none;background:transparent;padding:0;font-size:12px" />
+    </div>
+    <button class="modal-input" style="width:100%;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px;margin-bottom:8px" onclick="copyInviteLink()">📋 Kopier link</button>
+    <button class="modal-input" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('invite-modal').classList.remove('open')">Lukk</button>
+  </div>
+</div>
+
+<!-- NEW LIST MODAL -->
+<div class="modal-overlay" id="new-list-modal">
+  <div class="modal">
+    <div class="modal-title">Ny liste</div>
+    <div class="modal-row">
+      <label class="modal-label">Navn (valgfritt)</label>
+      <input class="modal-input" id="new-list-name-input" type="text" placeholder="F.eks. Sommerferie, Hyttetur" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1rem">
+      <button class="modal-input" id="new-list-create-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
+      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('new-list-modal').classList.remove('open')">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- NY UNDERLISTE MODAL (lister innenfor husholdningen) -->
+<div class="modal-overlay" id="sub-list-modal">
+  <div class="modal">
+    <div class="modal-title">Ny liste i husholdningen</div>
+    <div class="modal-row">
+      <label class="modal-label">Navn</label>
+      <input class="modal-input" id="sub-list-name-input" type="text" placeholder="F.eks. Gaver, Verktøy" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1rem">
+      <button class="modal-input" id="sub-list-create-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
+      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('sub-list-modal').classList.remove('open')">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE SHARED HANDLELISTE MODAL -->
+<div class="modal-overlay" id="create-shared-list-modal">
+  <div class="modal">
+    <div class="modal-title">Delt handleliste</div>
+    <div class="modal-row">
+      <label class="modal-label">Navn</label>
+      <input class="modal-input" id="shared-list-name-input" type="text" placeholder="F.eks. Sommerferie, Venner" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1rem">
+      <button class="modal-input" id="create-shared-list-btn" style="flex:1;background:var(--accent);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Opprett</button>
+      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('create-shared-list-modal').classList.remove('open')">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE/LEAVE LIST MODAL -->
+<div class="modal-overlay" id="delete-list-modal">
+  <div class="modal">
+    <div class="modal-title" id="delete-list-modal-title">Slett liste</div>
+    <div style="color:var(--ink);margin-bottom:1rem;font-size:14px">
+      <p id="delete-list-modal-msg"></p>
+      <p style="color:var(--muted);font-size:13px">Skriv inn listen sitt navn nedenfor for å bekrefte:</p>
+    </div>
+    <div class="modal-row">
+      <input class="modal-input" id="delete-list-confirm-input" type="text" placeholder="Listen sitt navn" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1rem">
+      <button class="modal-input" id="delete-list-confirm-btn" style="flex:1;background:var(--danger, #e74c3c);color:white;border:none;cursor:pointer;border-radius:8px;padding:10px">Slett</button>
+      <button class="modal-input" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--ink);cursor:pointer;border-radius:8px;padding:10px" onclick="document.getElementById('delete-list-modal').classList.remove('open')">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Rediger vare</div>
+    <div class="modal-row">
+      <span class="modal-label">Navn</span>
+      <input class="modal-input" id="modal-name" type="text" />
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Antall</span>
+      <input class="modal-input" id="modal-qty" type="number" min="1" value="1" style="width:80px;flex:none" />
+      <select class="modal-select" id="modal-unit">
+        <option value="stk">stk</option>
+        <option value="g">g</option>
+        <option value="kg">kg</option>
+        <option value="dl">dl</option>
+        <option value="l">l</option>
+        <option value="pk">pk</option>
+        <option value="boks">boks</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Kategori</span>
+      <select class="modal-select" id="modal-cat">
+        <option value="frukt-gront">🥦 Frukt &amp; grønt</option>
+        <option value="meieri">🥛 Meieri</option>
+        <option value="brod-bakeri">🍞 Brød &amp; bakeri</option>
+        <option value="kjott-fisk">🥩 Kjøtt &amp; fisk</option>
+        <option value="tørrvarer">🌾 Tørrvarer</option>
+        <option value="frysevarer">❄️ Frysevarer</option>
+        <option value="drikke">🧃 Drikke</option>
+        <option value="snacks">🍫 Snacks &amp; godis</option>
+        <option value="hygiene">🧴 Hygiene &amp; rengjøring</option>
+        <option value="annet">📦 Annet</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Pris</span>
+      <input class="modal-input" id="modal-price" type="number" min="0" step="0.1" placeholder="kr (valgfritt)" style="width:120px;flex:none" />
+      <span style="font-size:13px;color:var(--ink3);margin-left:4px">kr</span>
+    </div>
+    <div class="modal-row" id="modal-move-row" style="display:none">
+      <span class="modal-label">Flytt til</span>
+      <select class="modal-select" id="modal-move-target">
+        <option value="">Velg liste...</option>
+      </select>
+      <button class="modal-cancel" id="modal-move-btn" style="flex:none;padding:8px 12px">Flytt</button>
+    </div>
+    <div class="modal-actions">
+     <button class="modal-delete" id="modal-delete">Slett fra liste</button>
+      <button class="modal-save" id="modal-save">Lagre</button>
+      <button class="modal-cancel" id="modal-cancel">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECEIPT ITEM EDIT MODAL -->
+<div class="modal-overlay" id="receipt-edit-overlay">
+  <div class="modal">
+    <div class="modal-title">Rediger kvitteringsvare</div>
+    <div class="modal-row">
+      <span class="modal-label">Navn</span>
+      <input class="modal-input" id="receipt-edit-name" type="text" />
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Antall</span>
+      <input class="modal-input" id="receipt-edit-qty" type="number" min="0.01" step="0.01" value="1" style="width:80px;flex:none" />
+      <select class="modal-select" id="receipt-edit-unit">
+        <option value="stk">stk</option>
+        <option value="g">g</option>
+        <option value="kg">kg</option>
+        <option value="dl">dl</option>
+        <option value="l">l</option>
+        <option value="pk">pk</option>
+        <option value="boks">boks</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Kategori</span>
+      <select class="modal-select" id="receipt-edit-cat">
+        <option value="frukt-gront">🥦 Frukt &amp; grønt</option>
+        <option value="meieri">🥛 Meieri</option>
+        <option value="brod-bakeri">🍞 Brød &amp; bakeri</option>
+        <option value="kjott-fisk">🥩 Kjøtt &amp; fisk</option>
+        <option value="tørrvarer">🌾 Tørrvarer</option>
+        <option value="frysevarer">❄️ Frysevarer</option>
+        <option value="drikke">🧃 Drikke</option>
+        <option value="snacks">🍫 Snacks &amp; godis</option>
+        <option value="hygiene">🧴 Hygiene &amp; rengjøring</option>
+        <option value="annet">📦 Annet</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Pris</span>
+      <input class="modal-input" id="receipt-edit-price" type="number" min="0" step="0.01" placeholder="linjesum" style="width:120px;flex:none" />
+      <span class="receipt-edit-small">kr</span>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Linje</span>
+      <input class="modal-input" id="receipt-edit-line" type="text" placeholder="Original kvitteringslinje" />
+    </div>
+    <div class="modal-actions">
+      <button class="modal-delete" id="receipt-edit-delete">Slett</button>
+      <button class="modal-save" id="receipt-edit-save">Lagre</button>
+      <button class="modal-cancel" id="receipt-edit-cancel">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY ITEM EDIT MODAL -->
+<div class="modal-overlay" id="history-item-modal-overlay">
+  <div class="modal">
+    <div class="modal-title">Rediger historikkvare</div>
+    <div class="modal-row">
+      <span class="modal-label">Navn</span>
+      <input class="modal-input" id="history-item-name" type="text" />
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Antall</span>
+      <input class="modal-input" id="history-item-qty" type="number" min="1" value="1" style="width:80px;flex:none" />
+      <select class="modal-select" id="history-item-unit">
+        <option value="stk">stk</option>
+        <option value="g">g</option>
+        <option value="kg">kg</option>
+        <option value="dl">dl</option>
+        <option value="l">l</option>
+        <option value="pk">pk</option>
+        <option value="boks">boks</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Kategori</span>
+      <select class="modal-select" id="history-item-cat">
+        <option value="frukt-gront">🥦 Frukt &amp; grønt</option>
+        <option value="meieri">🥛 Meieri</option>
+        <option value="brod-bakeri">🍞 Brød &amp; bakeri</option>
+        <option value="kjott-fisk">🥩 Kjøtt &amp; fisk</option>
+        <option value="tørrvarer">🌾 Tørrvarer</option>
+        <option value="frysevarer">❄️ Frysevarer</option>
+        <option value="drikke">🧃 Drikke</option>
+        <option value="snacks">🍫 Snacks &amp; godis</option>
+        <option value="hygiene">🧴 Hygiene &amp; rengjøring</option>
+        <option value="annet">📦 Annet</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <span class="modal-label">Pris</span>
+      <input class="modal-input" id="history-item-price" type="number" min="0" step="0.1" placeholder="kr" style="width:120px;flex:none" />
+      <span style="font-size:13px;color:var(--ink3);margin-left:4px">kr</span>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-delete" id="history-item-delete">Slett</button>
+      <button class="modal-save" id="history-item-save">Lagre</button>
+      <button class="modal-cancel" id="history-item-cancel">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, where, orderBy, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+  import { PRODUCTS, matchProduct, guessCategoryFromDB } from '/products.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCoWYFF9JxVxMFNlwnLzrulSkHmTjh46uY",
+    authDomain: "handleliste-64ec3.firebaseapp.com",
+    projectId: "handleliste-64ec3",
+    storageBucket: "handleliste-64ec3.firebasestorage.app",
+    messagingSenderId: "156616802673",
+    appId: "1:156616802673:web:d7d84ed77ff471edd676d0"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  // Offline persistence via ny cache-API (erstatter enableIndexedDbPersistence)
+  const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  });
+  const messagingVapidKey = "BPvPJGtqU_7ewG0u98mNnW5LJcod5vYZ88XMVZIp7nf9Tu8RWWj9vrMkX75IqssXlMMnJ7EFLPGVHgmqrkTGEi8";
+
+  // Kategori-rekkefølge som i butikken
+  const CAT_ORDER = ["frukt-gront","meieri","brod-bakeri","kjott-fisk","tørrvarer","frysevarer","drikke","snacks","hygiene","annet"];
+  const CAT_LABELS = {
+    "frukt-gront":"🥦 Frukt & grønt","meieri":"🥛 Meieri","brod-bakeri":"🍞 Brød & bakeri",
+    "kjott-fisk":"🥩 Kjøtt & fisk","tørrvarer":"🌾 Tørrvarer","frysevarer":"❄️ Frysevarer",
+    "drikke":"🧃 Drikke","snacks":"🍫 Snacks & godis","hygiene":"🧴 Hygiene","annet":"📦 Annet"
+  };
+
+  // Automatisk kategori basert på navn
+  // guessCategory bruker products.js-databasen som primærkilde,
+  // med enkel ordmatch som fallback
+  function guessCategory(name) {
+    if (!name) return "annet";
+    const fromDB = guessCategoryFromDB(name);
+    if (fromDB) return fromDB;
+    // Fallback for ukjente varer
+    const n = name.toLowerCase();
+    const fallback = {
+      "frukt-gront":["eple","banan","appelsin","tomat","agurk","salat","brokkoli","gulrot","løk","paprika","potet","sopp","avokado"],
+      "meieri":["melk","smør","ost","egg","yoghurt","rømme","fløte","kesam"],
+      "brod-bakeri":["brød","rundstykke","knekkebrød","pita","wraps","bagel","loff","baguette"],
+      "kjott-fisk":["kylling","kjøttdeig","bacon","pølse","laks","torsk","reker","biff","skinke"],
+      "tørrvarer":["mel","sukker","salt","pepper","ris","pasta","havregryn","olje","ketchup","sennep","syltetøy","kaffe","te"],
+      "frysevarer":["pizza","frossen","is","fiskepinne","pommes"],
+      "drikke":["juice","vann","brus","øl","vin","saft"],
+      "snacks":["sjokolade","chips","nøtter","popcorn","kjeks","godteri"],
+      "hygiene":["toalettpapir","tannkrem","sjampo","dusjsåpe","oppvaskmiddel","vaskemiddel"]
+    };
+    for (const [cat, words] of Object.entries(fallback)) {
+      if (words.some(w => n.includes(w))) return cat;
+    }
+    return "annet";
+  }
+
+  // BASISVARER — varer med typisk kjøpsintervall for smarte forslag
+  // Bygges fra PRODUCTS-databasen + manuelt angitte intervaller
+  const BASISVARER_INTERVALLER = {
+    "Lettmelk":7,"Melk":7,"Brød":5,"Grovbrød":5,"Loff":5,"Smør":14,
+    "Egg":10,"Norvegia":10,"Yoghurt naturell":7,"Kaffe":21,"Hvetemel":30,
+    "Sukker":45,"Salt":60,"Toalettpapir":21,"Pasta":21,"Ris":30,
+    "Løk":10,"Hvitløk":21,"Tomater":7,"Bananer":5,"Epler":7,
+    "Gulrøtter":10,"Brokkoli":7,"Poteter":10,"Paprika":7,"Agurk":7,
+    "Rømme":10,"Fløte":14,"Kremfløte":14,"Ketchup":30,"Majones":30,
+    "Sennep":30,"Oppvaskmiddel":30,"Vaskemiddel":30,"Tannkrem":30,
+    "Sjampo":30,"Dusjsåpe":21,"Kjøttdeig":7,"Kyllingfilet":7,
+    "Bacon":10,"Laks":7,"Juice":7,"Brus":14,
+  };
+
+  const BASISVARER = Object.entries(BASISVARER_INTERVALLER).map(([navn, dager]) => {
+    const p = PRODUCTS.find(p => p.navn === navn);
+    return { navn, ikon: p?.ikon || "🛒", dager, cat: p?.kat || guessCategory(navn) };
+  });
+
+  let currentUser = null;
+  let purchaseHistory = {};
+  let unsubscribeList = null;
+  let unsubscribeTasks = null;
+  let familyBoardItems = [];
+  let selectedBoardPerson = "Alle";
+  let currentItems = [];
+  let editingItemId = null;
+  let historyTripsCache = [];
+  let selectedMonthKey = null;
+  let editingHistoryTripId = null;
+  let editingHistoryItemIndex = null;
+let LIST_ID = null;
+  let HOUSEHOLD_ID = null;   // fast husstandskode for tavla – endres ikke ved listebytte
+  let boardMemberNames = [];  // navn fra husholdningen, til dropdowns på tavla
+
+  // UNDERLISTER — flere handlelister innenfor samme standard-husholdning (f.eks. Gaver, Verktøy)
+  // Deler automatisk medlemmer med husholdningen. Bruker HOUSEHOLD_ID som fast rot.
+  let activeSubList = null;        // null = hovedlisten (Handleliste), ellers {id, name}
+  let subLists = [];               // cache av underlister for gjeldende husholdning
+  let unsubscribeSubLists = null;
+  let subListRestored = false;     // gjenopprett sist brukte underliste kun én gang per økt
+
+  function itemsColRef() {
+    return activeSubList
+      ? collection(db, "lists", HOUSEHOLD_ID, "handlelister", activeSubList.id, "items")
+      : collection(db, "lists", LIST_ID, "items");
+  }
+  function itemDocRef(id) {
+    return activeSubList
+      ? doc(db, "lists", HOUSEHOLD_ID, "handlelister", activeSubList.id, "items", id)
+      : doc(db, "lists", LIST_ID, "items", id);
+  }
+  // For "flytt til liste" — hent en collection-ref for en vilkårlig liste (default eller underliste)
+  function itemsColRefFor(target) {
+    // target: null/"default" = hovedlisten, ellers underliste-id
+    return (!target || target === "default")
+      ? collection(db, "lists", LIST_ID, "items")
+      : collection(db, "lists", HOUSEHOLD_ID, "handlelister", target, "items");
+  }
+
+  // AUTH
+  document.getElementById("google-login-btn").addEventListener("click", async () => {
+    const provider = new GoogleAuthProvider();
+    try { await signInWithPopup(auth, provider); } catch(e) { console.error(e); }
+  });
+  document.getElementById("signout-btn").addEventListener("click", () => signOut(auth));
+
+  // Oppdag in-app browsere (Messenger, Instagram, Facebook m.fl.) der Google-innlogging er blokkert
+  function erInAppBrowser() {
+    const ua = (navigator.userAgent || "").toLowerCase();
+    return /fban|fbav|fb_iab|instagram|messenger|line\/|micromessenger|tiktok|snapchat/.test(ua);
+  }
+  if (erInAppBrowser()) {
+    const w = document.getElementById("inapp-warning");
+    if (w) w.style.display = "block";
+  }
+  document.getElementById("inapp-copy-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("inapp-copy-btn");
     try {
-      return JSON.parse(candidate);
+      await navigator.clipboard.writeText(window.location.href);
+      btn.textContent = "Kopiert! Lim inn i Chrome/Safari";
     } catch (e) {
-      // Bygg en stack over åpne strukturer for å lukke i riktig nestingsrekkefølge
-      const stack = [];
-      let inStr = false, esc = false;
-      for (const ch of candidate) {
-        if (esc) { esc = false; continue; }
-        if (ch === "\\") { esc = true; continue; }
-        if (ch === '"') { inStr = !inStr; continue; }
-        if (inStr) continue;
-        if (ch === "{") stack.push("}");
-        else if (ch === "[") stack.push("]");
-        else if (ch === "}" || ch === "]") stack.pop();
+      btn.textContent = window.location.href;
+    }
+  });
+
+  async function createUniqueHouseholdForUser(user) {
+    let code = "";
+    let exists = true;
+    let attempts = 0;
+
+    while (exists && attempts < 10) {
+      code = generateCode();
+      const householdSnap = await getDoc(doc(db, "households", code));
+      exists = householdSnap.exists();
+      attempts++;
+    }
+
+    if (!code) code = user.uid;
+
+    await setDoc(doc(db, "households", code), {
+      createdAt: Date.now(),
+      createdBy: user.uid,
+      members: { [user.uid]: user.displayName || user.email?.split('@')[0] || "Bruker" }
+    }, { merge: true });
+
+    await setDoc(doc(db, "users", user.uid), {
+      householdId: code,
+      displayName: user.displayName || "",
+      email: user.email || "",
+      createdAt: Date.now()
+    }, { merge: true });
+
+    return code;
+  }
+
+  async function legacyListExists(code) {
+    try {
+      const itemsSnap = await getDocs(collection(db, "lists", code, "items"));
+      if (!itemsSnap.empty) return true;
+
+      const historySnap = await getDocs(collection(db, "lists", code, "history"));
+      if (!historySnap.empty) return true;
+
+      const metaSnap = await getDocs(collection(db, "lists", code, "meta"));
+      if (!metaSnap.empty) return true;
+    } catch(e) {
+      console.warn("Kunne ikke sjekke gammel liste", code, e);
+    }
+    return false;
+  }
+
+  async function ensureHouseholdDocument(code, user) {
+    const householdRef = doc(db, "households", code);
+    const householdSnap = await getDoc(householdRef);
+
+    if (!householdSnap.exists()) {
+      await setDoc(householdRef, {
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        members: { [user.uid]: user.displayName || user.email?.split('@')[0] || "Bruker" },
+        migratedFromLegacyList: true
+      }, { merge: true });
+      return;
+    }
+
+    const members = householdSnap.data().members || {};
+    const isMap = !Array.isArray(members);
+    if (isMap) {
+      if (!members[user.uid]) {
+        members[user.uid] = user.displayName || user.email?.split('@')[0] || "Bruker";
+        await setDoc(householdRef, { members }, { merge: true });
       }
-      // Fjern henge-komma, lukk i omvendt rekkefølge (innerst først)
-      candidate = candidate.replace(/,\s*$/, "");
-      if (stack.length > 0) {
-        candidate = candidate + stack.reverse().join("");
+    } else {
+      // Migrér fra array til map
+      const newMembers = {};
+      for (const uid of members) newMembers[uid] = "Bruker";
+      newMembers[user.uid] = user.displayName || user.email?.split('@')[0] || "Bruker";
+      await setDoc(householdRef, { members: newMembers }, { merge: true });
+    }
+  }
+
+  let currentListId = null;
+  let currentListType = null; // "private" eller "shared"
+  let userHouseholds = []; // Private lister
+  let userSharedLists = []; // Delte handlelister
+
+  async function loadUserHouseholds(user) {
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+    
+    let privateIds = [];
+    let sharedIds = [];
+    
+    if (userSnap.exists()) {
+      const data = userSnap.data();
+      
+      // Private lister (householdIds)
+      if (Array.isArray(data.householdIds)) {
+        privateIds = [...data.householdIds];
+      }
+      if (data.householdId && !privateIds.includes(data.householdId)) {
+        privateIds.push(data.householdId);
+      }
+      
+   // Delte lister (sharedListIds)
+      if (Array.isArray(data.sharedListIds)) {
+        sharedIds = [...data.sharedListIds];
+      }
+
+      // Auto-oppdag delte lister der jeg er medlem, men som mangler i sharedListIds
+      try {
+        const memberSnap = await getDocs(
+          query(collection(db, "sharedLists"), where("memberUids", "array-contains", user.uid))
+        );
+        let nye = false;
+        memberSnap.forEach(d => { if (!sharedIds.includes(d.id)) { sharedIds.push(d.id); nye = true; } });
+        if (nye) await updateDoc(userRef, { sharedListIds: sharedIds });
+      } catch(e) {
+        console.warn("Kunne ikke auto-oppdage delte lister:", e);
+      }
+      
+
+      // Tavla bindes til den FELLES husstanden (householdId), ikke vilkårlig "første liste"
+      HOUSEHOLD_ID = data.householdId || privateIds[0] || user.uid;
+    }
+    
+    // Hvis ingen private lister, opprett en
+    if (privateIds.length === 0) {
+      const code = generateCode();
+      privateIds = [code];
+      
+      if (userSnap.exists()) {
+        await updateDoc(userRef, { householdIds: privateIds });
       } else {
-        // Ingen åpne strukturer men fortsatt ugyldig – kutt til forrige "}"
-        const prev = candidate.lastIndexOf("}", candidate.length - 2);
-        if (prev === -1) return null;
-        candidate = candidate.substring(0, prev + 1);
+        await setDoc(userRef, {
+          uid: user.uid,
+          displayName: user.displayName,
+          email: user.email,
+          householdIds: privateIds,
+          sharedListIds: [],
+          createdAt: Date.now()
+        });
+      }
+      
+      await setDoc(doc(db, "households", code), {
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        members: {
+          [user.uid]: user.displayName || "Bruker"  // {uid: name}
+        },
+        name: "Min husholdning"
+      });
+      await setDoc(doc(db, "lists", code, "meta", "info"), { 
+        createdAt: Date.now(),
+        name: "Min husholdning"
+      });
+    }
+    
+    // Hent navn på private lister
+    userHouseholds = [];
+    for (const id of privateIds) {
+      try {
+        const householdSnap = await getDoc(doc(db, "households", id));
+        const name = householdSnap.data()?.name || "Min husholdning";
+        userHouseholds.push({ id, name, type: "private" });
+      } catch(e) {
+        userHouseholds.push({ id, name: "Min husholdning", type: "private" });
+      }
+    }
+    
+    // Hent navn på delte lister
+    userSharedLists = [];
+    for (const id of sharedIds) {
+      try {
+        const sharedSnap = await getDoc(doc(db, "sharedLists", id));
+        const name = sharedSnap.data()?.name || id;
+        userSharedLists.push({ id, name, type: "shared" });
+      } catch(e) {
+        userSharedLists.push({ id, name: id, type: "shared" });
+      }
+    }
+    
+    currentListId = userHouseholds[0]?.id || null;
+    currentListType = currentListId ? "private" : null;
+    return currentListId;
+  }
+
+  window.changeList = (value) => {
+    console.log("changeList mottok:", value);
+    if (!value) return;
+    
+    // Parse "private:ID" eller "shared:ID"
+    const [type, id] = value.split(":");
+    console.log("Parsed - type:", type, "id:", id);
+    if (!type || !id) {
+      console.error("Kunne ikke parse liste");
+      return;
+    }
+    
+     currentListType = type;
+    currentListId = id;
+    LIST_ID = id;
+    activeSubList = null; // underlister gjelder kun standard-husholdningen, tilbake til hovedlisten ved bytte
+
+    const _sel = document.getElementById("list-selector-menu");
+    if (_sel) _sel.value = `${type}:${id}`;
+    
+    console.log("Bytter til liste:", { type, id, LIST_ID });
+    startListeningWithPrice();
+    startListeningTasks();
+    startListeningPackTours();
+    startListeningDeling();
+    startListeningSubLists();
+    loadHistory();
+    updateListInfoPanel();
+    updateListSwitcherUI();
+    saveLastList();  // Lagre sist brukte liste
+  };
+
+  // ── UNDERLISTER (Gaver, Verktøy, osv. innenfor standard-husholdningen) ──
+  function startListeningSubLists() {
+    if (unsubscribeSubLists) { unsubscribeSubLists(); unsubscribeSubLists = null; }
+    if (!HOUSEHOLD_ID) return;
+    const q = query(collection(db, "lists", HOUSEHOLD_ID, "handlelister"), orderBy("createdAt", "asc"));
+    unsubscribeSubLists = onSnapshot(q, snap => {
+      subLists = [];
+      snap.forEach(d => subLists.push({ id: d.id, ...d.data() }));
+
+      // Gjenopprett sist brukte underliste (én gang, ved oppstart)
+      if (!subListRestored) {
+        subListRestored = true;
+        try {
+          const savedId = localStorage.getItem("lastSubListId");
+          if (savedId && currentListType === "private") {
+            const found = subLists.find(s => s.id === savedId);
+            if (found) { activeSubList = found; startListeningWithPrice(); }
+          }
+        } catch(e) { console.warn("restore sublist:", e); }
+      }
+
+      // Hvis aktiv underliste ble slettet (f.eks. av Katrine), fall tilbake til hovedlisten
+      if (activeSubList && !subLists.find(s => s.id === activeSubList.id)) {
+        activeSubList = null;
+        startListeningWithPrice();
+      }
+
+      renderListSwitcher();
+    });
+  }
+
+  function renderListSwitcher() {
+    const bar = document.getElementById("list-switcher-bar");
+    if (!bar) return;
+    // Kun aktuelt for standard-husholdningen (private), ikke for delte handlelister
+    const show = currentListType === "private";
+    document.getElementById("list-switcher-toggle-btn").style.display = show ? "" : "none";
+    if (!show) { bar.innerHTML = ""; return; }
+
+    let html = `<button class="list-pill ${!activeSubList ? 'active' : ''}" onclick="switchToSubList(null)">🛒 Handleliste</button>`;
+    subLists.forEach(sl => {
+      const isActive = activeSubList && activeSubList.id === sl.id;
+      html += `<button class="list-pill ${isActive ? 'active' : ''}" onclick="switchToSubList('${sl.id}')">${escapeHtml(sl.name)}</button>`;
+    });
+    html += `<button class="list-pill list-pill-new" onclick="createSubList()">+ Ny liste</button>`;
+    if (activeSubList) {
+      html += `<button class="list-pill list-pill-new" onclick="deleteSubList()" title="Slett denne listen" style="color:var(--danger)">🗑</button>`;
+    }
+    bar.innerHTML = html;
+    bar.style.scrollSnapType = "x proximity";
+
+    const label = document.getElementById("list-switcher-current-label");
+    if (label) label.textContent = activeSubList ? activeSubList.name : "Handleliste";
+  }
+
+  window.toggleListSwitcher = () => {
+    const bar = document.getElementById("list-switcher-bar");
+    const chevron = document.getElementById("list-switcher-chevron");
+    const isOpen = bar.style.display !== "none";
+    bar.style.display = isOpen ? "none" : "flex";
+    if (chevron) chevron.style.transform = isOpen ? "" : "rotate(90deg)";
+  };
+
+  window.switchToSubList = (subListId) => {
+    activeSubList = subListId ? subLists.find(s => s.id === subListId) || null : null;
+    try { localStorage.setItem("lastSubListId", activeSubList ? activeSubList.id : ""); } catch(e) {}
+    renderListSwitcher();
+    startListeningWithPrice();
+    renderSuggestions();
+  };
+
+  window.createSubList = () => {
+    const input = document.getElementById("sub-list-name-input");
+    input.value = "";
+    document.getElementById("sub-list-modal").classList.add("open");
+    setTimeout(() => input.focus(), 50);
+  };
+
+  async function confirmCreateSubList() {
+    const input = document.getElementById("sub-list-name-input");
+    const trimmed = input.value.trim();
+    if (!trimmed) { input.focus(); return; }
+    document.getElementById("sub-list-modal").classList.remove("open");
+    try {
+      const ref = await addDoc(collection(db, "lists", HOUSEHOLD_ID, "handlelister"), {
+        name: trimmed, createdAt: Date.now(), createdBy: currentUser?.displayName || ""
+      });
+      activeSubList = { id: ref.id, name: trimmed };
+      try { localStorage.setItem("lastSubListId", ref.id); } catch(e) {}
+      startListeningWithPrice();
+      renderSuggestions();
+    } catch(e) {
+      console.warn("confirmCreateSubList:", e);
+      alert("Kunne ikke opprette listen. Prøv igjen.");
+    }
+  }
+  document.getElementById("sub-list-create-btn").addEventListener("click", confirmCreateSubList);
+  document.getElementById("sub-list-name-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") confirmCreateSubList();
+  });
+
+  window.deleteSubList = async () => {
+    if (!activeSubList) return;
+    const sl = activeSubList;
+    if (!confirm(`Slette listen "${sl.name}" og alle varene på den? Dette kan ikke angres.`)) return;
+    try {
+      const itemsSnap = await getDocs(collection(db, "lists", HOUSEHOLD_ID, "handlelister", sl.id, "items"));
+      for (const d of itemsSnap.docs) await deleteDoc(d.ref);
+      await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "handlelister", sl.id));
+    } catch(e) {
+      console.warn("deleteSubList:", e);
+      alert("Kunne ikke slette listen. Prøv igjen.");
+      return;
+    }
+    try { localStorage.removeItem("lastSubListId"); } catch(e) {}
+    switchToSubList(null);
+  };
+
+  function updateListSwitcherUI() {
+    renderListSwitcher();
+  }
+
+  window.deleteCurrentList = async () => {
+    if (!currentListId || !currentListType) return;
+    if (!confirm(`Slette listen "${currentListId}"? Dette kan ikke angres.`)) return;
+    
+    try {
+      const userRef = doc(db, "users", currentUser?.uid);
+      const userSnap = await getDoc(userRef);
+      
+      if (currentListType === "private") {
+        let ids = userSnap.data()?.householdIds || [];
+        ids = ids.filter(id => id !== currentListId);
+        
+        if (ids.length === 0) {
+          alert("Du må ha minst en privat liste!");
+          return;
+        }
+        
+        await updateDoc(userRef, { householdIds: ids });
+      } else if (currentListType === "shared") {
+        let ids = userSnap.data()?.sharedListIds || [];
+        ids = ids.filter(id => id !== currentListId);
+        await updateDoc(userRef, { sharedListIds: ids });
+      }
+      
+      await loadUserHouseholds(currentUser);
+      updateListSelector();
+      
+      const firstPrivate = userHouseholds[0]?.id;
+      if (firstPrivate) {
+        changeList(`private:${firstPrivate}`);
+      }
+      
+      alert("Liste slettet!");
+    } catch(e) {
+      console.error("Feil ved sletting av liste:", e);
+      alert("Kunne ikke slette listen");
+    }
+  };
+
+  function updateListSelector() {
+    const selector = document.getElementById("list-selector-menu");
+    if (!selector) return;
+    
+    selector.innerHTML = '<option value="">Velg liste...</option>';
+    
+    if (userHouseholds.length > 0) {
+      selector.innerHTML += '<optgroup label="━━ Private lister">';
+      userHouseholds.forEach(h => {
+        selector.innerHTML += `<option value="private:${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
+      });
+      selector.innerHTML += '</optgroup>';
+    }
+    
+    if (userSharedLists.length > 0) {
+      selector.innerHTML += '<optgroup label="━━ Delte handlelister">';
+      userSharedLists.forEach(h => {
+        selector.innerHTML += `<option value="shared:${escapeHtml(h.id)}">${escapeHtml(h.name)}</option>`;
+      });
+      selector.innerHTML += '</optgroup>';
+    }
+    
+    if (currentListId && currentListType) {
+      selector.value = `${currentListType}:${currentListId}`;
+      updateListInfoPanel();
+    }
+    
+    // Re-attach event listener (innerHTML removes it)
+    selector.removeEventListener("change", handleListChange);
+    selector.addEventListener("change", handleListChange);
+  }
+  
+  async function updateListInfoPanel() {
+    const panel = document.getElementById("list-info-panel");
+    const content = document.getElementById("list-info-content");
+    const shareBtn = document.getElementById("share-btn");
+    
+    if (!currentListId || !currentListType) {
+      panel.style.display = "none";
+      shareBtn.textContent = "👥 Del";
+      return;
+    }
+    
+    panel.style.display = "block";
+    
+    if (currentListType === "private") {
+      // Private liste - hent navn fra userHouseholds
+      const household = userHouseholds.find(h => h.id === currentListId);
+      const listName = household?.name || "Min husholdning";
+      content.innerHTML = `<strong>${escapeHtml(listName)}</strong>`;
+      shareBtn.textContent = "👥 Del husholdning";
+    } else if (currentListType === "shared") {
+      // Delt liste - hent hvem som opprettet og medlemmer
+      try {
+        const sharedListDoc = await getDoc(doc(db, "sharedLists", currentListId));
+        if (sharedListDoc.exists()) {
+          const createdBy = sharedListDoc.data().createdBy;
+          const currentUserId = auth.currentUser.uid;
+          const isOwner = createdBy === currentUserId;
+          const members = sharedListDoc.data().members || {};  // {uid: name}
+          const memberCount = Object.keys(members).length;
+          
+          let html = `<strong>${escapeHtml(sharedListDoc.data().name)}</strong><br>`;
+          html += `Opprettet av: ${isOwner ? "deg" : "noen andre"}`;
+          
+          // Vis medlemmer hvis admin
+          if (isOwner && memberCount > 0) {
+            html += `<br><br><div style="font-size:12px;color:var(--ink3);margin-bottom:8px">MEDLEMMER (${memberCount})</div>`;
+            for (const [memberId, memberName] of Object.entries(members)) {
+              const displayName = memberId === currentUserId ? "Du" : memberName;
+              if (memberId !== currentUserId) {
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+                  <span style="font-size:13px">${escapeHtml(displayName)}</span>
+                  <button style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px" onclick="removeMember('${escapeHtml(currentListId)}', '${escapeHtml(memberId)}', '${escapeHtml(displayName)}')">Fjern</button>
+                </div>`;
+              }
+            }
+          }
+          
+          content.innerHTML = html;
+          
+          // Legg til husstandsmedlem-knapp hvis admin
+          if (isOwner) {
+            content.innerHTML += `<br><button class="dd-opt" style="margin-top:8px;width:100%;background:var(--accent-light);color:var(--accent)" onclick="closeSettingsDropdown(); openAddMemberModal('${escapeHtml(currentListId)}')">➕ Legg til medlem</button>`;
+          }
+          
+          // Lag slett/forlat-knapp basert på eierskap
+          if (isOwner) {
+            content.innerHTML += `<br><button class="dd-opt dd-opt-danger" style="margin-top:8px;width:100%" onclick="closeSettingsDropdown(); openDeleteListModal('shared', '${escapeHtml(currentListId)}')">🗑 Slett liste</button>`;
+          } else {
+            content.innerHTML += `<br><button class="dd-opt dd-opt-danger" style="margin-top:8px;width:100%" onclick="closeSettingsDropdown(); openLeaveListModal('shared', '${escapeHtml(currentListId)}')">👋 Forlat liste</button>`;
+          }
+          
+          shareBtn.textContent = "👥 Del liste";
+        }
+      } catch (error) {
+        console.error("Feil ved henting av liste-info:", error);
+        content.innerHTML = "<em>Kunne ikke laste liste-info</em>";
+        shareBtn.textContent = "👥 Del";
       }
     }
   }
-  return null;
-}
+  
+  function handleListChange(e) {
+    const value = e.target.value;
+    console.log("Dropdown endret til:", value);
+    changeList(value);
+  }
 
-// Liten hjelper: standard JSON-respons
-function jsonRes(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "Content-Type": "application/json" }
+  // Lagre sist brukte liste når den endres
+  function saveLastList() {
+    if (currentListType && currentListId) {
+      localStorage.setItem("lastListType", currentListType);
+      localStorage.setItem("lastListId", currentListId);
+    }
+  }
+
+  // Gjenoppretter sist brukte liste ved lasting
+  function restoreLastList() {
+    const savedType = localStorage.getItem("lastListType");
+    const savedId = localStorage.getItem("lastListId");
+    
+  if (savedType && savedId) {
+      changeList(`${savedType}:${savedId}`);
+    }
+  }
+
+  window.openAddMemberModal = async (listId) => {
+    try {
+      // Hent husholdningen (første private liste)
+      const household = userHouseholds[0];
+      if (!household) {
+        alert("Kunne ikke finne husholdningen");
+        return;
+      }
+      
+      const householdRef = doc(db, "households", household.id);
+      const householdSnap = await getDoc(householdRef);
+      
+      if (!householdSnap.exists()) {
+        alert("Kunne ikke finne husholdningen");
+        return;
+      }
+      
+      let householdMembers = householdSnap.data().members || {};
+      let currentMembers = {};
+      
+      const sharedListRef = doc(db, "sharedLists", listId);
+      const sharedListSnap = await getDoc(sharedListRef);
+      if (sharedListSnap.exists()) {
+        currentMembers = sharedListSnap.data().members || {};
+      }
+      
+      // Konvertér til objekt hvis de er arrays
+      if (Array.isArray(householdMembers)) {
+        const temp = {};
+        for (const uid of householdMembers) {
+          temp[uid] = `Medlem`;
+        }
+        householdMembers = temp;
+      }
+      if (Array.isArray(currentMembers)) {
+        const temp = {};
+        for (const uid of currentMembers) {
+          temp[uid] = `Medlem`;
+        }
+        currentMembers = temp;
+      }
+      
+      console.log("Husholdningsmedlemmer:", householdMembers);
+      console.log("Allerede med i listen:", currentMembers);
+      
+      // Filtrer ut medlemmer som allerede er med
+      const availableMembers = Object.entries(householdMembers)
+        .filter(([uid]) => !currentMembers.hasOwnProperty(uid));
+      
+      console.log("Tilgjengelige medlemmer:", availableMembers);
+      
+      // Vis modal med medlemmer som kan legges til
+      let memberHtml = `<div style="max-height:300px;overflow-y:auto">`;
+      for (const [memberId, memberName] of availableMembers) {
+        memberHtml += `<div style="padding:10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px">${escapeHtml(String(memberName))}</span>
+          <button style="background:var(--accent);color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" onclick="addMemberToList('${escapeHtml(listId)}', '${escapeHtml(memberId)}', '${escapeHtml(String(memberName))}')">Legg til</button>
+        </div>`;
+      }
+      memberHtml += `</div>`;
+      
+      if (availableMembers.length === 0) {
+        memberHtml = `<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">Alle husstandsmedlemmer er allerede med</div>`;
+      }
+      
+      // Vis i modal
+      const modal = document.getElementById("delete-list-modal");
+      const title = document.getElementById("delete-list-modal-title");
+      const msg = document.getElementById("delete-list-modal-msg");
+      const input = document.getElementById("delete-list-confirm-input");
+      const btn = document.getElementById("delete-list-confirm-btn");
+      
+      title.textContent = "Legg til medlem";
+      msg.innerHTML = memberHtml;
+      input.style.display = "none";
+      btn.textContent = "Lukk";
+      btn.style.background = "var(--bg)";
+      btn.style.color = "var(--ink)";
+      btn.onclick = () => modal.classList.remove("open");
+      
+      modal.classList.add("open");
+    } catch(e) {
+      console.error("Feil ved åpning av legg til medlem modal:", e);
+      alert("Feil: " + e.message);
+    }
+  };
+
+  window.addMemberToList = async (listId, memberId, memberName) => {
+    try {
+      const sharedListRef = doc(db, "sharedLists", listId);
+      const sharedListSnap = await getDoc(sharedListRef);
+         let members = sharedListSnap.data().members || {};  // {uid: name}
+      let memberUids = sharedListSnap.data().memberUids || Object.keys(members);
+      
+      if (!members[memberId]) {
+        members[memberId] = memberName;
+        if (!memberUids.includes(memberId)) memberUids.push(memberId);
+        await updateDoc(sharedListRef, { members, memberUids });
+        
+        // NB: Vi kan ikke oppdatere andre brukeres dokument direkte.
+        // Katrine vil se listen neste gang hun åpner appen via invite-link.
+        
+        alert("Medlem lagt til!");
+        document.getElementById("delete-list-modal").classList.remove("open");
+        updateListInfoPanel();
+      }
+    } catch(e) {
+      console.error("Feil ved adding medlem:", e);
+      alert("Feil: " + e.message);
+    }
+  };
+
+  window.openDeleteListModal = (type, listId) => {
+    const listName = type === "private" ? "Min husholdning" : (userSharedLists.find(l => l.id === listId)?.name || listId);
+    
+    if (type === "private" && listName === "Min husholdning") {
+      alert("Du kan ikke slette Min husholdning!");
+      return;
+    }
+    
+    const modal = document.getElementById("delete-list-modal");
+    const title = document.getElementById("delete-list-modal-title");
+    const msg = document.getElementById("delete-list-modal-msg");
+    const input = document.getElementById("delete-list-confirm-input");
+    const btn = document.getElementById("delete-list-confirm-btn");
+    
+    title.textContent = "Slett liste";
+    msg.textContent = `Er du sikker på at du vil slette "${listName}"? Dette kan ikke angres.\nSkriv inn listen sitt navn nedenfor for å bekrefte:`;
+    input.style.display = "block";
+    input.value = "";
+    input.placeholder = `Skriv: ${listName}`;
+    input.focus();
+    
+    // Lagre type og id for bruk i confirm-funksjon
+    modal.dataset.type = type;
+    modal.dataset.listId = listId;
+    modal.dataset.listName = listName;
+    
+    btn.textContent = "Slett liste";
+    btn.style.background = "var(--danger, #e74c3c)";
+    btn.onclick = () => confirmDeleteList();
+    
+    modal.classList.add("open");
+  };
+
+  window.openLeaveListModal = (type, listId) => {
+    const listName = userSharedLists.find(l => l.id === listId)?.name || listId;
+    
+    const modal = document.getElementById("delete-list-modal");
+    const title = document.getElementById("delete-list-modal-title");
+    const msg = document.getElementById("delete-list-modal-msg");
+    const input = document.getElementById("delete-list-confirm-input");
+    const btn = document.getElementById("delete-list-confirm-btn");
+    
+    title.textContent = "Forlat liste";
+    msg.textContent = `Er du sikker på at du vil forlate "${listName}"?`;
+    input.style.display = "block";
+    input.value = "";
+    input.placeholder = `Skriv: ${listName}`;
+    input.focus();
+    
+    // Lagre type og id for bruk i confirm-funksjon
+    modal.dataset.type = type;
+    modal.dataset.listId = listId;
+    modal.dataset.listName = listName;
+    
+    btn.textContent = "Forlat liste";
+    btn.style.background = "var(--muted, #7f8c8d)";
+    btn.onclick = () => confirmLeaveList();
+    
+    modal.classList.add("open");
+  };
+
+  window.removeMember = async (listId, memberUid, memberName) => {
+    if (!confirm(`Fjerne ${memberName} fra listen?`)) return;
+    
+    try {
+      const sharedListRef = doc(db, "sharedLists", listId);
+      const sharedListDoc = await getDoc(sharedListRef);
+      
+      if (sharedListDoc.exists()) {
+        let members = sharedListDoc.data().members || {};  // members = {uid: name}
+        let memberUids = (sharedListDoc.data().memberUids || Object.keys(members)).filter(u => u !== memberUid);
+        delete members[memberUid];  // Fjern medlem
+        await updateDoc(sharedListRef, { members, memberUids });
+        
+        // NB: Vi kan ikke oppdatere andre brukeres dokument direkte.
+        // Medlemmet fjernes fra members-listen, og mister tilgang.
+        
+        alert(`${memberName} ble fjernet fra listen`);
+        updateListInfoPanel();
+      }
+    } catch(e) {
+      console.error("Feil ved fjerning av medlem:", e);
+      alert("Kunne ikke fjerne medlem: " + e.message);
+    }
+  };
+
+  async function confirmDeleteList() {
+    const modal = document.getElementById("delete-list-modal");
+    const input = document.getElementById("delete-list-confirm-input");
+    const type = modal.dataset.type;
+    const listId = modal.dataset.listId;
+    const listName = modal.dataset.listName;
+    
+    if (input.value !== listName) {
+      alert("Du må skrive inn korrekt navn på listen");
+      return;
+    }
+    
+    try {
+      if (type === "shared") {
+        // Slett delt liste (kun oppretterer kan gjøre dette)
+  await deleteDoc(doc(db, "lists", listId, "meta", "info"));
+        await deleteDoc(doc(db, "sharedLists", listId));     
+        // Fjern fra alle brukeres sharedListIds... (This is complex, so we'll skip for now)
+      }
+      
+      // Fjern fra brukerens lister
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      
+      if (type === "private") {
+        let ids = userSnap.data()?.householdIds || [];
+        ids = ids.filter(id => id !== listId);
+        await updateDoc(userRef, { householdIds: ids });
+      } else if (type === "shared") {
+        let ids = userSnap.data()?.sharedListIds || [];
+        ids = ids.filter(id => id !== listId);
+        await updateDoc(userRef, { sharedListIds: ids });
+      }
+      
+      modal.classList.remove("open");
+      await loadUserHouseholds(currentUser);
+      updateListSelector();
+      
+      const firstPrivate = userHouseholds[0]?.id;
+      if (firstPrivate) {
+        changeList(`private:${firstPrivate}`);
+      }
+      
+      alert("Liste slettet!");
+    } catch(e) {
+      console.error("Feil ved sletting:", e);
+      alert("Feil ved sletting: " + e.message);
+    }
+  }
+
+  async function confirmLeaveList() {
+    const modal = document.getElementById("delete-list-modal");
+    const input = document.getElementById("delete-list-confirm-input");
+    const listId = modal.dataset.listId;
+    const listName = modal.dataset.listName;
+    
+    if (input.value !== listName) {
+      alert("Du må skrive inn korrekt navn på listen");
+      return;
+    }
+    
+    try {
+      // Fjern fra brukerens sharedListIds
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      let ids = userSnap.data()?.sharedListIds || [];
+      ids = ids.filter(id => id !== listId);
+      await updateDoc(userRef, { sharedListIds: ids });
+      
+      modal.classList.remove("open");
+      await loadUserHouseholds(currentUser);
+      updateListSelector();
+      
+      const firstPrivate = userHouseholds[0]?.id;
+      if (firstPrivate) {
+        changeList(`private:${firstPrivate}`);
+      }
+      
+      alert("Du har forlatt listen!");
+    } catch(e) {
+      console.error("Feil ved forlating:", e);
+      alert("Feil: " + e.message);
+    }
+  }
+
+  window.openInviteModal = () => {
+    if (!currentListId || !currentListType) {
+      alert("Velg en liste først");
+      return;
+    }
+    const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${currentListType}:${currentListId}`;
+    document.getElementById("invite-link-input").value = inviteUrl;
+    document.getElementById("invite-modal").classList.add("open");
+  };
+
+  window.copyInviteLink = () => {
+    const input = document.getElementById("invite-link-input");
+    input.select();
+    document.execCommand("copy");
+    alert("Link kopiert!");
+  };
+
+  async function handleInviteParameter() {
+    const params = new URLSearchParams(window.location.search);
+    const inviteParam = params.get("invite");
+    
+    if (!inviteParam || !currentUser) return;
+    
+    const [type, code] = inviteParam.split(":");
+    if (!type || !code) return;
+    
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      
+      if (type === "private") {
+        // Legg til privat husholdning
+        const householdSnap = await getDoc(doc(db, "households", code));
+        if (!householdSnap.exists()) {
+          alert("Invitasjons-koden er ugyldig");
+          return;
+        }
+        
+        const currentIds = userSnap.data()?.householdIds || [];
+        if (currentIds.includes(code)) return;
+        
+        // Legg bruker til medlemmer (som objekt {uid: name})
+        const household = householdSnap.data();
+        const newMembers = (household.members || {});
+        if (!newMembers[currentUser.uid]) {
+          newMembers[currentUser.uid] = currentUser.displayName || "Bruker";
+          await updateDoc(doc(db, "households", code), { members: newMembers });
+        }
+        
+        await updateDoc(userRef, { householdIds: [...currentIds, code] });
+      } else if (type === "shared") {
+        // Legg til delt handleliste
+        const sharedIds = userSnap.data()?.sharedListIds || [];
+        if (sharedIds.includes(code)) return;
+        
+        // Bruk displayName eller email for medlemsnavn
+        const invitedMemberName = currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker";
+        
+        // Legg bruker til medlemmer i sharedLists (som objekt {uid: name})
+        const sharedListDoc = await getDoc(doc(db, "sharedLists", code));
+        if (sharedListDoc.exists()) {
+         const members = sharedListDoc.data().members || {};
+          let memberUids = sharedListDoc.data().memberUids || Object.keys(members);
+          if (!members[currentUser.uid]) {
+            members[currentUser.uid] = invitedMemberName;
+            if (!memberUids.includes(currentUser.uid)) memberUids.push(currentUser.uid);
+            await updateDoc(doc(db, "sharedLists", code), { members, memberUids });
+          }
+        }
+        
+        await updateDoc(userRef, { sharedListIds: [...sharedIds, code] });
+      }
+      
+      await loadUserHouseholds(currentUser);
+      updateListSelector();
+      changeList(`${type}:${code}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch(e) {
+      console.error("Feil ved invitasjon:", e);
+      alert("Kunne ikke bli med i listen");
+    }
+  }
+
+  window.openNewListModal = () => {
+    document.getElementById("new-list-modal").classList.add("open");
+    document.getElementById("new-list-name-input").value = "";
+    document.getElementById("new-list-name-input").focus();
+  };
+
+  async function createNewList(customName) {
+    const code = generateCode();
+    const name = customName.trim() || code;
+    
+    // Opprett household med members som objekt {uid: name}
+    const uid = currentUser?.uid || "";
+    const displayName = currentUser?.displayName || "Bruker";
+    await setDoc(doc(db, "households", code), {
+      createdAt: Date.now(),
+      createdBy: uid,
+      members: {
+        [uid]: displayName  // {uid: name}
+      },
+      name: "Min husholdning"  // Privat liste får fast navn
+    });
+    
+    // Opprett tom liste
+    await setDoc(doc(db, "lists", code, "meta", "info"), { 
+      createdAt: Date.now(),
+      name: "Min husholdning"
+    });
+    
+    // Legg til i brukerens householdIds
+    const userRef = doc(db, "users", currentUser?.uid);
+    const userSnap = await getDoc(userRef);
+    let currentIds = userSnap.data()?.householdIds || [];
+    
+    // Hvis bruker har gammel struktur, konvertér den
+    if (!Array.isArray(currentIds) && userSnap.data()?.householdId) {
+      currentIds = [userSnap.data().householdId];
+    }
+    
+    // Legg til ny kode
+    if (!currentIds.includes(code)) {
+      currentIds.push(code);
+    }
+    
+    await updateDoc(userRef, { householdIds: currentIds });
+    
+    // Oppdater liste-velgeren
+    await loadUserHouseholds(currentUser);
+    updateListSelector();
+    
+    currentListId = code;
+    currentListType = "private";
+    LIST_ID = code;
+    startListeningWithPrice();
+    startListeningTasks();
+    startListeningPackTours();
+    startListeningDeling();
+    loadHistory();
+    
+    document.getElementById("new-list-modal").classList.remove("open");
+  }
+
+  window.openCreateSharedListModal = () => {
+    document.getElementById("create-shared-list-modal").classList.add("open");
+    document.getElementById("shared-list-name-input").value = "";
+    document.getElementById("shared-list-name-input").focus();
+  };
+
+  async function createSharedList(name) {
+    if (!name.trim()) {
+      alert("Skriv inn navn på listen");
+      return;
+    }
+
+    if (!currentUser) {
+      alert("Du er ikke logget inn!");
+      console.error("currentUser er null:", currentUser);
+      return;
+    }
+
+    const code = generateCode();
+
+    try {
+      console.log("currentUser.uid:", currentUser.uid);
+      console.log("currentUser.displayName:", currentUser.displayName);
+      console.log("currentUser.email:", currentUser.email);
+      
+      // Bruk displayName eller email for medlemsnavn
+      const memberName = currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker";
+      
+      console.log("1. Legger bruker til sharedListIds...");
+      // Legg til i brukerens sharedListIds FØRST
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      let sharedIds = userSnap.data()?.sharedListIds || [];
+      if (!sharedIds.includes(code)) {
+        sharedIds.push(code);
+      }
+      await updateDoc(userRef, { sharedListIds: sharedIds });
+      console.log("✓ Bruker lagt til sharedListIds");
+
+      console.log("2. Oppretter sharedLists dokument...");
+      await setDoc(doc(db, "sharedLists", code), {
+        createdAt: Date.now(),
+        name: name.trim(),
+        createdBy: currentUser.uid,
+        members: {
+          [currentUser.uid]: memberName
+        },
+        memberUids: [currentUser.uid]
+      });
+      console.log("✓ sharedLists dokument opprettet");
+
+      console.log("3. Oppretter lists meta dokument...");
+      await setDoc(doc(db, "lists", code, "meta", "info"), {
+        createdAt: Date.now(),
+        isShared: true,
+        name: name.trim()
+      });
+      console.log("✓ lists meta dokument opprettet");
+
+      // Reload og velg ny liste
+      await loadUserHouseholds(currentUser);
+      updateListSelector();
+      changeList(`shared:${code}`);
+
+      alert(`Delt handleliste "${name}" opprettet!`);
+      document.getElementById("create-shared-list-modal").classList.remove("open");
+    } catch(e) {
+      console.error("Feil ved opprettelse av delt liste:", e);
+      console.error("Feiltype:", e.code);
+      alert("Feil: " + e.message);
+    }
+  }
+
+  document.getElementById("create-shared-list-btn").addEventListener("click", async () => {
+    const name = document.getElementById("shared-list-name-input").value;
+    await createSharedList(name);
   });
+
+  document.getElementById("shared-list-name-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("create-shared-list-btn").click();
+  });
+
+  onAuthStateChanged(auth, async (user) => {
+    document.getElementById("loading").style.display = "none";
+    if (user) {
+      currentUser = user;
+      try {
+        const firstListId = await loadUserHouseholds(user);
+       LIST_ID = firstListId;
+        updateListSelector();
+        restoreLastList();  // Gjenopprett sist brukte liste
+      } catch(e) {
+        console.error("Kunne ikke hente husholdninger", e);
+        alert("Kunne ikke hente husholdninger. Prøv å logge inn på nytt.");
+        return;
+      }
+      document.getElementById("login-screen").style.display = "none";
+      document.getElementById("app-screen").style.display = "flex";
+      const initials = user.displayName?.split(" ").map(n=>n[0]).join("").slice(0,2) || "?";
+      document.getElementById("user-avatar").textContent = initials;
+      await loadPurchaseHistory();
+      startListeningWithPrice();
+      startListeningTasks();
+      startListeningPackTours();
+      startListeningDeling();
+      startListeningSubLists();
+      renderListSwitcher();
+      renderSuggestions();
+      loadHistory();
+      handleInviteParameter();
+      // Delt ønskeliste-lenke? Vis mottaker-visning i stedet for vanlig app.
+      const onskeKode = new URLSearchParams(window.location.search).get("onskeliste");
+      if (onskeKode) { openSharedWishlist(onskeKode); }
+      try {
+        const savedTab = localStorage.getItem("hl-active-tab");
+        if (savedTab && ["list","history","board","pakke","deling","onsker","middag"].includes(savedTab)) showTab(savedTab);
+      } catch(e) {}
+    } else {
+      currentUser = null;
+      LIST_ID = null;
+      HOUSEHOLD_ID = null;
+      document.getElementById("login-screen").style.display = "flex";
+      document.getElementById("app-screen").style.display = "none";
+      if (unsubscribeList) { unsubscribeList(); unsubscribeList = null; }
+      if (unsubscribeTasks) { unsubscribeTasks(); unsubscribeTasks = null; }
+      if (unsubscribeWishes) { unsubscribeWishes(); unsubscribeWishes = null; }
+      if (unsubscribeMiddag) { unsubscribeMiddag(); unsubscribeMiddag = null; }
+      if (unsubscribeTours) { unsubscribeTours(); unsubscribeTours = null; }
+      if (unsubscribePackItems) { unsubscribePackItems(); unsubscribePackItems = null; }
+      if (unsubscribeSubLists) { unsubscribeSubLists(); unsubscribeSubLists = null; }
+      stopListeningDeling();
+    }
+  });
+  // TABS
+  window.showTab = (tab) => {
+    document.getElementById("tab-list").classList.toggle("active", tab === "list");
+    document.getElementById("tab-history").classList.toggle("active", tab === "history");
+    document.getElementById("tab-board").classList.toggle("active", tab === "board");
+    document.getElementById("tab-pakke").classList.toggle("active", tab === "pakke");
+    document.getElementById("tab-deling").classList.toggle("active", tab === "deling");
+    document.getElementById("tab-onsker").classList.toggle("active", tab === "onsker");
+    document.getElementById("tab-middag").classList.toggle("active", tab === "middag");
+    document.getElementById("list-screen").style.display = tab === "list" ? "block" : "none";
+    document.getElementById("history-screen").style.display = tab === "history" ? "block" : "none";
+    document.getElementById("board-screen").style.display = tab === "board" ? "block" : "none";
+    document.getElementById("pakke-screen").style.display = tab === "pakke" ? "block" : "none";
+    document.getElementById("deling-screen").style.display = tab === "deling" ? "block" : "none";
+    document.getElementById("onsker-screen").style.display = tab === "onsker" ? "block" : "none";
+    document.getElementById("middag-screen").style.display = tab === "middag" ? "block" : "none";
+    document.getElementById("add-form-area").style.display = tab === "list" ? "flex" : "none";
+    if (tab === "onsker") startListeningWishes();
+    if (tab === "middag") startListeningMiddag();
+    try { localStorage.setItem("hl-active-tab", tab); } catch(e) {}
+  };
+
+  // PAKKELISTE - TOUR MANAGEMENT
+  const PACK_CAT_ORDER = ["klar","toalett","dokumenter","elektronikk","barn","diverse"];
+  const PACK_CAT_LABELS = {
+    "klar":"👕 Klær","toalett":"🧴 Toalettsaker","dokumenter":"📄 Dokumenter",
+    "elektronikk":"🔌 Elektronikk","barn":"🧸 Barn","diverse":"📦 Diverse"
+  };
+
+  let packTours = [];
+  let unsubscribeTours = null;
+  let currentTourId = null;
+  let currentPerson = null;
+  let packItems = [];
+  let lastPackFocusId = null;
+  let unsubscribePackItems = null;
+
+  function startListeningPackTours() {
+    if (unsubscribeTours) unsubscribeTours();
+    const q = query(collection(db, "lists", LIST_ID, "packlists"), orderBy("createdAt", "desc"));
+    unsubscribeTours = onSnapshot(q, (snap) => {
+      packTours = [];
+      snap.forEach(d => packTours.push({ id: d.id, ...d.data() }));
+      // Vis turer med dato først (nærmeste øverst), deretter turer uten dato
+      packTours.sort((a, b) => {
+        if (a.startDato && b.startDato) return b.startDato - a.startDato;
+        if (a.startDato && !b.startDato) return -1;
+        if (!a.startDato && b.startDato) return 1;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+      renderPackToursView();
+      // Gjenopprett åpen tur etter refresh (kun én gang, og kun hvis vi ikke alt står i en tur)
+      if (!packToursRestored) {
+        packToursRestored = true;
+        try {
+          const openId = localStorage.getItem("hl-open-tour");
+          const activeTab = localStorage.getItem("hl-active-tab");
+          if (openId && activeTab === "pakke" && !currentTourId && packTours.some(t => t.id === openId)) {
+            openPackTourDetail(openId);
+          }
+        } catch(e) {}
+      }
+    });
+  }
+  let packToursRestored = false;
+
+  function renderPackToursView() {
+    const container = document.getElementById("pakke-tours-list");
+    if (!container) return;
+    if (packTours.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="big">🧳</div><p>Ingen turer ennå</p></div>`;
+      return;
+    }
+    container.innerHTML = packTours.map(tour => `
+      <div class="item" style="cursor:pointer;margin-bottom:8px" onclick="openPackTourDetail('${tour.id}')">
+        <div class="item-main">
+          <div class="item-name">${escapeHtml(tour.turNavn)}</div>
+          <div class="item-detail">${tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : ""} · ${(tour.persons || []).length} personer</div>
+        </div>
+        <button class="board-edit" onclick="copyPackTour('${tour.id}', event)" title="Kopier til ny tur" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:15px;padding:2px 6px">📋</button>
+        <button class="board-edit" onclick="editPackTour('${tour.id}', event)" title="Rediger tur" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:15px;padding:2px 6px">✎</button>
+        <button class="delete-btn" onclick="deletePackTour('${tour.id}', event)" title="Slett tur">×</button>
+        <span style="color:var(--ink3)">›</span>
+      </div>
+    `).join("");
+  }
+
+  let editingTourId = null;
+
+  window.editPackTour = (tourId, evt) => {
+    if (evt) evt.stopPropagation();
+    const tour = packTours.find(t => t.id === tourId);
+    if (!tour) return;
+    editingTourId = tourId;
+    document.getElementById("pakke-modal-name").value = tour.turNavn || "";
+    document.getElementById("pakke-modal-date").value = tour.startDato
+      ? new Date(tour.startDato).toISOString().slice(0, 10) : "";
+    document.getElementById("pakke-modal-desc").value = tour.beskrivelse || "";
+    document.querySelector("#pakke-tour-modal .modal-title").textContent = "Rediger tur";
+    document.getElementById("pakke-modal-create").textContent = "Lagre";
+    document.getElementById("pakke-tour-modal").classList.add("open");
+  };
+
+  window.copyPackTour = async (tourId, evt) => {
+    if (evt) evt.stopPropagation();
+    const tour = packTours.find(t => t.id === tourId);
+    if (!tour) return;
+    if (!confirm(`Kopiere "${tour.turNavn}"? Du får en ny tur med samme personer og ting, klar til å pakkes på nytt.`)) return;
+    try {
+      // 1. Lag ny tur – samme personer, ingen dato, navn + (kopi)
+      const nyTur = await addDoc(collection(db, "lists", LIST_ID, "packlists"), {
+        turNavn: `${tour.turNavn} (kopi)`,
+        startDato: null,
+        beskrivelse: tour.beskrivelse || "",
+        persons: [...(tour.persons || [])],
+        createdAt: Date.now(),
+        createdBy: currentUser?.uid || ""
+      });
+      // 2. Hent alle ting fra originalen og kopier dem nullstilt (upakket)
+      const itemsSnap = await getDocs(collection(db, "lists", LIST_ID, "packlists", tourId, "items"));
+      for (const d of itemsSnap.docs) {
+        const it = d.data();
+        await addDoc(collection(db, "lists", LIST_ID, "packlists", nyTur.id, "items"), {
+          navn: it.navn,
+          qty: it.qty || 1,
+          person: it.person || "",
+          cat: it.cat || "diverse",
+          packed: 0,
+          done: false,
+          createdAt: Date.now(),
+          addedBy: currentUser?.displayName || ""
+        });
+      }
+      alert(`Kopi laget! Du finner "${tour.turNavn} (kopi)" i listen.`);
+    } catch (e) {
+      console.error("Kunne ikke kopiere tur:", e);
+      alert("Klarte ikke å kopiere turen. Prøv igjen.");
+    }
+  };
+
+  window.deletePackTour = async (tourId, evt) => {
+    if (evt) evt.stopPropagation();
+    const tour = packTours.find(t => t.id === tourId);
+    const navn = tour?.turNavn || "denne turen";
+    if (!confirm(`Slette "${navn}" og alt som er pakket på den? Dette kan ikke angres.`)) return;
+    // Slett alle pakke-elementer i turen først, deretter selve turen
+    try {
+      const itemsSnap = await getDocs(collection(db, "lists", LIST_ID, "packlists", tourId, "items"));
+      for (const d of itemsSnap.docs) {
+        await deleteDoc(doc(db, "lists", LIST_ID, "packlists", tourId, "items", d.id));
+      }
+      await deleteDoc(doc(db, "lists", LIST_ID, "packlists", tourId));
+    } catch (e) {
+      console.error("Kunne ikke slette tur:", e);
+      alert("Klarte ikke å slette turen. Prøv igjen.");
+    }
+  };
+
+  window.openPackTourDetail = (tourId) => {
+    currentTourId = tourId;
+    currentPerson = null;
+    const tour = packTours.find(t => t.id === tourId);
+    if (!tour) return;
+    try { localStorage.setItem("hl-open-tour", tourId); } catch(e) {}
+
+    document.getElementById("pakke-tours-view").style.display = "none";
+    document.getElementById("pakke-detail-view").style.display = "block";
+    document.getElementById("pakke-tour-title").textContent = tour.turNavn;
+    document.getElementById("pakke-tour-date").textContent = tour.startDato ? new Date(tour.startDato).toLocaleDateString("no-NO") : "";
+    document.getElementById("pakke-tour-desc").textContent = tour.beskrivelse || "";
+
+    const personSelect = document.getElementById("pakke-person-select");
+    const updatePersonDropdown = () => {
+      const prev = personSelect.value;
+      personSelect.innerHTML = '<option value="">Velg person...</option>';
+      if ((tour.persons || []).length > 0) {
+        personSelect.innerHTML += '<option value="__alle__">👥 Alle (oversikt)</option>';
+      }
+      (tour.persons || []).forEach(p => {
+        personSelect.innerHTML += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`;
+      });
+      if (prev && [...personSelect.options].some(o => o.value === prev)) personSelect.value = prev;
+      renderMemberQuickAdd();
+      renderWhoButtons();
+    };
+
+    const addPersonToTour = async (navn) => {
+      navn = navn.trim();
+      if (!navn) return;
+      if ((tour.persons || []).includes(navn)) { alert(navn + " er allerede med!"); return; }
+      tour.persons = (tour.persons || []).concat(navn);
+      await updateDoc(doc(db, "lists", LIST_ID, "packlists", tourId), { persons: tour.persons });
+      updatePersonDropdown();
+    };
+
+    const renderMemberQuickAdd = () => {
+      const box = document.getElementById("pakke-member-quickadd");
+      if (!box) return;
+      const available = boardMemberNames.filter(n => !(tour.persons || []).includes(n));
+      box.innerHTML = available.length === 0 ? "" : available.map(n =>
+        `<button type="button" class="board-pill" style="cursor:pointer;border:1px solid var(--border);background:var(--card);padding:5px 10px;font-size:13px" onclick="quickAddTourPerson('${escapeJsString(n)}')">+ ${escapeHtml(n)}</button>`
+      ).join("");
+    };
+    window.quickAddTourPerson = (navn) => addPersonToTour(navn);
+
+    // "Hvem skal ha det?" – knapper for hver person + Alle
+    const renderWhoButtons = () => {
+      const box = document.getElementById("pakke-who-buttons");
+      if (!box) return;
+      const persons = tour.persons || [];
+      if (persons.length === 0) {
+        box.innerHTML = `<span style="font-size:13px;color:var(--ink3)">Legg til en person først</span>`;
+        return;
+      }
+      let html = persons.map(p =>
+        `<button type="button" class="who-btn" style="cursor:pointer;border:1px solid var(--border);background:var(--card);border-radius:8px;padding:6px 12px;font-size:13px" onclick="addItemToPerson('${escapeJsString(p)}')">${escapeHtml(p)}</button>`
+      ).join("");
+      if (persons.length > 1) {
+        html += `<button type="button" class="who-btn" style="cursor:pointer;border:1px solid var(--gold);color:var(--gold);background:var(--gold-dim);border-radius:8px;padding:6px 12px;font-size:13px" onclick="addItemToPerson('__alle__')">👥 Alle</button>`;
+      }
+      box.innerHTML = html;
+    };
+
+    // Legger tingen i input til valgt person (eller alle)
+    window.addItemToPerson = async (who) => {
+      const input = document.getElementById("pakke-item-input");
+      const navn = input.value.trim();
+      if (!navn) { input.focus(); return; }
+      const cat = document.getElementById("pakke-cat-input").value || "diverse";
+      const qty = readPackQty();
+      if (who === "__alle__") {
+        for (const p of (tour.persons || [])) await addPackItem(navn, p, cat, qty);
+      } else {
+        await addPackItem(navn, who, cat, qty);
+      }
+      input.value = "";
+      document.getElementById("pakke-qty-input").value = "1";
+      input.focus();
+    };
+
+    updatePersonDropdown();
+    document.getElementById("pakke-new-person-area").style.display = "block";
+
+    // Legg til ny person (fritekst)
+    const addPersonInput = document.getElementById("pakke-new-person-input");
+    const handleAddPerson = async () => {
+      const navn = addPersonInput.value.trim();
+      if (!navn) return;
+      await addPersonToTour(navn);
+      addPersonInput.value = "";
+      addPersonInput.focus();
+    };
+    document.getElementById("pakke-new-person-btn").onclick = handleAddPerson;
+    addPersonInput.onkeydown = (e) => { if (e.key === "Enter") handleAddPerson(); };
+
+    // Enter i ting-feltet legger til for valgt visning, eller ber om å velge hvem
+    document.getElementById("pakke-item-input").onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      const sel = personSelect.value;
+      if (sel && sel !== "__alle__") addItemToPerson(sel);
+      else if (sel === "__alle__") addItemToPerson("__alle__");
+    };
+
+    if (boardMemberNames.length === 0) loadBoardMembers().then(() => { renderMemberQuickAdd(); });
+
+    // Behold tur-referanse for medlemsredigering
+    window._currentTour = tour;
+    window._updatePersonDropdown = updatePersonDropdown;
+
+    startListeningPackItems(tourId);
+  };
+
+  document.getElementById("pakke-back-btn").addEventListener("click", () => {
+    currentTourId = null;
+    currentPerson = null;
+    try { localStorage.removeItem("hl-open-tour"); } catch(e) {}
+    if (unsubscribePackItems) unsubscribePackItems();
+    document.getElementById("pakke-tours-view").style.display = "block";
+    document.getElementById("pakke-detail-view").style.display = "none";
+  });
+
+  document.getElementById("pakke-person-select").addEventListener("change", (e) => {
+    const person = e.target.value.trim();
+    currentPerson = person || null;
+    renderPackItems();
+  });
+
+  function startListeningPackItems(tourId) {
+    if (unsubscribePackItems) unsubscribePackItems();
+    if (!tourId) return;
+    const q = query(collection(db, "lists", LIST_ID, "packlists", tourId, "items"), orderBy("createdAt"));
+    unsubscribePackItems = onSnapshot(q, (snap) => {
+      packItems = [];
+      snap.forEach(d => packItems.push({ id: d.id, ...d.data() }));
+      renderPackItems();
+    });
+  }
+
+  function packItemHtml(it) {
+    const qty = it.qty || 1;
+    const packed = Math.min(it.packed != null ? it.packed : (it.done ? qty : 0), qty);
+    const erFerdig = packed >= qty;
+
+    // Antall-redigering (endre hvor mange som skal pakkes)
+    const qtyControls = `
+      <div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
+        <button class="qty-btn" onclick="changePackQty('${it.id}',-1,event)" title="Færre totalt" ${qty <= 1 ? 'style="opacity:.3"' : ""}>−</button>
+        <span style="min-width:18px;text-align:center;font-size:13px;color:var(--ink2)">${qty}</span>
+        <button class="qty-btn" onclick="changePackQty('${it.id}',1,event)" title="Flere totalt">+</button>
+      </div>`;
+
+    // Fremdriftsteller – bare når det er mer enn 1 å pakke
+    const progress = qty > 1
+      ? `<button class="pack-progress ${erFerdig ? "full" : ""}" onclick="incrementPacked('${it.id}',event)" title="Trykk for å pakke én til">${packed}/${qty}</button>`
+      : "";
+
+    return `
+      <div class="item ${erFerdig ? "done" : ""}" style="margin-bottom:6px">
+        <button class="check-btn" onclick="togglePackItem('${it.id}', ${erFerdig})">${erFerdig ? "✓" : ""}</button>
+        <div class="item-main" style="cursor:pointer" onclick="renamePackItem('${it.id}',event)" title="Trykk for å endre navn">
+          <div class="item-name">${escapeHtml(it.navn)}</div>
+        </div>
+        ${progress}
+        ${qtyControls}
+        <button class="delete-btn" onclick="deletePackItem('${it.id}')" title="Fjern">×</button>
+      </div>`;
+  }
+
+  function renderPackItems() {
+    const container = document.getElementById("pakke-items-list");
+    if (!container) return;
+    // Standard: vis oversikt (alle) når ingen spesifikk person er valgt
+    const view = currentPerson || "__alle__";
+
+    // Oversiktsmodus: vis alle personer med hver sin liste
+    if (view === "__alle__") {
+      const tour = packTours.find(t => t.id === currentTourId);
+      const persons = (tour?.persons || []);
+      if (persons.length === 0 || packItems.length === 0) {
+        container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Ingenting lagt til ennå</p></div>`;
+        return;
+      }
+      let html = "";
+      persons.forEach(p => {
+        const items = packItems.filter(it => it.person === p);
+        const packed = items.filter(it => it.done).length;
+        html += `<div style="margin:1rem 0 .4rem;display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span style="font-family:'DM Serif Display',serif;font-size:1.05rem;flex:1">${escapeHtml(p)}</span>
+          <span style="font-size:12px;color:var(--ink3)">${packed}/${items.length} pakket</span>
+          <button type="button" title="Endre navn" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:14px;padding:2px 4px" onclick="renameTourPerson('${escapeJsString(p)}')">✎</button>
+          <button type="button" title="Fjern person" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:15px;padding:2px 4px" onclick="removeTourPerson('${escapeJsString(p)}')">🗑</button>
+        </div>`;
+        if (items.length === 0) {
+          html += `<div style="font-size:13px;color:var(--ink3);padding:2px 0 6px">Ingenting ennå</div>`;
+        } else {
+          items.forEach(it => {
+            html += packItemHtml(it);
+          });
+        }
+        const safeId = "addfor-" + btoa(unescape(encodeURIComponent(p))).replace(/[^a-zA-Z0-9]/g, "");
+        html += `
+          <div class="add-form" style="margin:4px 0 2px">
+            <input class="add-input" id="${safeId}" type="text" placeholder="Legg til for ${escapeHtml(p)}..." autocomplete="off" onkeydown="if(event.key==='Enter')addPackItemFor('${escapeJsString(p)}','${safeId}')" />
+            <button class="add-btn" type="button" onclick="addPackItemFor('${escapeJsString(p)}','${safeId}')">+</button>
+          </div>`;
+      });
+      container.innerHTML = html;
+      if (lastPackFocusId) {
+        const el = document.getElementById(lastPackFocusId);
+        if (el) { el.focus(); }
+        lastPackFocusId = null;
+      }
+      return;
+    }
+
+    const personItems = packItems.filter(it => it.person === view);
+    if (personItems.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div style="font-size:1.5rem">📋</div><p>Ingen items for ${escapeHtml(view)}</p></div>`;
+      return;
+    }
+    const groups = {};
+    personItems.forEach(it => {
+      const cat = it.cat || "diverse";
+      (groups[cat] = groups[cat] || []).push(it);
+    });
+    let html = "";
+    PACK_CAT_ORDER.filter(c => groups[c] && groups[c].length).forEach(cat => {
+      html += `<div class="section-label" style="margin:.75rem 0 .35rem">${PACK_CAT_LABELS[cat]}</div>`;
+      groups[cat].forEach(it => {
+        html += packItemHtml(it);
+      });
+    });
+    container.innerHTML = html;
+  }
+
+  window.togglePackItem = async (id, erFerdig) => {
+    if (!currentTourId) return;
+    const it = packItems.find(x => x.id === id);
+    if (!it) return;
+    const qty = it.qty || 1;
+    // Hake: ett klikk markerer ALT pakket, klikk igjen nullstiller
+    const nyPacked = erFerdig ? 0 : qty;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), {
+      packed: nyPacked,
+      done: nyPacked >= qty
+    });
+  };
+
+  window.incrementPacked = async (id, evt) => {
+    if (evt) evt.stopPropagation();
+    if (!currentTourId) return;
+    const it = packItems.find(x => x.id === id);
+    if (!it) return;
+    const qty = it.qty || 1;
+    const naa = Math.min(it.packed != null ? it.packed : (it.done ? qty : 0), qty);
+    // Øk med 1, rull tilbake til 0 når alt er pakket og man trykker igjen
+    const ny = naa >= qty ? 0 : naa + 1;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), {
+      packed: ny,
+      done: ny >= qty
+    });
+  };
+
+  window.changePackQty = async (id, delta, evt) => {
+    if (evt) evt.stopPropagation();
+    if (!currentTourId) return;
+    const it = packItems.find(x => x.id === id);
+    if (!it) return;
+    const newQty = (it.qty || 1) + delta;
+    if (newQty < 1) return; // går ikke under 1 her; bruk × for å slette
+    // Behold pakket-antall innenfor ny grense
+    const naaPacked = Math.min(it.packed != null ? it.packed : (it.done ? (it.qty || 1) : 0), newQty);
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), {
+      qty: newQty,
+      packed: naaPacked,
+      done: naaPacked >= newQty
+    });
+  };
+
+  window.renamePackItem = async (id, evt) => {
+    if (evt) evt.stopPropagation();
+    if (!currentTourId) return;
+    const it = packItems.find(x => x.id === id);
+    if (!it) return;
+    const nytt = prompt("Endre navn:", it.navn);
+    if (nytt === null) return;
+    const trimmed = nytt.trim();
+    if (!trimmed || trimmed === it.navn) return;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id), { navn: trimmed });
+  };
+
+  window.deletePackItem = async (id) => {
+    if (!currentTourId) return;
+    await deleteDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", id));
+  };
+
+  function readPackQty() {
+    const q = parseInt(document.getElementById("pakke-qty-input")?.value, 10);
+    return (!q || q < 1) ? 1 : q;
+  }
+
+  async function addPackItem(navn, person, cat, qty) {
+    await addDoc(collection(db, "lists", LIST_ID, "packlists", currentTourId, "items"), {
+      navn,
+      qty: qty || 1,
+      person,
+      cat: cat || "diverse",
+      done: false,
+      createdAt: Date.now(),
+      addedBy: currentUser?.displayName || ""
+    });
+  }
+
+  window.addPackItemFor = async (person, inputId) => {
+    if (!currentTourId) return;
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const navn = input.value.trim();
+    if (!navn) return;
+    lastPackFocusId = inputId;  // re-fokuser samme felt etter at lista bygges på nytt
+    await addPackItem(navn, person, "diverse", 1);
+  };
+
+  window.removeTourPerson = async (person) => {
+    if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    if (!tour) return;
+    const itemCount = packItems.filter(it => it.person === person).length;
+    const msg = itemCount > 0
+      ? `Fjerne ${person} og de ${itemCount} tingene deres fra turen?`
+      : `Fjerne ${person} fra turen?`;
+    if (!confirm(msg)) return;
+    // Slett personens elementer
+    for (const it of packItems.filter(it => it.person === person)) {
+      await deleteDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", it.id));
+    }
+    // Fjern fra persons-array
+    const newPersons = (tour.persons || []).filter(p => p !== person);
+    tour.persons = newPersons;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId), { persons: newPersons });
+    if (currentPerson === person) currentPerson = "__alle__";
+    if (window._updatePersonDropdown) window._updatePersonDropdown();
+  };
+
+  window.renameTourPerson = async (oldName) => {
+    if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    if (!tour) return;
+    const newName = prompt(`Nytt navn for ${oldName}:`, oldName);
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    if ((tour.persons || []).includes(trimmed)) { alert(trimmed + " finnes allerede på turen."); return; }
+    // Oppdater alle elementenes person-felt
+    for (const it of packItems.filter(it => it.person === oldName)) {
+      await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId, "items", it.id), { person: trimmed });
+    }
+    // Oppdater persons-array
+    const newPersons = (tour.persons || []).map(p => p === oldName ? trimmed : p);
+    tour.persons = newPersons;
+    await updateDoc(doc(db, "lists", LIST_ID, "packlists", currentTourId), { persons: newPersons });
+    if (currentPerson === oldName) currentPerson = trimmed;
+    if (window._updatePersonDropdown) window._updatePersonDropdown();
+  };
+
+  // ===== AI PAKKEFORSLAG =====
+  let aiSuggestions = [];  // [{person, navn, antall, kategori, valgt}]
+
+  document.getElementById("pakke-ai-btn").addEventListener("click", () => {
+    if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    if (!tour) return;
+    if ((tour.persons || []).length === 0) {
+      alert("Legg til personene på turen først, så foreslår AI hva hver skal pakke.");
+      return;
+    }
+    const panel = document.getElementById("pakke-ai-input-panel");
+    const text = document.getElementById("pakke-ai-text");
+    // Forhåndsfyll med det vi vet om turen, men la brukeren skrive fritt
+    if (!text.value.trim()) {
+      const start = [tour.turNavn, tour.beskrivelse].filter(Boolean).join(". ");
+      const personer = (tour.persons || []).join(", ");
+      text.value = start + (personer ? `\nPersoner: ${personer}` : "");
+    }
+    panel.style.display = "block";
+    document.getElementById("pakke-ai-suggestions").style.display = "none";
+    text.focus();
+  });
+
+  document.getElementById("pakke-ai-cancel").addEventListener("click", () => {
+    document.getElementById("pakke-ai-input-panel").style.display = "none";
+  });
+
+  document.getElementById("pakke-ai-generate").addEventListener("click", async () => {
+    if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    if (!tour) return;
+    const persons = tour.persons || [];
+    const beskrivelse = document.getElementById("pakke-ai-text").value.trim();
+    if (!beskrivelse) { alert("Skriv litt om turen først."); return; }
+
+    const box = document.getElementById("pakke-ai-suggestions");
+    const genBtn = document.getElementById("pakke-ai-generate");
+    genBtn.disabled = true;
+    genBtn.textContent = "✨ Lager forslag...";
+    box.style.display = "block";
+    box.innerHTML = `<div style="text-align:center;color:var(--ink3);font-size:13px">Tenker ut hva dere bør pakke...</div>`;
+
+    try {
+      const res = await fetch("/suggest-packing", {
+        method: "POST",
+        headers: await aiHeaders(),
+        body: JSON.stringify({ beskrivelse, personer: persons })
+      });
+      const data = await res.json();
+      if (data.error || !data.forslag) {
+        console.error("Pakkeforslag-feil:", data);
+        const detalj = data.detaljer || data.error || data.feil || "ukjent feil";
+        box.innerHTML = `<div style="color:var(--ink2);font-size:13px">Klarte ikke å lage forslag.<br><span style="color:var(--ink3);font-size:11px">${escapeHtml(String(detalj)).slice(0,300)}</span></div>`;
+        return;
+      }
+      aiSuggestions = [];
+      data.forslag.forEach(f => {
+        (f.ting || []).forEach(t => {
+          aiSuggestions.push({
+            person: f.person, navn: t.navn,
+            antall: t.antall || 1, kategori: t.kategori || "diverse", valgt: true
+          });
+        });
+      });
+      document.getElementById("pakke-ai-input-panel").style.display = "none";
+      renderAiSuggestions();
+    } catch (e) {
+      box.innerHTML = `<div style="color:var(--ink2);font-size:13px">Noe gikk galt. Sjekk nettforbindelsen og prøv igjen.</div>`;
+    } finally {
+      genBtn.disabled = false;
+      genBtn.textContent = "✨ Lag forslag";
+    }
+  });
+
+  function renderAiSuggestions() {
+    const box = document.getElementById("pakke-ai-suggestions");
+    if (aiSuggestions.length === 0) {
+      box.innerHTML = `<div style="font-size:13px;color:var(--ink3)">Ingen forslag.</div>`;
+      return;
+    }
+    // Grupper per person
+    const byPerson = {};
+    aiSuggestions.forEach((s, i) => { (byPerson[s.person] = byPerson[s.person] || []).push(i); });
+
+    let html = `<div style="font-weight:600;margin-bottom:.5rem">Forslag — huk av det du vil ha med</div>`;
+    Object.keys(byPerson).forEach(person => {
+      html += `<div style="font-family:'DM Serif Display',serif;font-size:1rem;margin:.7rem 0 .3rem">${escapeHtml(person)}</div>`;
+      byPerson[person].forEach(i => {
+        const s = aiSuggestions[i];
+        html += `
+          <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:14px;cursor:pointer">
+            <input type="checkbox" ${s.valgt ? "checked" : ""} onchange="toggleAiSuggestion(${i})" style="width:18px;height:18px" />
+            <span>${escapeHtml(s.navn)}${s.antall > 1 ? ` ×${s.antall}` : ""}</span>
+          </label>`;
+      });
+    });
+    const valgtAntall = aiSuggestions.filter(s => s.valgt).length;
+    html += `
+      <div style="display:flex;gap:8px;margin-top:1rem">
+        <button class="add-btn" type="button" style="flex:1" onclick="commitAiSuggestions()">Legg til ${valgtAntall} valgte</button>
+        <button class="list-action-btn" type="button" style="border:1px solid var(--border)" onclick="dismissAiSuggestions()">Avbryt</button>
+      </div>`;
+    box.innerHTML = html;
+  }
+
+  window.toggleAiSuggestion = (i) => {
+    if (aiSuggestions[i]) { aiSuggestions[i].valgt = !aiSuggestions[i].valgt; renderAiSuggestions(); }
+  };
+
+  window.dismissAiSuggestions = () => {
+    aiSuggestions = [];
+    const box = document.getElementById("pakke-ai-suggestions");
+    box.style.display = "none";
+    box.innerHTML = "";
+  };
+
+  window.commitAiSuggestions = async () => {
+    if (!currentTourId) return;
+    const tour = packTours.find(t => t.id === currentTourId);
+    const persons = tour?.persons || [];
+    const valgte = aiSuggestions.filter(s => s.valgt);
+    if (valgte.length === 0) { alert("Huk av minst én ting først."); return; }
+    for (const s of valgte) {
+      // Match AI-personnavn mot turens faktiske personer (eksakt, ellers delvis)
+      let person = s.person;
+      if (!persons.includes(person)) {
+        const match = persons.find(p =>
+          p.toLowerCase() === String(person).toLowerCase() ||
+          String(person).toLowerCase().includes(p.toLowerCase()) ||
+          p.toLowerCase().includes(String(person).toLowerCase())
+        );
+        person = match || persons[0] || person;
+      }
+      await addPackItem(s.navn, person, s.kategori, s.antall);
+    }
+    dismissAiSuggestions();
+  };
+
+  // NEW TOUR MODAL
+  document.getElementById("pakke-new-tour-btn").addEventListener("click", () => {
+    resetTourModal();
+    document.getElementById("pakke-tour-modal").classList.add("open");
+  });
+
+  document.getElementById("pakke-modal-cancel").addEventListener("click", () => {
+    resetTourModal();
+    document.getElementById("pakke-tour-modal").classList.remove("open");
+  });
+
+  document.getElementById("pakke-tour-modal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) { resetTourModal(); document.getElementById("pakke-tour-modal").classList.remove("open"); }
+  });
+
+  document.getElementById("pakke-modal-create").addEventListener("click", async () => {
+    const turNavn = document.getElementById("pakke-modal-name").value.trim();
+    const startDato = document.getElementById("pakke-modal-date").value;
+    const beskrivelse = document.getElementById("pakke-modal-desc").value.trim();
+    if (!turNavn) return;
+    const data = {
+      turNavn,
+      startDato: startDato ? new Date(startDato).getTime() : null,
+      beskrivelse
+    };
+    if (editingTourId) {
+      await updateDoc(doc(db, "lists", LIST_ID, "packlists", editingTourId), data);
+    } else {
+      await addDoc(collection(db, "lists", LIST_ID, "packlists"), {
+        ...data,
+        persons: [],
+        createdAt: Date.now(),
+        createdBy: currentUser?.uid || ""
+      });
+    }
+    resetTourModal();
+    document.getElementById("pakke-tour-modal").classList.remove("open");
+  });
+
+  function resetTourModal() {
+    editingTourId = null;
+    document.getElementById("pakke-modal-name").value = "";
+    document.getElementById("pakke-modal-date").value = "";
+    document.getElementById("pakke-modal-desc").value = "";
+    document.querySelector("#pakke-tour-modal .modal-title").textContent = "Ny tur";
+    document.getElementById("pakke-modal-create").textContent = "Opprett";
+  }
+
+  // Add .open class styling for modal (if not exists)
+  const style = document.createElement("style");
+  style.textContent = `.modal-overlay.open { display:flex !important; }`;
+  document.head.appendChild(style);
+
+
+  function formatShoppingListForShare() {
+    const active = currentItems.filter(i => !i.done);
+    if (active.length === 0) return "";
+
+    const groups = {};
+    active.forEach(item => {
+      const cat = item.cat || guessCategory(item.name || "") || "annet";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
+    });
+
+    const lines = ["Handleliste:", ""];
+    CAT_ORDER.forEach(cat => {
+      const items = groups[cat];
+      if (!items || items.length === 0) return;
+      lines.push(CAT_LABELS[cat] || cat);
+      items.forEach(item => {
+        const qty = item.qty || 1;
+        const unit = item.unit || "stk";
+        const qtyText = qty > 1 || unit !== "stk" ? ` (${qty} ${unit})` : "";
+        lines.push(`- ${cleanName(item.name || "Vare")}${qtyText}`);
+      });
+      lines.push("");
+    });
+
+    return lines.join("\n").trim();
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  }
+
+  document.getElementById("share-list-btn").addEventListener("click", async () => {
+    const text = formatShoppingListForShare();
+    if (!text) {
+      alert("Handlelisten er tom.");
+      return;
+    }
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Handleliste", text });
+      } else {
+        await copyTextToClipboard(text);
+        alert("Handlelisten er kopiert til utklippstavlen.");
+      }
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      try {
+        await copyTextToClipboard(text);
+        alert("Handlelisten er kopiert til utklippstavlen.");
+      } catch (copyErr) {
+        console.error(copyErr);
+        alert("Klarte ikke å dele eller kopiere handlelisten.");
+      }
+    }
+  });
+
+
+  // PUSH NOTIFICATIONS
+  async function enablePushNotifications() {
+    if (!currentUser) {
+      alert("Du må være logget inn først.");
+      return;
+    }
+
+    if (!("Notification" in window)) {
+      alert("Denne nettleseren støtter ikke push-varsler.");
+      return;
+    }
+
+    try {
+      const supported = await isMessagingSupported();
+      if (!supported) {
+        alert("Push-varsler støttes ikke i denne nettleseren/enheten.");
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        alert("Varsler ble ikke tillatt.");
+        return;
+      }
+
+      let swRegistration = null;
+      if ("serviceWorker" in navigator) {
+        swRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+        await navigator.serviceWorker.ready;
+      }
+
+      const messaging = getMessaging(app);
+      const token = await getToken(messaging, {
+        vapidKey: messagingVapidKey,
+        serviceWorkerRegistration: swRegistration || undefined
+      });
+
+      if (!token) {
+        alert("Klarte ikke å hente push-token. Prøv igjen.");
+        return;
+      }
+
+      await setDoc(doc(db, "users", currentUser.uid), {
+        pushToken: token,
+        pushTokenUpdatedAt: Date.now(),
+        pushEnabled: true,
+        pushUserAgent: navigator.userAgent,
+        pushHouseholdId: LIST_ID || null
+      }, { merge: true });
+
+      const btn = document.getElementById("push-enable-btn");
+      if (btn) btn.textContent = "✅ Varsler aktivert";
+
+      alert("Push-varsler er aktivert for denne enheten.");
+    } catch (err) {
+      console.error("Kunne ikke aktivere push-varsler", err);
+      alert("Kunne ikke aktivere varsler: " + (err.message || err));
+    }
+  }
+
+  window.enablePushNotifications = enablePushNotifications;
+
+  const pushEnableBtn = document.getElementById("push-enable-btn");
+  if (pushEnableBtn) {
+    pushEnableBtn.addEventListener("click", enablePushNotifications);
+  }
+
+  (async () => {
+    try {
+      const supported = await isMessagingSupported();
+      if (!supported) return;
+      const messaging = getMessaging(app);
+      onMessage(messaging, (payload) => {
+        const title = payload.notification?.title || "Handleliste";
+        const body = payload.notification?.body || "";
+        if (Notification.permission === "granted") {
+          new Notification(title, { body, icon: "/icon-192.png" });
+        }
+      });
+    } catch (e) {
+      console.warn("Kunne ikke sette opp foreground push", e);
+    }
+  })();
+
+  // PURCHASE HISTORY
+  async function loadPurchaseHistory() {
+    try {
+      // Kjøpshistorikk følger husholdningen (fast), ikke aktiv liste — ellers
+      // overskrives delte listers historikk når man bytter liste.
+      const ref = doc(db, "lists", HOUSEHOLD_ID || LIST_ID, "meta", "history2");
+      const snap = await getDoc(ref);
+      if (snap.exists()) purchaseHistory = snap.data();
+    } catch(e) { console.warn("loadPurchaseHistory:", e); }
+  }
+
+  async function savePurchaseHistory() {
+    try {
+      const ref = doc(db, "lists", HOUSEHOLD_ID || LIST_ID, "meta", "history2");
+      await setDoc(ref, purchaseHistory);
+    } catch(e) { console.warn("savePurchaseHistory:", e); }
+  }
+
+  function avgInterval(navn) {
+    const h = purchaseHistory[navn];
+    if (!h || !h.intervals || h.intervals.length === 0) {
+      const basis = BASISVARER.find(v => v.navn === navn);
+      return basis ? basis.dager : 14;
+    }
+    return Math.round(h.intervals.reduce((a,b)=>a+b,0) / h.intervals.length);
+  }
+
+  async function cleanupPurchaseHistoryDuplicates() {
+  const seen = {};
+  Object.entries(purchaseHistory).forEach(([key, val]) => {
+    const norm = key.toLowerCase().trim();
+    if (!seen[norm]) {
+      seen[norm] = { key, val };
+    } else {
+      // Behold den med nyest lastBought
+      if ((val.lastBought || 0) > (seen[norm].val.lastBought || 0)) {
+        seen[norm] = { key, val };
+      }
+    }
+  });
+  const antallFør = Object.keys(purchaseHistory).length;
+  const cleaned = {};
+  Object.values(seen).forEach(({ key, val }) => cleaned[key] = val);
+  if (Object.keys(cleaned).length === antallFør) return;
+  purchaseHistory = cleaned;
+  await savePurchaseHistory();
+}
+  function cleanName(name) {
+    return name.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27FF}\s]+/u, "").trim();
+  }
+
+  function learnFromPurchase(boughtItems) {
+    const now = Date.now();
+    const names = boughtItems.map(n => cleanName(n)).filter(Boolean);
+    names.forEach(navn => {
+      if (!purchaseHistory[navn]) purchaseHistory[navn] = { lastBought: null, intervals: [], partners: {} };
+      const h = purchaseHistory[navn];
+      if (h.lastBought) {
+        const daysSince = (now - h.lastBought) / (1000*60*60*24);
+        if (daysSince > 0.5) h.intervals = [...(h.intervals||[]).slice(-9), Math.round(daysSince)];
+      }
+      h.lastBought = now;
+      names.forEach(partner => {
+        if (partner !== navn) {
+          h.partners = h.partners || {};
+          h.partners[partner] = (h.partners[partner] || 0) + 1;
+        }
+      });
+    });
+  }
+
+  // SUGGESTIONS
+  function renderSuggestions() {
+    const now = Date.now();
+    const container = document.getElementById("chips-container");
+    const section = document.getElementById("suggestions-section");
+    // Dagligvareforslag gir ikke mening på underlister (Gaver, Verktøy osv.)
+    if (activeSubList) { if (section) section.style.display = "none"; return; }
+    const onList = new Set(currentItems.filter(i=>!i.done).map(i=>cleanName(i.name).toLowerCase()));
+    const suggestions = [];
+
+    const alleKjente = new Set([...BASISVARER.map(v=>v.navn), ...Object.keys(purchaseHistory)]);
+    alleKjente.forEach(navn => {
+      if (onList.has(navn.toLowerCase())) return;
+      const h = purchaseHistory[navn];
+      const interval = avgInterval(navn);
+      const lastBought = h?.lastBought || null;
+      let score = 0, label = "Ikke kjøpt ennå";
+      if (!lastBought) { score = 0.3; }
+      else {
+        const daysSince = (now - lastBought) / (1000*60*60*24);
+        if (daysSince >= interval) {
+          score = Math.min(1, daysSince / interval);
+          label = `${Math.round(daysSince)}d siden`;
+        }
+      }
+      if (score > 0) {
+        const basis = BASISVARER.find(v=>v.navn===navn);
+        suggestions.push({ navn, ikon: basis?.ikon||"🛒", score, label, reason:"tid" });
+      }
+    });
+
+    currentItems.filter(i=>!i.done).forEach(item => {
+      const navn = cleanName(item.name);
+      const h = purchaseHistory[navn];
+      if (!h?.partners) return;
+      Object.entries(h.partners).forEach(([partner, count]) => {
+        if (count < 2) return;
+        if (onList.has(partner.toLowerCase())) return;
+        if (suggestions.find(s=>s.navn===partner)) return;
+        const basis = BASISVARER.find(v=>v.navn===partner);
+        suggestions.push({ navn:partner, ikon:basis?.ikon||"🛒", score:0.5+(count*0.1), label:`med ${navn} ${count}×`, reason:"mønster" });
+      });
+    });
+
+    const top = suggestions.sort((a,b)=>b.score-a.score).slice(0, 5);
+    if (top.length === 0) { section.style.display = "none"; return; }
+    section.style.display = "block";
+    container.innerHTML = top.map(s => {
+      const bg = s.reason==="mønster" ? "#FFF3E0" : "#f0f0f0";
+      const tc = s.reason==="mønster" ? "#E65100" : "var(--ink3)";
+      return `<button class="chip" onclick="addFromSuggestion('${escapeHtml(escapeJsString(s.navn))}','${s.ikon}')">
+        <span>${s.ikon}</span>${escapeHtml(s.navn)}
+        <span class="chip-days" style="background:${bg};color:${tc}">${s.label}</span>
+        <span onclick="event.stopPropagation(); fjernFraHistorikk('${escapeJsString(s.navn)}')" style="margin-left:4px;opacity:.5;font-size:14px;line-height:1">×</span>
+      </button>`;
+    }).join("");
+  }
+
+  window.addFromSuggestion = async (navn, ikon) => { await addItem(`${ikon} ${navn}`); };
+window.fjernFraHistorikk = async (navn) => {
+  if (!confirm(`Slette "${navn}" permanent fra historikken?`)) return;
+  delete purchaseHistory[navn];
+  await savePurchaseHistory();
+  renderSuggestions();
+};
+  // LIST
+  function startListening() {
+    if (unsubscribeList) { unsubscribeList(); unsubscribeList = null; }
+    const q = query(itemsColRef(), orderBy("createdAt","asc"));
+    unsubscribeList = onSnapshot(q, snapshot => {
+      currentItems = [];
+      snapshot.forEach(d => currentItems.push({ id:d.id, ...d.data() }));
+      renderList(currentItems);
+      renderSuggestions();
+    });
+  }
+
+  // PRICE DATABASE — gjennomsnittspriser norske dagligvarer
+  const PRICE_DB = {
+    "Melk":25,"Lettmelk":25,"Helmelk":28,"Skummetmelk":22,
+    "Brød":35,"Loff":30,"Rundstykker":25,"Knekkebrød":30,
+    "Smør":45,"Margarin":35,
+    "Egg":45,"Egg 6pk":35,"Egg 12pk":65,
+    "Ost":90,"Brunost":55,"Norvegia":95,"Jarlsberg":85,
+    "Yoghurt":25,"Rømme":30,"Fløte":28,"Kremfløte":28,
+    "Kaffe":89,"Te":45,
+    "Mel":25,"Sukker":20,"Salt":12,"Pepper":25,
+    "Ris":35,"Pasta":25,"Havregryn":30,
+    "Olje":45,"Ketchup":30,"Majones":35,"Sennep":20,
+    "Toalettpapir":60,"Oppvaskmiddel":35,"Vaskemiddel":89,
+    "Tannkrem":30,"Sjampo":55,"Dusjsåpe":35,
+    "Tomater":30,"Agurk":20,"Salat":25,"Spinat":30,
+    "Gulrøtter":20,"Brokkoli":25,"Løk":15,"Hvitløk":15,
+    "Poteter":25,"Paprika":30,"Blomkål":30,
+    "Bananer":20,"Epler":35,"Appelsin":25,"Kiwi":20,
+    "Jordbær":45,"Blåbær":35,"Mango":30,
+    "Kylling":89,"Kjøttdeig":75,"Bacon":55,"Pølser":45,
+    "Laks":120,"Torsk":89,"Reker":99,
+    "Juice":35,"Brus":30,"Øl":25,"Vann":20,
+    "Sjokolade":30,"Chips":35,"Nøtter":55,
+    "Syltetøy":35,"Honning":55,"Kokosmelk":25,
+  };
+
+  let sortByDateEnabled = localStorage.getItem("sortByDate") === "1";
+
+  window.toggleSortByDate = () => {
+    sortByDateEnabled = !sortByDateEnabled;
+    localStorage.setItem("sortByDate", sortByDateEnabled ? "1" : "0");
+    updateSortToggleBtn();
+    renderList(currentItems);
+  };
+
+  function updateSortToggleBtn() {
+    const btn = document.getElementById("sort-date-btn");
+    if (!btn) return;
+    btn.classList.toggle("active", sortByDateEnabled);
+  }
+
+  function formatItemDate(ts) {
+    if (!ts) return "";
+    const d = new Date(ts);
+    const now = new Date();
+    const startOfDay = (dt) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+    const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (diffDays === 0) return "i dag";
+    if (diffDays === 1) return "i går";
+    if (diffDays > 1 && diffDays < 7) return `${diffDays}d siden`;
+    return d.toLocaleDateString("no-NO", { day:"numeric", month:"numeric" });
+  }
+
+  function renderList(items) {
+    const container = document.getElementById("items-list");
+    updateSortToggleBtn();
+    if (items.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>`;
+      return;
+    }
+
+    const active = items.filter(i=>!i.done);
+    const done = items.filter(i=>i.done);
+
+    let html = "";
+
+    if (sortByDateEnabled) {
+      // Flat liste sortert etter nyeste lagt til, uten kategorigruppering
+      const sorted = [...active].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+      html += `<div class="cat-group">
+        ${sorted.map(item => renderItem(item)).join("")}
+      </div>`;
+    } else {
+      // Grupper aktive etter kategori (original rekkefølge)
+      const groups = {};
+      active.forEach(item => {
+        const cat = item.cat || guessCategory(item.name);
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(item);
+      });
+
+      CAT_ORDER.forEach(cat => {
+        if (!groups[cat]) return;
+        html += `<div class="cat-group">
+          <div class="cat-group-label">${CAT_LABELS[cat]}</div>
+          ${groups[cat].map(item => renderItem(item)).join("")}
+        </div>`;
+      });
+    }
+
+    // Avkryssede på bunnen
+    if (done.length > 0) {
+      html += `<div class="cat-group">
+        <div class="cat-group-label" style="color:var(--ink3)">✓ Ferdig</div>
+        ${done.map(item => renderItem(item)).join("")}
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  // Finner siste prisendring for en vare innenfor SAMME butikk (pålitelig – samme navn, samme sted)
+  function prisEndring(navn) {
+    const h = purchaseHistory[navn];
+    if (!h || !h.priserPerButikk) return null;
+    let best = null; // mest nylige endring på tvers av butikker
+    Object.entries(h.priserPerButikk).forEach(([butikk, data]) => {
+      const arr = Array.isArray(data) ? data : null;
+      if (!arr || arr.length < 2) return;
+      const forrige = arr[arr.length - 2];
+      const siste = arr[arr.length - 1];
+      if (!forrige?.pris || !siste?.pris) return;
+      const diff = siste.pris - forrige.pris;
+      if (Math.abs(diff) < 0.5) return; // ignorer ubetydelige endringer
+      const dato = siste.dato || 0;
+      if (!best || dato > best.dato) {
+        best = { butikk, diff, fra: forrige.pris, til: siste.pris, dato };
+      }
+    });
+    return best;
+  }
+
+  function renderItem(item) {
+    const qty = item.qty || 1;
+    const unit = item.unit || "stk";
+    const addedBy = item.addedBy || "";
+    const initials = addedBy.split(" ").map(n=>n[0]).join("").slice(0,2);
+    const price = estimatePrice(item.name);
+    const lineTotal = price ? (price * qty) : null;
+    const priceStr = lineTotal ? `· ${lineTotal % 1 === 0 ? lineTotal : lineTotal.toFixed(0)} kr` : "";
+    const detail = `${qty} ${unit} ${priceStr}`;
+    const endring = prisEndring(item.name);
+    let endringMerke = "";
+    if (endring) {
+      const opp = endring.diff > 0;
+      const diffStr = `${opp ? "↑" : "↓"} ${Math.abs(Math.round(endring.diff))} kr`;
+      const farge = opp ? "#c0392b" : "#2d8a4e";
+      endringMerke = `<span class="pris-endring" title="${opp ? "Opp" : "Ned"} fra ${Math.round(endring.fra)} til ${Math.round(endring.til)} kr på ${escapeHtml(endring.butikk)}" style="font-size:11px;color:${farge};border:1px solid ${farge}33;background:${farge}11;border-radius:6px;padding:1px 6px;margin-left:6px;white-space:nowrap">${diffStr}</span>`;
+    }
+    const dateStr = formatItemDate(item.createdAt);
+    const dateBadge = dateStr ? `<span class="item-date" title="Lagt til handlelisten">${dateStr}</span>` : "";
+    return `<div class="swipe-wrapper" id="swipe-${item.id}">
+      <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
+      <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
+      <div class="swipe-inner">
+        <div class="item ${item.done?'done':''}" id="item-${item.id}">
+          <button class="check-btn" onclick="toggleItem('${item.id}',${item.done})">${item.done?"✓":""}</button>
+          <div class="item-main" onclick="openEdit('${item.id}')" style="cursor:pointer">
+            <div class="item-name">${escapeHtml(item.name)}${endringMerke}</div>
+            <div class="item-detail">${detail}${dateBadge}</div>
+          </div>
+          ${initials ? `<span class="by-whom">${escapeHtml(initials)}</span>` : ""}
+          <div class="qty-wrap">
+            <button class="qty-btn" onclick="changeQty('${item.id}',${qty},-1)">−</button>
+            <span class="qty-num">${qty}</span>
+            <button class="qty-btn" onclick="changeQty('${item.id}',${qty},1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  async function addItem(name, cat, unit) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const category = cat || guessCategory(trimmed);
+    await addDoc(itemsColRef(), {
+      name: trimmed, done: false, qty: 1,
+      unit: unit || "stk", cat: category,
+      createdAt: Date.now(), addedBy: currentUser?.displayName || "",
+    });
+  }
+
+  window.changeQty = async (id, currentQty, delta) => {
+    const newQty = Math.max(1, currentQty + delta);
+    await updateDoc(itemDocRef(id), { qty: newQty });
+  };
+
+  window.toggleItem = async (id, currentDone) => {
+    await updateDoc(itemDocRef(id), { done: !currentDone });
+    if (!currentDone && !activeSubList) {
+      const doneItems = currentItems.filter(i=>i.done||i.id===id).map(i=>i.name);
+      learnFromPurchase(doneItems);
+      await savePurchaseHistory();
+      renderSuggestions();
+    }
+  };
+
+  window.deleteItem = async (id) => {
+    await deleteDoc(itemDocRef(id));
+  };
+
+  // EDIT MODAL
+  window.openEdit = (id) => {
+    const item = currentItems.find(i=>i.id===id);
+    if (!item) return;
+    editingItemId = id;
+    document.getElementById("modal-name").value = item.name;
+    document.getElementById("modal-qty").value = item.qty || 1;
+    document.getElementById("modal-unit").value = item.unit || "stk";
+    document.getElementById("modal-cat").value = item.cat || guessCategory(item.name);
+    // Hent pris fra purchaseHistory hvis den finnes
+    const cleanN = cleanName(item.name);
+    const savedPrice = purchaseHistory[cleanN]?.lastPrice || item.price || "";
+    document.getElementById("modal-price").value = savedPrice;
+
+    // "Flytt til liste" — kun relevant når vi står i standard-husholdningen (der underlister finnes)
+    const moveRow = document.getElementById("modal-move-row");
+    const moveSelect = document.getElementById("modal-move-target");
+    if (currentListType === "private") {
+      let opts = "";
+      if (activeSubList) opts += `<option value="default">🛒 Handleliste</option>`;
+      subLists.forEach(sl => {
+        if (!activeSubList || sl.id !== activeSubList.id) {
+          opts += `<option value="${sl.id}">${escapeHtml(sl.name)}</option>`;
+        }
+      });
+      if (opts) {
+        moveSelect.innerHTML = `<option value="">Velg liste...</option>${opts}`;
+        moveRow.style.display = "flex";
+      } else {
+        moveRow.style.display = "none";
+      }
+    } else {
+      moveRow.style.display = "none";
+    }
+
+    document.getElementById("modal-overlay").classList.add("open");
+  };
+
+  document.getElementById("modal-move-btn").addEventListener("click", async () => {
+    if (!editingItemId) return;
+    const target = document.getElementById("modal-move-target").value;
+    if (!target) { alert("Velg hvilken liste varen skal flyttes til."); return; }
+    const item = currentItems.find(i => i.id === editingItemId);
+    if (!item) return;
+
+    await addDoc(itemsColRefFor(target), {
+      name: item.name, done: false,
+      qty: item.qty || 1, unit: item.unit || "stk",
+      cat: item.cat || "annet",
+      createdAt: Date.now(), addedBy: currentUser?.displayName || ""
+    });
+    await deleteDoc(itemDocRef(editingItemId));
+
+    document.getElementById("modal-overlay").classList.remove("open");
+    editingItemId = null;
+  });
+
+  document.getElementById("modal-save").addEventListener("click", async () => {
+    if (!editingItemId) return;
+    const name = document.getElementById("modal-name").value.trim();
+    const qty = parseInt(document.getElementById("modal-qty").value) || 1;
+    const unit = document.getElementById("modal-unit").value;
+    const cat = document.getElementById("modal-cat").value;
+    const priceVal = parseFloat(document.getElementById("modal-price").value);
+    const price = isNaN(priceVal) ? null : priceVal;
+    if (!name) return;
+    await updateDoc(itemDocRef(editingItemId), { name, qty, unit, cat, price });
+    // Lagre prisen i purchaseHistory så den huskes til neste gang
+    // (men ikke fra underlister — gaver/verktøy skal ikke inn i dagligvarehistorikken)
+    if (price && !activeSubList) {
+      const cleanN = cleanName(name);
+      if (!purchaseHistory[cleanN]) purchaseHistory[cleanN] = { lastBought: null, intervals: [], partners: {} };
+      purchaseHistory[cleanN].lastPrice = price;
+      await savePurchaseHistory();
+    }
+    document.getElementById("modal-overlay").classList.remove("open");
+    editingItemId = null;
+  });
+
+  document.getElementById("modal-delete").addEventListener("click", async () => {
+    if (!editingItemId) return;
+    if (!confirm("Slette denne varen fra listen?")) return;
+
+    await deleteDoc(itemDocRef(editingItemId));
+
+    document.getElementById("modal-overlay").classList.remove("open");
+    editingItemId = null;
+  });
+
+  document.getElementById("modal-cancel").addEventListener("click", () => {
+    document.getElementById("modal-overlay").classList.remove("open");
+    editingItemId = null;
+  });
+
+  document.getElementById("modal-overlay").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById("modal-overlay").classList.remove("open");
+      editingItemId = null;
+    }
+  });
+
+  // SAVE & CLEAR (lagre handletur til historikk)
+  document.getElementById("clear-done-btn").addEventListener("click", async () => {
+    const doneItems = currentItems.filter(i=>i.done);
+    if (doneItems.length === 0) { alert("Ingen avkryssede varer å lagre."); return; }
+
+    // Underlister (Gaver, Verktøy osv.) skal ikke inn i dagligvarehistorikken —
+    // fjern bare de avkryssede varene.
+    if (activeSubList) {
+      if (!confirm(`Fjerne ${doneItems.length} avkryssede varer fra "${activeSubList.name}"?`)) return;
+      for (const item of doneItems) {
+        await deleteDoc(itemDocRef(item.id));
+      }
+      return;
+    }
+
+    // Lagre snapshot til historikk
+    const dateStr = new Date().toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" });
+    const historyRef = collection(db, "lists", LIST_ID, "history");
+    const categoryTotals = {};
+    let total = 0;
+
+    doneItems.forEach(i => {
+      const cat = i.cat || "annet";
+      const price = (i.price || estimatePrice(i.name) || 0);
+      const lineTotal = price * (i.qty || 1);
+
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + lineTotal;
+      total += lineTotal;
+    });
+
+    await addDoc(historyRef, {
+      date: dateStr,
+      timestamp: Date.now(),
+      total: Math.round(total),
+      categoryTotals,
+      items: doneItems.map(i => ({
+        name: i.name,
+        qty: i.qty || 1,
+        unit: i.unit || "stk",
+        cat: i.cat || "annet",
+        price: i.price || estimatePrice(i.name) || 0
+      }))
+    });
+
+    // Slett avkryssede
+    for (const item of doneItems) {
+      await deleteDoc(itemDocRef(item.id));
+    }
+
+    loadHistory();
+  });
+
+  // HISTORY
+  async function loadHistory() {
+    try {
+      const q = query(collection(db, "lists", LIST_ID, "history"), orderBy("timestamp","desc"));
+      const snap = await getDocs(q);
+      const trips = [];
+      snap.forEach(d => trips.push({ id:d.id, ...d.data() }));
+      historyTripsCache = trips;
+      renderHistory(trips);
+    } catch(e) { console.warn("loadHistory:", e); }
+  }
+
+
+  function isReceiptLineItem(item) {
+    return item.unitPrice != null || !!item.line;
+  }
+
+  function getHistoryItemLineTotal(item) {
+    const price = Number(item.price || 0);
+    if (isReceiptLineItem(item)) return price;
+    const qty = Number(item.qty || 1);
+    return price * qty;
+  }
+
+  function recalculateTripTotals(items) {
+    const categoryTotals = {};
+    let total = 0;
+
+    (items || []).forEach(item => {
+      const cat = item.cat || guessCategory(item.name || item.line || "") || "annet";
+      const lineTotal = getHistoryItemLineTotal(item);
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + lineTotal;
+      total += lineTotal;
+    });
+
+    return {
+      total: Math.round(total * 100) / 100,
+      categoryTotals
+    };
+  }
+
+  function renderHistoryItemsByCategory(trip) {
+    const items = trip.items || [];
+    const groups = {};
+
+    items.forEach((item, index) => {
+      const cat = item.cat || guessCategory(item.name || item.line || "") || "annet";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push({ item, index });
+    });
+
+    let html = "";
+    CAT_ORDER.forEach(cat => {
+      if (!groups[cat]) return;
+      html += `<div style="width:100%;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;margin:4px 0">${CAT_LABELS[cat] || cat}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">
+          ${groups[cat].map(({ item, index }) => `
+            <button class="history-item-chip" onclick="event.stopPropagation(); openHistoryItemEdit('${trip.id}', ${index})" style="cursor:pointer;border:1px solid var(--border)">
+              ${escapeHtml(item.name)}${item.price ? " · " + item.price + " kr" : ""}${item.qty>1 ? " " + item.qty + " " + (item.unit || "stk") : ""}
+            </button>
+          `).join("")}
+        </div>
+      </div>`;
+    });
+
+    return html;
+  }
+
+  function getTripMonthKey(trip) {
+    const ts = Number(trip.timestamp || 0);
+    const d = ts ? new Date(ts) : new Date();
+    if (isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function formatMonthLabel(monthKey) {
+    const [year, month] = (monthKey || "").split("-").map(Number);
+    if (!year || !month) return "Ukjent måned";
+    const d = new Date(year, month - 1, 1);
+    return d.toLocaleDateString("no-NO", { month:"long", year:"numeric" });
+  }
+
+  function getTripTotalAndCategories(trip) {
+    const recalculated = recalculateTripTotals(trip.items || []);
+    const categoryTotals = trip.categoryTotals || recalculated.categoryTotals || {};
+    let total = Number(trip.total || 0);
+
+    if (!total) {
+      total = Object.values(categoryTotals).reduce((sum, value) => sum + Number(value || 0), 0);
+    }
+    if (!total) total = recalculated.total || 0;
+
+    return { total, categoryTotals };
+  }
+
+  function renderMonthSummary(trips) {
+    const box = document.getElementById("month-summary");
+    if (!box) return;
+    if (!trips || trips.length === 0) {
+      box.style.display = "none";
+      return;
+    }
+
+    const monthKeys = [...new Set(trips.map(getTripMonthKey).filter(Boolean))].sort().reverse();
+    if (monthKeys.length === 0) {
+      box.style.display = "none";
+      return;
+    }
+
+    if (!selectedMonthKey || !monthKeys.includes(selectedMonthKey)) selectedMonthKey = monthKeys[0];
+
+    const monthTrips = trips.filter(trip => getTripMonthKey(trip) === selectedMonthKey);
+    const categoryTotals = {};
+    let total = 0;
+    let itemCount = 0;
+
+    monthTrips.forEach(trip => {
+      const calculated = getTripTotalAndCategories(trip);
+      total += Number(calculated.total || 0);
+      itemCount += (trip.items || []).length;
+
+      Object.entries(calculated.categoryTotals || {}).forEach(([cat, value]) => {
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(value || 0);
+      });
+    });
+
+    const sortedCats = Object.entries(categoryTotals)
+      .filter(([, value]) => Number(value || 0) > 0)
+      .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0));
+
+    const productStats = {};
+    const storeStats = {};
+
+    monthTrips.forEach(trip => {
+      const store = (trip.butikk || trip.store || "Ukjent butikk").trim() || "Ukjent butikk";
+      const calculated = getTripTotalAndCategories(trip);
+      if (!storeStats[store]) storeStats[store] = { total: 0, trips: 0 };
+      storeStats[store].total += Number(calculated.total || 0);
+      storeStats[store].trips += 1;
+
+      (trip.items || []).forEach(item => {
+        const rawName = item.name || item.navn || item.line || "Ukjent vare";
+        const name = cleanName(rawName).replace(/\s+/g, " ").trim() || "Ukjent vare";
+        const key = name.toLowerCase();
+        const qty = Number(item.qty || item.antall || 1) || 1;
+        const amount = getHistoryItemLineTotal(item);
+        if (!productStats[key]) productStats[key] = { name, qty: 0, amount: 0 };
+        productStats[key].qty += qty;
+        productStats[key].amount += Number(amount || 0);
+      });
+    });
+
+    const topProducts = Object.values(productStats)
+      .sort((a, b) => (b.qty - a.qty) || (b.amount - a.amount))
+      .slice(0, 7);
+
+    const topStores = Object.entries(storeStats)
+      .sort((a, b) => Number(b[1].total || 0) - Number(a[1].total || 0))
+      .slice(0, 5);
+
+    const fmtQty = (qty) => {
+      const rounded = Math.round(qty * 10) / 10;
+      return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
+    };
+
+    box.style.display = "block";
+    box.innerHTML = `
+      <div class="month-summary-header">
+        <div>
+          <div class="section-label" style="margin-bottom:2px">Månedssum</div>
+          <div class="month-summary-title">${formatMonthLabel(selectedMonthKey)}</div>
+        </div>
+        <select class="month-summary-select" id="month-summary-select" onclick="event.stopPropagation()" onchange="changeMonthSummary(this.value)">
+          ${monthKeys.map(key => `<option value="${key}" ${key === selectedMonthKey ? "selected" : ""}>${formatMonthLabel(key)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="month-summary-total">
+        <span>${monthTrips.length} handletur${monthTrips.length === 1 ? "" : "er"} · ${itemCount} varer</span>
+        <strong>${Math.round(total)} kr</strong>
+      </div>
+
+      <div class="section-label" style="margin-top:.75rem;margin-bottom:.35rem">Kategorier</div>
+      ${sortedCats.length ? sortedCats.map(([cat, value]) => `
+        <div class="month-summary-row">
+          <span>${CAT_LABELS[cat] || cat}</span>
+          <strong>${Math.round(Number(value || 0))} kr</strong>
+        </div>
+      `).join("") : `<div class="month-summary-empty">Ingen summer å vise for denne måneden.</div>`}
+
+      <div class="section-label" style="margin-top:.9rem;margin-bottom:.35rem">Topp produkter</div>
+      ${topProducts.length ? topProducts.map((p, index) => `
+        <div class="month-summary-row">
+          <span>${index + 1}. ${escapeHtml(p.name)} · ${fmtQty(p.qty)} stk</span>
+          <strong>${Math.round(Number(p.amount || 0))} kr</strong>
+        </div>
+      `).join("") : `<div class="month-summary-empty">Ingen produkter å vise.</div>`}
+
+      <div class="section-label" style="margin-top:.9rem;margin-bottom:.35rem">Topp butikker</div>
+      ${topStores.length ? topStores.map(([store, data], index) => `
+        <div class="month-summary-row">
+          <span>${index + 1}. ${escapeHtml(store)} · ${data.trips} tur${data.trips === 1 ? "" : "er"}</span>
+          <strong>${Math.round(Number(data.total || 0))} kr</strong>
+        </div>
+      `).join("") : `<div class="month-summary-empty">Ingen butikker å vise.</div>`}
+    `;
+  }
+
+  window.changeMonthSummary = (monthKey) => {
+    selectedMonthKey = monthKey;
+    renderMonthSummary(historyTripsCache);
+  };
+
+  function renderHistory(trips) {
+    renderMonthSummary(trips);
+    const container = document.getElementById("history-list");
+    if (trips.length === 0) {
+      container.innerHTML = `<div class="history-empty"><div style="font-size:2rem;margin-bottom:.5rem">📋</div><p style="font-size:14px">Ingen historikk ennå.<br>Kryss av varer og trykk Lagre og avslutt!</p></div>`;
+      return;
+    }
+    container.innerHTML = trips.map(trip => `
+      <div class="history-card" id="hcard-${trip.id}" onclick="toggleHistoryCard('${trip.id}')">
+        <div class="history-card-header">
+          <div>
+            <div class="history-date">${trip.date}</div>
+            ${trip.butikk ? `<div style="font-size:11px;color:var(--ink3);margin-top:2px">${trip.butikk}</div>` : ""}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${trip.total ? `<span style="font-size:13px;font-weight:500;color:var(--accent)">${trip.total} kr</span>` : ""}
+            <span class="history-count">${trip.items?.length || 0} varer</span>
+            <button class="scan-trip-btn" onclick="event.stopPropagation(); scanReceiptForTrip('${trip.id}')" title="Scan kvittering for denne turen">📷</button> 
+            <button class="delete-btn" onclick="event.stopPropagation(); deleteHistory('${trip.id}')" title="Slett handletur">×</button>
+            <span class="history-chevron">›</span>
+          </div>
+        </div>
+        <div class="history-items">
+          ${renderHistoryItemsByCategory(trip)}
+          ${trip.categoryTotals ? `
+            <div style="width:100%;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+              ${Object.entries(trip.categoryTotals).map(([cat,total]) =>
+                `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0">
+                  <span>${CAT_LABELS[cat] || cat}</span>
+                  <strong>${Math.round(total)} kr</strong>
+                </div>`
+              ).join("")}
+            </div>
+          ` : ""}
+        </div>
+      </div>`).join("");
+  }
+
+
+  window.openHistoryItemEdit = (tripId, itemIndex) => {
+    const trip = historyTripsCache.find(t => t.id === tripId);
+    if (!trip || !trip.items || !trip.items[itemIndex]) return;
+
+    const item = trip.items[itemIndex];
+    editingHistoryTripId = tripId;
+    editingHistoryItemIndex = itemIndex;
+
+    document.getElementById("history-item-name").value = item.name || "";
+    document.getElementById("history-item-qty").value = item.qty || 1;
+    document.getElementById("history-item-unit").value = item.unit || "stk";
+    document.getElementById("history-item-cat").value = item.cat || guessCategory(item.name || item.line || "") || "annet";
+    document.getElementById("history-item-price").value = item.price || "";
+    document.getElementById("history-item-modal-overlay").classList.add("open");
+  };
+
+  async function saveEditedHistoryItem(deleteItem = false) {
+    if (!editingHistoryTripId || editingHistoryItemIndex === null) return;
+
+    const trip = historyTripsCache.find(t => t.id === editingHistoryTripId);
+    if (!trip) return;
+
+    const items = [...(trip.items || [])];
+
+    if (deleteItem) {
+      items.splice(editingHistoryItemIndex, 1);
+    } else {
+      const name = document.getElementById("history-item-name").value.trim();
+      const qty = parseFloat(document.getElementById("history-item-qty").value) || 1;
+      const unit = document.getElementById("history-item-unit").value || "stk";
+      const cat = document.getElementById("history-item-cat").value || "annet";
+      const priceVal = parseFloat(document.getElementById("history-item-price").value);
+      const price = isNaN(priceVal) ? 0 : priceVal;
+
+      if (!name) return;
+
+      const oldItem = items[editingHistoryItemIndex] || {};
+      items[editingHistoryItemIndex] = {
+        ...oldItem,
+        name,
+        qty,
+        unit,
+        cat,
+        price,
+        // Når historikk redigeres manuelt, behandler vi pris som linjesum.
+        unitPrice: oldItem.unitPrice || null,
+        line: oldItem.line || "redigert i historikk"
+      };
+    }
+
+    const totals = recalculateTripTotals(items);
+    await updateDoc(doc(db, "lists", LIST_ID, "history", editingHistoryTripId), {
+      items,
+      total: totals.total,
+      categoryTotals: totals.categoryTotals,
+      updatedAt: Date.now()
+    });
+
+    document.getElementById("history-item-modal-overlay").classList.remove("open");
+    editingHistoryTripId = null;
+    editingHistoryItemIndex = null;
+    await loadHistory();
+  }
+
+  document.getElementById("history-item-save").addEventListener("click", () => saveEditedHistoryItem(false));
+  document.getElementById("history-item-delete").addEventListener("click", () => {
+    if (confirm("Slette denne varen fra historikken?")) saveEditedHistoryItem(true);
+  });
+  document.getElementById("history-item-cancel").addEventListener("click", () => {
+    document.getElementById("history-item-modal-overlay").classList.remove("open");
+    editingHistoryTripId = null;
+    editingHistoryItemIndex = null;
+  });
+  document.getElementById("history-item-modal-overlay").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById("history-item-modal-overlay").classList.remove("open");
+      editingHistoryTripId = null;
+      editingHistoryItemIndex = null;
+    }
+  });
+  window.toggleTools = () => {
+    const panel = document.getElementById("tools-panel");
+    const chevron = document.getElementById("tools-chevron");
+    const open = panel.style.display === "none";
+    panel.style.display = open ? "block" : "none";
+    chevron.style.transform = open ? "rotate(90deg)" : "";
+  };
+  window.scanReceiptForTrip = (tripId) => {
+  scanningForTripId = tripId;
+  showTab('list');
+  document.getElementById("receipt-input").click();
+};
+
+  window.toggleHistoryCard = (id) => {
+    document.getElementById(`hcard-${id}`).classList.toggle("open");
+  };
+
+  window.deleteHistory = async (id) => {
+    if (!confirm("Slette denne handleturen fra historikken?")) return;
+
+    await deleteDoc(doc(db, "lists", LIST_ID, "history", id));
+    loadHistory();
+  };
+
+  // SMART LIST
+  function buildSmartList() {
+    const now = Date.now();
+    const onList = new Set(currentItems.filter(i=>!i.done).map(i=>cleanName(i.name).toLowerCase()));
+    const entries = Object.entries(purchaseHistory);
+    if (entries.length < 3) return { items:[], thin:true };
+    const candidates = [];
+    entries.forEach(([navn, h]) => {
+      if (onList.has(navn.toLowerCase()) || !h.lastBought) return;
+      const interval = avgInterval(navn);
+      const daysSince = (now - h.lastBought) / (1000*60*60*24);
+      const timesLearned = (h.intervals||[]).length;
+      if (daysSince >= interval * 0.8) {
+        const urgency = daysSince / interval;
+        const confidence = Math.min(1, timesLearned / 5);
+        candidates.push({ navn, score: urgency * (0.5 + confidence * 0.5) });
+      }
+    });
+    return { items: candidates.sort((a,b)=>b.score-a.score).slice(0,12).map(c=>c.navn), thin:false };
+  }
+
+  let smartListItems = [];
+
+function buildStoreComparison() {
+  const activeItems = currentItems.filter(i => !i.done);
+  if (activeItems.length === 0) return { stores: [], withData: 0, total: 0 };
+  const storeTotals = {}, storeCounts = {};
+  let withData = 0;
+  activeItems.forEach(item => {
+    const h = purchaseHistory[cleanName(item.name)];
+    if (!h?.priserPerButikk) return;
+    withData++;
+Object.entries(h.priserPerButikk).forEach(([butikk, data]) => {
+  const entry = Array.isArray(data) ? data[data.length - 1] : { pris: data };
+  storeTotals[butikk] = (storeTotals[butikk] || 0) + entry.pris * (item.qty || 1);
+  storeCounts[butikk] = (storeCounts[butikk] || 0) + 1;
+});
+  
+  });
+  const stores = Object.entries(storeTotals)
+    .sort((a,b) => a[1]-b[1])
+    .map(([butikk, total], i) => ({ butikk, total: Math.round(total), ikon: ["🥇","🥈","🥉"][i] || "🏪" }));
+  return { stores, withData, total: activeItems.length };
 }
 
-// ============================================================
-//  Firebase-autentisering av AI-endepunktene
-//  Verifiserer Firebase ID-token (RS256-JWT) mot Googles
-//  offentlige nøkler, uten eksterne biblioteker.
-// ============================================================
-const FIREBASE_PROJECT_ID = "handleliste-64ec3";
+document.getElementById("store-compare-btn").addEventListener("click", () => {
+  const preview = document.getElementById("store-compare-preview");
+  if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
+  const { stores, withData, total } = buildStoreComparison();
+  const title = document.getElementById("store-compare-title");
+  const area = document.getElementById("store-compare-items");
+  if (stores.length === 0) {
+    title.textContent = "Ikke nok prisdata ennå";
+    area.innerHTML = `<p class="smart-thin-msg">Scan kvitteringer fra ulike butikker først 🏪</p>`;
+  } else {
+    title.textContent = `Estimert pris basert på ${withData} av ${total} varer:`;
+    area.innerHTML = stores.map(s => `
+      <div class="smart-preview-item" style="justify-content:space-between">
+        <span>${s.ikon} ${escapeHtml(s.butikk)}</span>
+        <strong style="color:var(--accent)">~${s.total} kr</strong>
+      </div>`).join("");
+  }
+  preview.classList.add("open");
+});
 
-let jwksCache = { keys: null, expires: 0 };
-async function getGoogleJwks() {
-  if (jwksCache.keys && Date.now() < jwksCache.expires) return jwksCache.keys;
-  const res = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
-  if (!res.ok) throw new Error("Kunne ikke hente Google-nøkler");
-  const data = await res.json();
-  jwksCache = { keys: data.keys || [], expires: Date.now() + 6 * 60 * 60 * 1000 };
-  return jwksCache.keys;
-}
+document.getElementById("store-compare-cancel").addEventListener("click", () => {
+  document.getElementById("store-compare-preview").classList.remove("open");
+});
 
-function b64urlToBytes(s) {
-  s = s.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = s.length % 4 ? "=".repeat(4 - (s.length % 4)) : "";
-  const bin = atob(s + pad);
-  return Uint8Array.from(bin, c => c.charCodeAt(0));
-}
+// DAGENS PRISER — ekte butikkpriser via Kassalapp (gjennom workeren)
+document.getElementById("live-price-btn").addEventListener("click", async () => {
+  const preview = document.getElementById("live-price-preview");
+  if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
+  const title = document.getElementById("live-price-title");
+  const area = document.getElementById("live-price-items");
 
-// Returnerer token-payload hvis gyldig, ellers null
-async function verifyFirebaseIdToken(request) {
+  const active = currentItems.filter(i => !i.done).slice(0, 15);
+  if (active.length === 0) {
+    title.textContent = "Listen er tom";
+    area.innerHTML = `<p class="smart-thin-msg">Legg til varer først 🛒</p>`;
+    preview.classList.add("open");
+    return;
+  }
+
+  title.textContent = "Slår opp dagens priser...";
+  area.innerHTML = `<p class="smart-thin-msg">Henter priser fra norske butikker 🏷️</p>`;
+  preview.classList.add("open");
+
   try {
-    const authHeader = request.headers.get("Authorization") || "";
-    const m = authHeader.match(/^Bearer (.+)$/);
-    if (!m) return null;
-    const parts = m[1].split(".");
-    if (parts.length !== 3) return null;
+    const queries = active.map(i => cleanName(i.name));
+    const res = await fetch("/price-lookup", {
+      method: "POST",
+      headers: await aiHeaders(),
+      body: JSON.stringify({ queries })
+    });
+    const data = await res.json();
+    if (data.error || !data.results) throw new Error(data.error || "Ukjent feil");
 
-    const header = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[0])));
-    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[1])));
+    const storeTotals = {}, storeCounts = {};
+    const rows = [];
 
-    if (header.alg !== "RS256" || !header.kid) return null;
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.aud !== FIREBASE_PROJECT_ID) return null;
-    if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) return null;
-    if (!payload.exp || payload.exp < now) return null;
-    if (!payload.sub) return null;
+    data.results.forEach((r, idx) => {
+      const item = active[idx];
+      const qty = item?.qty || 1;
+      if (!r.matches || r.matches.length === 0) {
+        rows.push({ navn: r.query, none: true });
+        return;
+      }
+      const sorted = [...r.matches].sort((a, b) => a.price - b.price);
+      rows.push({ navn: r.query, best: sorted[0], qty });
 
-    const keys = await getGoogleJwks();
-    const jwk = keys.find(k => k.kid === header.kid);
-    if (!jwk) return null;
+      // Billigste treff per butikk for denne varen → butikk-totaler
+      const perStore = {};
+      sorted.forEach(m => {
+        if (!(m.store in perStore) || m.price < perStore[m.store]) perStore[m.store] = m.price;
+      });
+      Object.entries(perStore).forEach(([store, price]) => {
+        storeTotals[store] = (storeTotals[store] || 0) + price * qty;
+        storeCounts[store] = (storeCounts[store] || 0) + 1;
+      });
+    });
 
-    const key = await crypto.subtle.importKey(
-      "jwk", jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false, ["verify"]
-    );
-    const data = new TextEncoder().encode(parts[0] + "." + parts[1]);
-    const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64urlToBytes(parts[2]), data);
-    return valid ? payload : null;
+    const found = rows.filter(r => !r.none).length;
+    if (found === 0) {
+      title.textContent = "Fant ingen priser";
+      area.innerHTML = `<p class="smart-thin-msg">Ingen av varene ga treff. Prøv mer generelle varenavn (f.eks. "Melk" i stedet for merkenavn).</p>`;
+      return;
+    }
+
+    // Ranger butikker: flest varer dekket først, deretter lavest sum
+    const stores = Object.entries(storeTotals)
+      .map(([store, total]) => ({ store, total: Math.round(total), count: storeCounts[store] }))
+      .sort((a, b) => b.count - a.count || a.total - b.total)
+      .slice(0, 5);
+
+    title.textContent = `Fant priser for ${found} av ${active.length} varer:`;
+    let html = stores.map((s, i) => `
+      <div class="smart-preview-item" style="justify-content:space-between;width:100%">
+        <span>${["🥇","🥈","🥉"][i] || "🏪"} ${escapeHtml(s.store)} <span style="opacity:.6;font-size:11px">(${s.count} varer)</span></span>
+        <strong style="color:var(--accent)">~${s.total} kr</strong>
+      </div>`).join("");
+
+    html += `<div style="margin-top:10px;margin-bottom:4px;font-size:12px;font-weight:500;color:var(--ink3)">Billigste treff per vare:</div>`;
+    html += rows.map(r => r.none
+      ? `<div style="font-size:12px;color:var(--ink3);padding:3px 0">– ${escapeHtml(r.navn)}: ingen treff</div>`
+      : `<div style="font-size:13px;padding:3px 0;display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+           <span style="min-width:0">${escapeHtml(r.navn)}<br><span style="opacity:.5;font-size:11px">${escapeHtml(r.best.name.slice(0, 42))}</span></span>
+           <span style="white-space:nowrap;text-align:right"><strong>${r.best.price} kr</strong><br><span style="opacity:.6;font-size:11px">${escapeHtml(r.best.store)}</span></span>
+         </div>`).join("");
+    html += `<div style="margin-top:8px;font-size:10px;color:var(--ink3)">Priser fra Kassalapp — hovedsakelig nettbutikkpriser, kan avvike fra din lokale butikk</div>`;
+    area.innerHTML = html;
+
   } catch (e) {
+    console.warn("live-price:", e);
+    title.textContent = "Kunne ikke hente priser";
+    area.innerHTML = `<p class="smart-thin-msg">${escapeHtml(e.message)}</p>`;
+  }
+});
+document.getElementById("live-price-cancel").addEventListener("click", () => {
+  document.getElementById("live-price-preview").classList.remove("open");
+});
+  
+  document.getElementById("smart-list-btn").addEventListener("click", () => {
+    const preview = document.getElementById("smart-preview");
+    if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
+    const { items, thin } = buildSmartList();
+    smartListItems = items;
+    const previewItems = document.getElementById("smart-preview-items");
+    const previewTitle = document.getElementById("smart-preview-title");
+    const actions = document.getElementById("smart-confirm-btn").parentElement;
+    if (thin) {
+      previewTitle.textContent = "Ikke nok historikk ennå";
+      previewItems.innerHTML = `<p class="smart-thin-msg">Bruk appen i 1-2 uker til! 📈</p>`;
+      actions.style.display = "none";
+    } else if (items.length === 0) {
+      previewTitle.textContent = "Listen ser allerede bra ut! 🎉";
+      previewItems.innerHTML = "";
+      actions.style.display = "none";
+    } else {
+      previewTitle.textContent = `Vi tror dere trenger ${items.length} varer:`;
+      previewItems.innerHTML = items.map(navn => {
+  const b = BASISVARER.find(v=>v.navn===navn);
+  return `<label class="smart-preview-item">
+    <input type="checkbox" class="smart-item-check" data-navn="${escapeHtml(navn)}" checked>
+    ${b?.ikon||"🛒"} ${escapeHtml(navn)}
+  </label>`;
+}).join("");
+      actions.style.display = "flex";
+    }
+    preview.classList.add("open");
+  });
+document.getElementById("smart-confirm-btn").addEventListener("click", async () => {
+  const valgte = [...document.querySelectorAll(".smart-item-check:checked")].map(cb => cb.dataset.navn);
+  for (const navn of valgte) {
+      const basis = BASISVARER.find(v=>v.navn===navn);
+      await addItem(basis?.ikon ? `${basis.ikon} ${navn}` : navn, basis?.cat);
+    }
+    document.getElementById("smart-preview").classList.remove("open");
+  });
+
+  document.getElementById("smart-cancel-btn").addEventListener("click", () => {
+    document.getElementById("smart-preview").classList.remove("open");
+  });
+
+  // SHARING
+  function generateCode() {
+    const adj = ["GRØNN","BLÅ","RØD","GULL","GLAD","RASK","STERK","LITEN","STOR","RUND","SMART","MODIG","VAKKER","KALD","VARM"];
+    const noun = ["ELEFANT","LØVE","TIGER","BJØRN","ULV","ØRN","HAI","PANDA","KOALA","ULVEN","REV","ØRNEØYNE","KROKODILLE","SNEGLE","FUGL"];
+    const pick = (arr) => arr[crypto.getRandomValues(new Uint32Array(1))[0] % arr.length];
+    const num = Math.floor(Math.random() * 100); // 0-99
+    return `${pick(adj)}-${pick(noun)}-${pick(noun)}-${num.toString().padStart(2, '0')}`;
+  }
+
+  window.openShareModal = async () => {
+    if (!currentListId || !currentListType) {
+      alert("Velg en liste først");
+      return;
+    }
+
+    if (currentListType === "private") {
+      // Privat liste - vis household code
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      let code = currentListId;
+      if (userSnap.exists() && userSnap.data().householdIds && userSnap.data().householdIds.length > 0) {
+        code = userSnap.data().householdIds[0]; // Bruk første private liste
+      }
+      document.getElementById("share-code-value").textContent = code;
+      document.getElementById("share-modal").classList.add("open");
+    } else if (currentListType === "shared") {
+      // Delt liste - vis invite link
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=shared:${currentListId}`;
+      document.getElementById("invite-link-input").value = inviteUrl;
+      document.getElementById("invite-modal").classList.add("open");
+    }
+  };
+
+  document.getElementById("share-close-btn").addEventListener("click", () => {
+    document.getElementById("share-modal").classList.remove("open");
+  });
+
+  document.getElementById("share-modal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById("share-modal").classList.remove("open");
+    }
+  });
+
+  document.getElementById("share-copy-btn").addEventListener("click", () => {
+    const code = document.getElementById("share-code-value").textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      document.getElementById("share-copy-btn").textContent = "✅ Kopiert!";
+      setTimeout(() => {
+        document.getElementById("share-copy-btn").textContent = "📋 Kopier kode";
+      }, 2000);
+    });
+  });
+
+  document.getElementById("share-join-btn").addEventListener("click", async () => {
+    const input = document.getElementById("share-join-input");
+    const rawCode = input.value.trim();
+    const code = rawCode.toLowerCase() === "hjem" ? "hjem" : rawCode.toUpperCase();
+    if (!code) return;
+
+    try {
+      // Sjekk om husholdning finnes
+      const householdRef = doc(db, "households", code);
+      const householdSnap = await getDoc(householdRef);
+
+      if (!householdSnap.exists()) {
+        // Spesialtilfelle: gammel standard-husholdning "hjem" skal alltid kunne brukes.
+        // Dette er nødvendig hvis du allerede har data under lists/hjem, eller bare vil flytte brukeren tilbake dit.
+        const isHomeLegacyCode = code === "hjem";
+        const hasLegacyData = await legacyListExists(code);
+
+        if (!isHomeLegacyCode && !hasLegacyData) {
+          alert("Fant ingen husholdning med koden: " + code);
+          return;
+        }
+
+        // Lag husholdningsdokument for gammel liste / hjem
+        await setDoc(householdRef, {
+          createdAt: Date.now(),
+          createdBy: currentUser.uid,
+          members: { [currentUser.uid]: currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker" },
+          migratedFromLegacyList: true
+        }, { merge: true });
+      } else {
+        // Legg til bruker i eksisterende husholdning
+        const members = householdSnap.data().members || {};
+        if (Array.isArray(members)) {
+          // Migrér fra array til map
+          const newMembers = {};
+          for (const uid of members) newMembers[uid] = "Bruker";
+          newMembers[currentUser.uid] = currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker";
+          await setDoc(householdRef, { members: newMembers }, { merge: true });
+        } else if (!members[currentUser.uid]) {
+          members[currentUser.uid] = currentUser.displayName || currentUser.email?.split('@')[0] || "Bruker";
+          await setDoc(householdRef, { members }, { merge: true });
+        }
+      }
+
+      // Oppdater brukerens husholdning
+      await setDoc(doc(db, "users", currentUser.uid), {
+        householdId: code,
+        displayName: currentUser.displayName || ""
+      }, { merge: true });
+
+      // Bytt til ny liste
+      LIST_ID = code;
+      if (unsubscribeList) unsubscribeList();
+      if (unsubscribeTasks) unsubscribeTasks();
+      
+      await loadPurchaseHistory();
+await cleanupPurchaseHistoryDuplicates();
+startListeningWithPrice();
+      startListeningTasks();
+      startListeningPackTours();
+      startListeningDeling();
+      renderSuggestions();
+      loadHistory();
+
+      document.getElementById("share-modal").classList.remove("open");
+      input.value = "";
+      alert("✅ Du er nå med i husholdning: " + code);
+    } catch(e) {
+      console.error(e);
+      alert("Noe gikk galt. Prøv igjen.");
+    }
+  });
+
+  document.getElementById("share-join-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("share-join-btn").click();
+  });
+
+  // AUTOCOMPLETE
+  // AC_SOURCES hentes nå direkte fra PRODUCTS-databasen (502 varer)
+  const AC_SOURCES = PRODUCTS.map(p => p.navn);
+  let acIndex = -1;
+
+  function getAcCandidates(q) {
+    if (!q || q.length < 1) return [];
+    const ql = q.toLowerCase();
+ const fromHistory = Object.keys(purchaseHistory);
+ const fromList = (typeof currentItems !== "undefined" ? currentItems : []).map(i => i.name).filter(Boolean);
+const seen = new Set();
+const all = [];
+[...fromList, ...fromHistory, ...AC_SOURCES].forEach(n => {
+  const norm = n.toLowerCase().trim();
+  if (!seen.has(norm)) { seen.add(norm); all.push(n); }
+});
+    return all.filter(n => n.toLowerCase().startsWith(ql) || n.toLowerCase().includes(ql))
+      .sort((a,b) => {
+        const aS = a.toLowerCase().startsWith(ql) ? 0 : 1;
+        const bS = b.toLowerCase().startsWith(ql) ? 0 : 1;
+        const aH = purchaseHistory[a] ? 0 : 1;
+        const bH = purchaseHistory[b] ? 0 : 1;
+        return (aS-bS)||(aH-bH);
+      }).slice(0, 6);
+  }
+
+  function showAutocomplete(candidates) {
+    const list = document.getElementById("autocomplete-list");
+    if (candidates.length === 0) { list.classList.remove("open"); return; }
+    acIndex = -1;
+    list.innerHTML = candidates.map(name => {
+      const basis = BASISVARER.find(v=>v.navn===name);
+      const icon = basis?.ikon || (purchaseHistory[name] ? "🕐" : "");
+     const h = purchaseHistory[name];
+let sub = h ? "kjøpt før" : "";
+
+if (h?.priserPerButikk) {
+  const entries = Object.entries(h.priserPerButikk)
+    .map(([b, data]) => {
+      const e = Array.isArray(data) ? data[data.length - 1] : { pris: data, enhet: "stk" };
+      return [b, e.pris, e.enhet || "stk"];
+    })
+    .sort((a,b) => a[1]-b[1]);
+  if (entries.length > 0) sub = entries.map(([b,p,e]) => `${b.split(' ')[0]} ${p} kr/${e}`).join(' · ');
+}
+      return `<div class="autocomplete-item" data-name="${name}" onclick="selectAc('${name}')">
+        ${icon?`<span>${icon}</span>`:""}${name}
+        ${sub?`<span class="ac-sub">${sub}</span>`:""}
+      </div>`;
+    }).join("");
+    list.classList.add("open");
+  }
+
+  function hideAutocomplete() {
+    setTimeout(() => { document.getElementById("autocomplete-list").classList.remove("open"); acIndex = -1; }, 150);
+  }
+
+  window.selectAc = async (name) => {
+    const input = document.getElementById("new-item-input");
+    input.value = name;
+    document.getElementById("autocomplete-list").classList.remove("open");
+    await addItem(name);
+    input.value = "";
+  };
+
+  document.getElementById("add-btn").addEventListener("click", async () => {
+    const input = document.getElementById("new-item-input");
+    await addItem(input.value);
+    input.value = "";
+    document.getElementById("autocomplete-list").classList.remove("open");
+  });
+
+  document.getElementById("new-item-input").addEventListener("input", e => {
+    showAutocomplete(getAcCandidates(e.target.value));
+  });
+
+  document.getElementById("new-item-input").addEventListener("keydown", async e => {
+    const list = document.getElementById("autocomplete-list");
+    const items = list.querySelectorAll(".autocomplete-item");
+    if (e.key === "ArrowDown") { e.preventDefault(); acIndex = Math.min(acIndex+1,items.length-1); items.forEach((el,i)=>el.classList.toggle("ac-active",i===acIndex)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); acIndex = Math.max(acIndex-1,-1); items.forEach((el,i)=>el.classList.toggle("ac-active",i===acIndex)); }
+    else if (e.key === "Tab" && list.classList.contains("open")) { e.preventDefault(); const a = list.querySelector(".ac-active")||items[0]; if(a) await selectAc(a.dataset.name); }
+    else if (e.key === "Enter") {
+      const a = list.querySelector(".ac-active");
+      if (a) { e.preventDefault(); await selectAc(a.dataset.name); return; }
+      list.classList.remove("open");
+      await addItem(e.target.value);
+      e.target.value = "";
+    } else if (e.key === "Escape") { list.classList.remove("open"); }
+  });
+
+  document.getElementById("new-item-input").addEventListener("blur", hideAutocomplete);
+
+  // API-nøkkelen ligger trygt på Netlify-serveren, ikke her
+
+  function normalizeProductName(name) {
+    return cleanName(name)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function hasWholePhrase(haystack, needle) {
+    if (!haystack || !needle) return false;
+    const pattern = new RegExp(`(^|\\s)${escapeRegExp(needle)}($|\\s)`, "u");
+    return pattern.test(haystack);
+  }
+
+  function estimatePrice(name) {
+    const clean = cleanName(name);
+    const normalized = normalizeProductName(clean);
+
+    // Sjekk lagret pris fra historikk først
+    if (purchaseHistory[clean]?.lastPrice) return purchaseHistory[clean].lastPrice;
+
+    // 1. Eksakt match er best
+    const exactKey = Object.keys(PRICE_DB).find(k => normalizeProductName(k) === normalized);
+    if (exactKey) return PRICE_DB[exactKey];
+
+    // 2. Hel frase / hele ord. Ikke bred includes begge veier.
+    const phraseKey = Object.keys(PRICE_DB)
+      .sort((a, b) => normalizeProductName(b).length - normalizeProductName(a).length)
+      .find(k => hasWholePhrase(normalized, normalizeProductName(k)));
+
+    if (phraseKey) return PRICE_DB[phraseKey];
+
     return null;
   }
-}
 
-// Kaller Anthropic Messages API og returnerer rå tekst + status
-async function callAnthropic(apiKey, payload) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify(payload)
+  // RECEIPT SCANNING
+  let scannedReceipt = [];
+  let scannedDate = null;
+  let scannedButikk = null;
+  let scannedTotal = null;
+  let receiptEditingIndex = null; 
+  let scanningForTripId = null;
+
+  function parseNumber(value, fallback = null) {
+    if (value === null || value === undefined || value === "") return fallback;
+    if (typeof value === "number") return isNaN(value) ? fallback : value;
+    const normalized = String(value).replace(",", ".").replace(/[^\d.-]/g, "");
+    const parsed = parseFloat(normalized);
+    return isNaN(parsed) ? fallback : parsed;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+
+  // Headers til AI-endepunktene i workeren — inkluderer Firebase ID-token
+  async function aiHeaders() {
+    const headers = { "Content-Type": "application/json" };
+    try {
+      if (currentUser) headers["Authorization"] = "Bearer " + await currentUser.getIdToken();
+    } catch(e) { console.warn("getIdToken feilet:", e); }
+    return headers;
+  }
+
+  function escapeJsString(value) {
+    return String(value ?? "")
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, " ")
+      .replace(/\r/g, " ");
+  }
+  function normalizeScannedReceiptItem(item) {
+    const lineText = item.linje || item.line || item.originalLinje || item.original || item.tekst || "";
+    const name = item.navn || item.name || item.vare || item.product || "";
+
+    let qty = parseNumber(item.antall ?? item.qty ?? item.quantity, null);
+    let unit = item.enhet || item.unit || "stk";
+
+    // Forsøk å lese antall fra hele linjen hvis backend ikke har sendt antall.
+    // Eksempler: "2 x MELK 25,00", "2,000 KG BANANER 39,90", "3 STK YOGHURT 45,00"
+    if (!qty && lineText) {
+      const line = String(lineText).toLowerCase();
+
+      let match =
+        line.match(/(^|\s)(\d+(?:[,.]\d+)?)\s*x\s+/i) ||
+        line.match(/(^|\s)(\d+(?:[,.]\d+)?)\s*(stk|pk|kg|g|l|dl)\b/i);
+
+      if (match) {
+        qty = parseNumber(match[2], 1);
+        if (match[3]) unit = match[3];
+      }
+    }
+
+    if (!qty || qty <= 0) qty = 1;
+
+    const totalPrice = parseNumber(
+      item.total ?? item.totalpris ?? item.linjesum ?? item.sum ?? item.pris ?? item.price,
+      null
+    );
+
+    const unitPrice = parseNumber(
+      item.stkpris ?? item.enhetspris ?? item.unitPrice,
+      totalPrice !== null && qty > 0 ? totalPrice / qty : null
+    );
+
+    // Prøv å matche mot produktdatabasen for bedre navn, ikon og kategori
+    // VIKTIG: bruk databasens kanoniske navn (dbMatch.navn) når vi har en treff, ikke råteksten
+    // fra kvitteringen — ellers lagres "TINE Lettmelk 1L" (Rema) og "Lettmelk 1,5%" (Meny) som
+    // to ulike varer i purchaseHistory, og prissammenligning på tvers av butikker blir umulig.
+    const rawName = cleanName(name || lineText || "Ukjent vare");
+    const dbMatch = matchProduct(lineText || name || "");
+    const resolvedName = dbMatch ? dbMatch.navn : rawName;
+    const resolvedCat = item.cat || item.kategori || item.category
+      || (dbMatch ? dbMatch.kat : null)
+      || guessCategory(rawName)
+      || "annet";
+
+    return {
+      navn: resolvedName,
+      linje: lineText || name || "",
+      antall: qty,
+      enhet: unit || "stk",
+      pris: totalPrice,
+      stkpris: unitPrice,
+      cat: resolvedCat
+    };
+  }
+
+  function renderScannedReceipt() {
+    const area = document.getElementById("receipt-items-area");
+
+    if (scannedReceipt.length === 0) {
+      area.innerHTML = '<div class="receipt-scanning">Ingen produkter igjen.</div>';
+      document.getElementById("receipt-actions").style.display = "none";
+      return;
+    }
+
+    // Sorter varene etter kategori, men behold original indeks slik at redigering/sletting fungerer.
+    const grouped = {};
+    scannedReceipt.forEach((v, index) => {
+      const cat = v.cat || guessCategory(v.navn || v.linje || "");
+      v.cat = cat;
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push({ item: v, index });
+    });
+
+    const groupHtml = CAT_ORDER
+      .filter(cat => grouped[cat]?.length)
+      .map(cat => `
+        <div class="receipt-cat-group">
+          <div class="receipt-cat-label">${CAT_LABELS[cat] || cat}</div>
+          ${grouped[cat].map(({ item: v, index: i }) => {
+            const qtyText = `${v.antall || 1} ${v.enhet || "stk"}`;
+            const priceText = v.pris !== null && v.pris !== undefined ? `${Math.round(v.pris * 100) / 100} kr` : "ukjent pris";
+            const unitPriceText = v.stkpris && v.antall > 1 ? ` · ${Math.round(v.stkpris * 100) / 100} kr/${v.enhet || "stk"}` : "";
+            const lineText = v.linje ? `<div class="item-detail">${escapeHtml(v.linje)}</div>` : "";
+
+            return `
+              <div class="receipt-item-row" onclick="openReceiptEdit(${i})">
+                <input type="checkbox" class="receipt-item-check" id="rc-${i}" checked onclick="event.stopPropagation()">
+                <div class="item-main">
+                  <div class="receipt-item-name">${escapeHtml(v.navn)}</div>
+                  <div class="item-detail">${escapeHtml(qtyText)}${escapeHtml(unitPriceText)}</div>
+                  ${lineText}
+                  <div class="receipt-edit-hint">Trykk for å redigere · avhuking = bruk til pris/forslag</div>
+                </div>
+                <span class="receipt-item-price">${escapeHtml(priceText)}</span>
+                <button class="delete-btn" onclick="event.stopPropagation(); deleteScannedProduct(${i})">×</button>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `).join("");
+
+    area.innerHTML = `<div class="receipt-items-list">${groupHtml}</div>`;
+  }
+
+  window.deleteScannedProduct = (index) => {
+    scannedReceipt.splice(index, 1);
+    renderScannedReceipt();
+  };
+
+  window.openReceiptEdit = (index) => {
+    const item = scannedReceipt[index];
+    if (!item) return;
+    receiptEditingIndex = index;
+    document.getElementById("receipt-edit-name").value = item.navn || "";
+    document.getElementById("receipt-edit-qty").value = item.antall || 1;
+    document.getElementById("receipt-edit-unit").value = item.enhet || "stk";
+    document.getElementById("receipt-edit-cat").value = item.cat || guessCategory(item.navn || item.linje || "");
+    document.getElementById("receipt-edit-price").value = item.pris ?? "";
+    document.getElementById("receipt-edit-line").value = item.linje || "";
+    document.getElementById("receipt-edit-overlay").classList.add("open");
+  };
+
+  document.getElementById("receipt-edit-save").addEventListener("click", () => {
+    if (receiptEditingIndex === null) return;
+    const item = scannedReceipt[receiptEditingIndex];
+    if (!item) return;
+
+    const name = document.getElementById("receipt-edit-name").value.trim();
+    const qty = parseNumber(document.getElementById("receipt-edit-qty").value, 1) || 1;
+    const unit = document.getElementById("receipt-edit-unit").value || "stk";
+    const cat = document.getElementById("receipt-edit-cat").value || "annet";
+    const price = parseNumber(document.getElementById("receipt-edit-price").value, null);
+    const line = document.getElementById("receipt-edit-line").value.trim();
+
+    if (!name) return;
+
+    scannedReceipt[receiptEditingIndex] = {
+      ...item,
+      navn: name,
+      antall: qty,
+      enhet: unit,
+      cat,
+      pris: price,
+      stkpris: price !== null && qty > 0 ? price / qty : null,
+      linje: line
+    };
+
+    document.getElementById("receipt-edit-overlay").classList.remove("open");
+    receiptEditingIndex = null;
+    renderScannedReceipt();
   });
-  const rawText = await response.text();
-  return { ok: response.ok, status: response.status, rawText };
-}
 
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const apiKey = env.ANTHROPIC_API_KEY;
+  document.getElementById("receipt-edit-delete").addEventListener("click", () => {
+    if (receiptEditingIndex === null) return;
+    scannedReceipt.splice(receiptEditingIndex, 1);
+    document.getElementById("receipt-edit-overlay").classList.remove("open");
+    receiptEditingIndex = null;
+    renderScannedReceipt();
+  });
 
-    // -------------------------------------------------------
-    //  Beskyttelse av AI-endepunktene: krever gyldig Firebase-
-    //  innlogging og begrenser forespørselsstørrelse, slik at
-    //  uvedkommende ikke kan bruke Anthropic-kreditten.
-    // -------------------------------------------------------
-    const AI_ENDPOINTS = ["/scan", "/suggest-packing", "/parse-menu"];
-    if (AI_ENDPOINTS.includes(url.pathname)) {
-      if (request.method !== "POST") return jsonRes({ error: "Method not allowed" }, 405);
-      const contentLength = parseInt(request.headers.get("Content-Length") || "0", 10);
-      if (contentLength > 10 * 1024 * 1024) {
-        return jsonRes({ error: "Forespørselen er for stor (maks 10 MB)" }, 413);
+  document.getElementById("receipt-edit-cancel").addEventListener("click", () => {
+    document.getElementById("receipt-edit-overlay").classList.remove("open");
+    receiptEditingIndex = null;
+  });
+
+  document.getElementById("receipt-edit-overlay").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById("receipt-edit-overlay").classList.remove("open");
+      receiptEditingIndex = null;
+    }
+  });
+
+ document.getElementById("receipt-btn").addEventListener("click", () => {
+    showTab('list');
+    document.getElementById("receipt-input").click();
+  });
+
+  document.getElementById("receipt-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const preview = document.getElementById("receipt-preview");
+    const area = document.getElementById("receipt-items-area");
+    const actions = document.getElementById("receipt-actions");
+    preview.classList.add("open");
+    actions.style.display = "none";
+    document.getElementById("receipt-preview-title").textContent = "Skanner kvittering...";
+    area.innerHTML = `<div class="receipt-scanning"><div class="spin">🔍</div><br>Leser hele kvitteringslinjene...</div>`;
+
+    try {
+      // Skaler ned bildet før sending (høyere kvalitet for bedre OCR på kvitteringer)
+      const base64 = await new Promise((res, rej) => {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          const MAX = 2200;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+            else { w = Math.round(w * MAX / h); h = MAX; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          res(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
+        };
+        img.onerror = rej;
+        img.src = objectUrl;
+      });
+
+      const mediaType = "image/jpeg";
+
+      const response = await fetch("/scan", {
+        method: "POST",
+        headers: await aiHeaders(),
+        body: JSON.stringify({
+          image: base64,
+          mediaType,
+          type: "receipt",
+          instructions: "Les hele kvitteringslinjen for hver vare. Returner varer som JSON med feltene navn, linje, antall, enhet, pris og eventuelt stkpris. pris skal være linjesum/totalpris for varen. Returner også kvitteringens totalbeløp som total."
+        })
+      });
+
+      if (!response.ok) throw new Error("Server feil: " + response.status);
+      const parsed = await response.json();
+
+      scannedReceipt = (parsed.varer || parsed.items || []).map(normalizeScannedReceiptItem);
+      scannedDate = parsed.dato || parsed.date || null;
+      scannedButikk = parsed.butikk || parsed.store || null;
+      scannedTotal = parseNumber(parsed.total ?? parsed.totalbelop ?? parsed.totalBelop ?? parsed.sum ?? parsed.amount, null);
+
+      if (scannedReceipt.length === 0) {
+        area.innerHTML = `<div class="receipt-scanning">Fant ingen varer. Prøv et klarere bilde.</div>`;
+        return;
       }
-      const user = await verifyFirebaseIdToken(request);
-      if (!user) {
-        return jsonRes({ error: "Ikke innlogget – last siden på nytt og prøv igjen" }, 401);
-      }
+
+      document.getElementById("receipt-preview-title").textContent = `Fant ${scannedReceipt.length} varer — alle lagres i historikk og brukes til fremtidige forslag:`;
+      renderScannedReceipt();
+      actions.style.display = "flex";
+
+    } catch(err) {
+      area.innerHTML = `<div class="receipt-scanning">Feil: ${err.message}. Sjekk konsollen for detaljer.</div>`;
+      console.error(err);
     }
 
-    // -------------------------------------------------------
-    //  /suggest-packing – AI-pakkeforslag
-    // -------------------------------------------------------
-    if (url.pathname === "/suggest-packing" && request.method === "POST") {
-      try {
-        if (!apiKey) return jsonRes({ error: "API key not configured" }, 500);
+    e.target.value = "";
+  });
 
-        const { beskrivelse, personer } = await request.json();
-        const personListe = Array.isArray(personer) && personer.length
-          ? personer.join(", ")
-          : "(ingen personer oppgitt)";
+  document.getElementById("receipt-confirm-btn").addEventListener("click", async () => {
+    // Alle scannede varer brukes nå til pris-/kjøpshistorikk og fremtidige forslag.
+    // Avhuking beholdes bare visuelt foreløpig, men påvirker ikke lagringen.
+    const purchaseTimestamp = scannedDate ? new Date(scannedDate).getTime() : Date.now();
+    const allNames = scannedReceipt.map(v => cleanName(v.navn)).filter(Boolean);
 
-        const prompt = `Du planlegger pakkeliste for en familietur. Lag forslag til hva hver person bør pakke.
+    scannedReceipt.forEach(v => {
+      const navn = cleanName(v.navn);
+      if (!navn) return;
+      if (!purchaseHistory[navn]) purchaseHistory[navn] = { lastBought: null, intervals: [], partners: {} };
 
-Turbeskrivelse: ${beskrivelse || "(ingen beskrivelse)"}
-Personer på turen: ${personListe}
+      const h = purchaseHistory[navn];
+      if (h.lastBought) {
+        const daysSince = (purchaseTimestamp - h.lastBought) / (1000 * 60 * 60 * 24);
+        if (daysSince > 0.5) h.intervals = [...(h.intervals || []).slice(-9), Math.round(daysSince)];
+      }
 
-Svar KUN med gyldig JSON, ingen annen tekst:
-{
-  "forslag": [
-    {
-      "person": "Katrine",
-      "ting": [
-        { "navn": "Solkrem", "antall": 1, "kategori": "toalett" },
-        { "navn": "Pass", "antall": 1, "kategori": "dokumenter" }
-      ]
+      // Husk enhetspris hvis vi har antall, ellers bruk linjesummen
+h.lastPrice = v.stkpris || v.pris || null;
+h.lastReceiptLine = v.linje || "";
+if (scannedButikk && (v.stkpris || v.pris)) {
+  h.priserPerButikk = h.priserPerButikk || {};
+  const eksisterende = Array.isArray(h.priserPerButikk[scannedButikk])
+    ? h.priserPerButikk[scannedButikk] : [];
+  eksisterende.push({ pris: v.stkpris || v.pris, enhet: v.enhet || "stk", dato: purchaseTimestamp });
+  h.priserPerButikk[scannedButikk] = eksisterende.slice(-10);
+}
+      h.lastQty = v.antall || 1;
+      h.lastUnit = v.enhet || "stk";
+      h.lastBought = purchaseTimestamp;
+
+      // Lær hvilke varer som ofte kjøpes sammen, slik at forslagene blir bedre.
+      h.partners = h.partners || {};
+      allNames.forEach(partner => {
+        if (partner !== navn) h.partners[partner] = (h.partners[partner] || 0) + 1;
+      });
+    });
+    await savePurchaseHistory();
+
+    const dateStr = scannedDate
+      ? new Date(scannedDate).toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" })
+      : new Date().toLocaleDateString("no-NO", { day:"numeric", month:"long", year:"numeric" });
+
+    const allScannedTotal = scannedReceipt.reduce((sum, v) => sum + Number(v.pris || 0), 0);
+    const receiptTotal = scannedTotal !== null && scannedTotal !== undefined ? Number(scannedTotal) : allScannedTotal;
+    const roundedTotal = Math.round(receiptTotal * 100) / 100;
+    const unallocatedAmount = Math.max(0, Math.round((roundedTotal - allScannedTotal) * 100) / 100);
+    const receiptTimestamp = scannedDate ? new Date(scannedDate).getTime() : Date.now();
+
+    // Fordel kvitteringens totalbeløp proporsjonalt på kategoriene vi har funnet.
+    // Da havner ikke differansen automatisk i Annet, og månedssummer matcher totalen.
+    const rawCategoryTotals = {};
+    scannedReceipt.forEach(v => {
+      const cat = v.cat || guessCategory(v.navn || v.linje || "") || "annet";
+      rawCategoryTotals[cat] = (rawCategoryTotals[cat] || 0) + Number(v.pris || 0);
+    });
+
+    const categoryTotals = {};
+    if (allScannedTotal > 0) {
+      Object.entries(rawCategoryTotals).forEach(([cat, value]) => {
+        categoryTotals[cat] = Math.round((Number(value || 0) / allScannedTotal) * roundedTotal * 100) / 100;
+      });
+    } else if (roundedTotal > 0) {
+      categoryTotals["annet"] = roundedTotal;
     }
-  ]
+
+    const receiptItems = scannedReceipt.map((v, index) => ({
+      name: v.navn,
+      qty: v.antall || 1,
+      unit: v.enhet || "stk",
+      cat: v.cat || guessCategory(v.navn || v.linje || "") || "annet",
+      price: v.pris,
+      unitPrice: v.stkpris || null,
+      line: v.linje || "",
+      useForPurchaseHistory: true
+    }));
+
+    const receiptFingerprint = [
+      scannedButikk || "Ukjent butikk",
+      dateStr,
+      roundedTotal,
+      receiptItems.map(i => `${i.name}|${i.qty}|${i.unit}|${i.price}|${i.line}`).join(";;")
+    ].join("::");
+
+    const historyRef = collection(db, "lists", LIST_ID, "history");
+
+    // Unngå duplikater hvis samme kvittering lagres flere ganger
+    const existingHistory = await getDocs(historyRef);
+    const duplicate = existingHistory.docs.some(d => d.data().receiptFingerprint === receiptFingerprint);
+
+    if (duplicate) {
+      alert("Denne kvitteringen ligger allerede i historikken.");
+      document.getElementById("receipt-preview").classList.remove("open");
+      return;
+    }
+
+    if (scanningForTripId) {
+  await updateDoc(doc(db, "lists", LIST_ID, "history", scanningForTripId), {
+    butikk: scannedButikk || "Ukjent butikk",
+    total: roundedTotal,
+    scannedItemsTotal: Math.round(allScannedTotal * 100) / 100,
+    categoryTotals,
+    items: receiptItems,
+    source: "kvittering",
+    updatedAt: Date.now()
+  });
+  scanningForTripId = null;
+  document.getElementById("receipt-preview").classList.remove("open");
+  renderPriceSummary();
+  loadHistory();
+  alert(`✅ Historikkturen er oppdatert med kvitteringsdata.`);
+  return;
 }
 
-Regler:
-- Bruk EKSAKT personnavnene fra listen over som "person"-verdi
-- "kategori" må være én av: klar, toalett, dokumenter, elektronikk, barn, diverse
-- Tilpass til alder og turlengde: spedbarn trenger bleier/skift/våtservietter, småbarn trenger egne ting, voksne andre ting
-- Tilpass til destinasjon og årstid hvis det fremgår (sol/bad/varme vs kulde)
-- "antall": fornuftig mengde for turlengden (f.eks. flere bleiepakker for lang tur med baby)
-- Vær praktisk og dekkende, men ikke overdriv med urealistiske mengder
-- Norsk stavemåte med æøå`;
+await addDoc(historyRef, {
+      date: dateStr,
+      timestamp: receiptTimestamp,
+      butikk: scannedButikk || "Ukjent butikk",
+      total: roundedTotal,
+      scannedItemsTotal: Math.round(allScannedTotal * 100) / 100,
+      unallocatedAmount,
+      categoryTotals,
+      items: receiptItems,
+      receiptFingerprint,
+      source: "kvittering"
+    });
 
-        const { ok, status, rawText } = await callAnthropic(apiKey, {
-          model: "claude-sonnet-4-6",
-          max_tokens: 8000,
-          system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst.",
-          messages: [{ role: "user", content: [{ type: "text", text: prompt }] }]
+    document.getElementById("receipt-preview").classList.remove("open");
+    renderPriceSummary();
+    loadHistory();
+    alert(`✅ Lagret kvittering med ${scannedReceipt.length} varer i historikk og brukt til fremtidige forslag${scannedDate ? " fra " + dateStr : ""}.`);
+  });
+
+  document.getElementById("receipt-cancel-btn").addEventListener("click", () => {
+    document.getElementById("receipt-preview").classList.remove("open");
+  });
+
+
+
+
+  // FAMILY BOARD / TASKS
+ function startListeningTasks() {
+    if (!HOUSEHOLD_ID) return;
+    if (unsubscribeTasks) unsubscribeTasks();
+    loadBoardMembers();
+    const q = query(collection(db, "lists", HOUSEHOLD_ID, "tasks"), orderBy("createdAt", "asc"));
+    unsubscribeTasks = onSnapshot(q, snapshot => {
+      familyBoardItems = [];
+      snapshot.forEach(d => familyBoardItems.push({ id:d.id, ...d.data() }));
+      renderFamilyBoard();
+      requestAnimationFrame(attachSwipeToTasks);
+    });
+  }
+
+  // ===== ØNSKELISTER =====
+  let wishes = [];
+  let unsubscribeWishes = null;
+  let currentWishPerson = null;
+  let wishPersons = [];
+
+  async function startListeningWishes() {
+    if (!HOUSEHOLD_ID) return;
+    await loadWishPersons();
+    if (unsubscribeWishes) unsubscribeWishes();
+    const q = query(collection(db, "lists", HOUSEHOLD_ID, "wishes"), orderBy("createdAt", "asc"));
+    unsubscribeWishes = onSnapshot(q, snap => {
+      wishes = [];
+      snap.forEach(d => wishes.push({ id: d.id, ...d.data() }));
+      renderWishes();
+    });
+  }
+
+  // Personliste for ønsker = husholdningsmedlemmer + evt. ekstra (barn) lagret på husholdningen
+  let wishBirthdays = {};
+
+  async function loadWishPersons() {
+    try {
+      const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const data = hhSnap.exists() ? hhSnap.data() : {};
+      const members = data.members || {};
+      const memberNavn = Array.isArray(members) ? [] : Object.values(members).map(n => String(n).trim()).filter(Boolean);
+      const ekstra = Array.isArray(data.wishPersons) ? data.wishPersons : [];
+      wishPersons = [...new Set([...memberNavn, ...ekstra])].sort((a, b) => a.localeCompare(b, "no"));
+      wishBirthdays = data.wishBirthdays || {};
+      fillWishPersonSelect();
+    } catch (e) {
+      console.error("Kunne ikke laste personer for ønsker:", e);
+    }
+  }
+
+  function fillWishPersonSelect() {
+    const sel = document.getElementById("onsker-person-select");
+    if (!sel) return;
+    const prev = sel.value;
+    let html = '<option value="">Velg person...</option>';
+    wishPersons.forEach(p => { html += `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`; });
+    html += '<option value="__nyperson__">+ Legg til person (barn e.l.)...</option>';
+    sel.innerHTML = html;
+    if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
+
+  document.getElementById("onsker-person-select")?.addEventListener("change", async (e) => {
+    const val = e.target.value;
+    if (val === "__nyperson__") {
+      const navn = prompt("Navn på personen (f.eks. et barn):");
+      e.target.value = currentWishPerson || "";
+      if (navn && navn.trim()) {
+        const nyttNavn = navn.trim();
+        const nye = [...new Set([...(wishPersons.filter(p => !boardMemberNames.includes(p))), nyttNavn])];
+        await updateDoc(doc(db, "households", HOUSEHOLD_ID), { wishPersons: nye });
+        await loadWishPersons();
+        document.getElementById("onsker-person-select").value = nyttNavn;
+        currentWishPerson = nyttNavn;
+        document.getElementById("onsker-add-area").style.display = "block";
+        renderWishes();
+      }
+      return;
+    }
+    currentWishPerson = val || null;
+    document.getElementById("onsker-add-area").style.display = val ? "block" : "none";
+    renderWishes();
+  });
+
+  document.getElementById("onsker-add-btn")?.addEventListener("click", async () => {
+    if (!currentWishPerson) return;
+    const navn = document.getElementById("onsker-navn-input").value.trim();
+    if (!navn) { alert("Skriv hva som ønskes."); return; }
+    const pris = document.getElementById("onsker-pris-input").value;
+    const lenke = document.getElementById("onsker-lenke-input").value.trim();
+    await addDoc(collection(db, "lists", HOUSEHOLD_ID, "wishes"), {
+      person: currentWishPerson,
+      navn,
+      pris: pris ? Number(pris) : null,
+      lenke: lenke || "",
+      kjopt: false,
+      kjoptAv: "",
+      onsketAvUid: currentUser?.uid || "",  // hvem som la inn ønsket (for skjult avkryssing)
+      createdAt: Date.now(),
+      createdByName: currentUser?.displayName || ""
+    });
+    document.getElementById("onsker-navn-input").value = "";
+    document.getElementById("onsker-pris-input").value = "";
+    document.getElementById("onsker-lenke-input").value = "";
+    document.getElementById("onsker-navn-input").focus();
+  });
+
+  function renderWishes() {
+    const container = document.getElementById("onsker-content");
+    if (!container) return;
+    if (!currentWishPerson) {
+      container.innerHTML = `<div class="board-empty">Velg en person for å se ønskelista</div>`;
+      return;
+    }
+
+    // Person-header: fødselsdato/alder + handlinger
+    const bd = wishBirthdays[currentWishPerson];
+    let bdStr = "";
+    if (bd) {
+      const d = new Date(bd);
+      if (!isNaN(d.getTime())) {
+        const alder = beregnAlder(d);
+        bdStr = `🎂 ${d.toLocaleDateString("no-NO", { day: "numeric", month: "long" })}${alder != null ? ` · ${alder} år` : ""}`;
+      }
+    }
+    const header = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px 12px;flex-wrap:wrap">
+        <div style="font-size:13px;color:var(--ink2)">${bdStr || '<span style="color:var(--ink3)">Ingen fødselsdato satt</span>'}</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="setWishBirthday('${escapeJsString(currentWishPerson)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink2)">${bd ? "Endre dato" : "Sett fødselsdato"}</button>
+          <button onclick="shareWishlist('${escapeJsString(currentWishPerson)}')" style="background:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:#fff">🔗 Del</button>
+          <button onclick="deleteWishPerson('${escapeJsString(currentWishPerson)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink3)">Fjern person</button>
+        </div>
+      </div>`;
+
+    const personWishes = wishes.filter(w => w.person === currentWishPerson);
+    if (personWishes.length === 0) {
+      container.innerHTML = header + `<div class="board-empty">Ingen ønsker for ${escapeHtml(currentWishPerson)} ennå</div>`;
+      return;
+    }
+
+    // Er den innloggede eieren av denne lista? (la inn ønskene selv)
+    // Skjult avkryssing: eieren ser IKKE kjøpt-status på sine egne ønsker.
+    let html = header + `<div class="board-section"><div class="board-list">`;
+    personWishes.forEach(w => {
+      const erMittEget = w.onsketAvUid && w.onsketAvUid === currentUser?.uid;
+      const visKjopt = w.kjopt && !erMittEget; // skjul for eier
+      const prisStr = w.pris ? ` · ${w.pris} kr` : "";
+      const lenkeStr = w.lenke ? ` · <a href="${escapeHtml(w.lenke)}" target="_blank" rel="noopener" style="color:var(--accent)" onclick="event.stopPropagation()">lenke</a>` : "";
+
+      html += `
+        <div class="item ${visKjopt ? "done" : ""}" style="margin-bottom:6px">
+          ${erMittEget
+            ? `<div class="check-btn" style="opacity:.25;cursor:default" title="Du ser ikke om dine egne ønsker er kjøpt">🎁</div>`
+            : `<button class="check-btn" onclick="toggleWishKjopt('${w.id}', ${!!w.kjopt})">${w.kjopt ? "✓" : ""}</button>`}
+          <div class="item-main">
+            <div class="item-name">${escapeHtml(w.navn)}</div>
+            <div class="item-detail">${prisStr}${lenkeStr}${visKjopt && w.kjoptAv ? ` · kjøpt av ${escapeHtml(w.kjoptAv)}` : ""}</div>
+          </div>
+          <button class="delete-btn" onclick="deleteWish('${w.id}')" title="Fjern">×</button>
+        </div>`;
+    });
+    html += `</div></div>`;
+
+    if (personWishes.some(w => w.onsketAvUid === currentUser?.uid)) {
+      html += `<p style="font-size:12px;color:var(--ink3);padding:8px 4px">🎁 = ditt eget ønske. Du ser med vilje ikke om det er kjøpt, så overraskelsen bevares.</p>`;
+    }
+    container.innerHTML = html;
+  }
+
+  window.toggleWishKjopt = async (id, kjopt) => {
+    if (!HOUSEHOLD_ID) return;
+    await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "wishes", id), {
+      kjopt: !kjopt,
+      kjoptAv: !kjopt ? (currentUser?.displayName?.split(" ")[0] || "noen") : ""
+    });
+  };
+
+  window.deleteWish = async (id) => {
+    if (!HOUSEHOLD_ID) return;
+    const w = wishes.find(x => x.id === id);
+    if (w && !confirm(`Fjerne "${w.navn}"?`)) return;
+    await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "wishes", id));
+  };
+
+  // ===== MIDDAGSPLAN =====
+  const MIDDAG_DAGER = ["mandag","tirsdag","onsdag","torsdag","fredag","lørdag","søndag"];
+  let middagsplan = {};
+  let unsubscribeMiddag = null;
+
+  function startListeningMiddag() {
+    if (!LIST_ID) return;
+    if (unsubscribeMiddag) unsubscribeMiddag();
+    unsubscribeMiddag = onSnapshot(doc(db, "lists", LIST_ID, "meta", "middagsplan"), snap => {
+      middagsplan = snap.exists() ? (snap.data().dager || {}) : {};
+      renderMiddag();
+    });
+  }
+
+  // Normaliser ingrediens: håndter både gamle strenger og nye objekter
+  function normIngrediens(ing) {
+    if (typeof ing === "string") return { navn: ing, antall: 1, enhet: "stk", pris: estimatePrice(ing) || null };
+    return {
+      navn: ing.navn || "",
+      antall: ing.antall || 1,
+      enhet: ing.enhet || "stk",
+      pris: (ing.pris != null) ? ing.pris : (estimatePrice(ing.navn || "") || null)
+    };
+  }
+
+  // Enheter der prisen gjelder hele mengden (ikke per enhet) – ganges IKKE med antall
+  const MENGDE_ENHETER = ["g", "kg", "ml", "l", "dl"];
+  function ingLinjepris(ing) {
+    if (ing.pris == null) return null;
+    // For gram/kg/liter osv. er prisen allerede for hele mengden
+    if (MENGDE_ENHETER.includes((ing.enhet || "").toLowerCase())) return ing.pris;
+    return ing.pris * (ing.antall || 1);
+  }
+
+  function rettTotalpris(ingredienser) {
+    let sum = 0, harPris = false;
+    ingredienser.forEach(raw => {
+      const ing = normIngrediens(raw);
+      const lp = ingLinjepris(ing);
+      if (lp != null) { sum += lp; harPris = true; }
+    });
+    return harPris ? sum : null;
+  }
+
+  let middagOpenDag = null; // hvilken dag har inntastingsfeltet åpent
+
+  function renderMiddag() {
+    const el = document.getElementById("middag-uke");
+    if (!el) return;
+    let html = "";
+    MIDDAG_DAGER.forEach(dag => {
+      const d = middagsplan[dag] || {};
+      const rett = d.rett || "";
+      const ingredienser = (Array.isArray(d.ingredienser) ? d.ingredienser : []).map(normIngrediens);
+      const dagNavn = dag.charAt(0).toUpperCase() + dag.slice(1);
+      const total = rettTotalpris(ingredienser);
+
+      let ingListe = "";
+      if (ingredienser.length) {
+        ingListe = `<div style="margin-bottom:8px">` + ingredienser.map((ing, i) => `
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;border-bottom:1px solid var(--border)">
+            <div style="flex:1;position:relative">
+              <input id="middag-ing-edit-${dag}-${i}" value="${escapeHtml(ing.navn)}" autocomplete="off"
+                     oninput="middagEditAutocomplete('${dag}', ${i})"
+                     onblur="setTimeout(() => middagEditBlur('${dag}', ${i}, this.value), 150)"
+                     style="width:100%;border:none;background:none;font-size:13px;color:var(--ink);padding:2px 4px;border-radius:4px;box-sizing:border-box" title="Trykk for å endre navn" />
+              <div class="autocomplete-list" id="middag-edit-ac-${dag}-${i}" style="position:absolute;left:0;right:0;top:100%;z-index:50"></div>
+            </div>
+            <input type="number" min="0.1" step="0.1" value="${ing.antall}" onchange="endreMiddagIngrediens('${dag}', ${i}, 'antall', this.value)"
+                   style="width:44px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--ink2);padding:2px 4px;border-radius:4px;text-align:center" title="Antall" />
+            <input value="${escapeHtml(ing.enhet)}" onchange="endreMiddagIngrediens('${dag}', ${i}, 'enhet', this.value)"
+                   style="width:42px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--ink2);padding:2px 4px;border-radius:4px;text-align:center" title="Enhet" />
+            <input type="number" min="0" value="${ing.pris != null ? ing.pris : ''}" placeholder="kr" onchange="endreMiddagIngrediens('${dag}', ${i}, 'pris', this.value)"
+                   style="width:50px;border:1px solid var(--border);background:var(--card);font-size:12px;color:var(--ink2);padding:2px 4px;border-radius:4px;text-align:right" title="Pris per enhet" />
+            <button onclick="fjernMiddagIngrediens('${dag}', ${i})" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:15px;padding:0 4px" title="Fjern">×</button>
+          </div>`).join("") + `</div>`;
+      }
+
+      const erApen = middagOpenDag === dag;
+      const inntasting = erApen ? `
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;position:relative">
+          <input class="board-input board-full" id="middag-ing-navn-${dag}" type="text" placeholder="Ingrediens (skriv for forslag)" autocomplete="off" style="margin-bottom:6px" />
+          <div class="autocomplete-list" id="middag-ac-${dag}"></div>
+          <div style="display:flex;gap:6px">
+            <input class="board-input" id="middag-ing-antall-${dag}" type="number" min="0.1" step="0.1" value="1" placeholder="Antall" style="width:70px" />
+            <input class="board-input" id="middag-ing-enhet-${dag}" type="text" value="stk" placeholder="Enhet" style="width:70px" />
+            <input class="board-input" id="middag-ing-pris-${dag}" type="number" min="0" placeholder="Pris (auto)" style="flex:1" />
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button onclick="leggTilMiddagIngrediens('${dag}')" style="flex:1;background:var(--accent);border:none;border-radius:8px;padding:8px;font-size:12px;cursor:pointer;color:#fff">Legg til</button>
+            <button onclick="lukkMiddagInntasting()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;color:var(--ink3)">Ferdig</button>
+          </div>
+        </div>` : "";
+
+      html += `
+        <div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-weight:600;font-size:13px;color:var(--ink3)">${dagNavn}</div>
+            ${total != null ? `<div style="font-size:13px;color:var(--accent);font-weight:600">${total.toFixed(0)} kr</div>` : ""}
+          </div>
+          <input class="board-input board-full" value="${escapeHtml(rett)}" placeholder="Hva blir middagen?"
+                 onchange="setMiddagRett('${dag}', this.value)" style="margin-bottom:8px" />
+          ${ingListe}
+          ${inntasting}
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${!erApen ? `<button onclick="apneMiddagInntasting('${dag}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink2)">+ Ingrediens</button>` : ""}
+            ${ingredienser.length ? `<button onclick="middagTilHandleliste('${dag}')" style="background:var(--accent);border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:#fff">🛒 Til handlelista</button>` : ""}
+            ${rett || ingredienser.length ? `<button onclick="tomMiddagDag('${dag}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink3)">Tøm</button>` : ""}
+          </div>
+        </div>`;
+    });
+    el.innerHTML = html;
+
+    // Koble autocomplete til det åpne feltet
+    if (middagOpenDag) koblMiddagAutocomplete(middagOpenDag);
+  }
+
+  function koblMiddagAutocomplete(dag) {
+    const inp = document.getElementById(`middag-ing-navn-${dag}`);
+    const liste = document.getElementById(`middag-ac-${dag}`);
+    const prisInp = document.getElementById(`middag-ing-pris-${dag}`);
+    if (!inp || !liste) return;
+    inp.focus();
+    inp.addEventListener("input", () => {
+      const kandidater = getAcCandidates(inp.value);
+      if (!kandidater.length) { liste.classList.remove("open"); return; }
+      liste.innerHTML = kandidater.slice(0, 6).map(navn =>
+        `<div class="autocomplete-item" onmousedown="event.preventDefault()" data-navn="${escapeHtml(navn)}">${escapeHtml(navn)}</div>`
+      ).join("");
+      liste.classList.add("open");
+      liste.querySelectorAll(".autocomplete-item").forEach(el => {
+        el.addEventListener("click", () => {
+          inp.value = el.dataset.navn;
+          liste.classList.remove("open");
+          const p = estimatePrice(el.dataset.navn);
+          if (p != null && prisInp && !prisInp.value) prisInp.value = p;
         });
-
-        if (!ok) return jsonRes({ error: "Anthropic API feil", status, detaljer: rawText }, 500);
-
-        const data = JSON.parse(rawText);
-        const text = data.content?.[0]?.text || "";
-        let clean = text.replace(/```json|```/g, "").trim();
-        const firstBrace = clean.indexOf("{");
-        if (firstBrace !== -1) clean = clean.substring(firstBrace);
-
-        if (!clean.startsWith("{")) {
-          return jsonRes({ forslag: [], feil: "Kunne ikke lage forslag. Prøv en tydeligere beskrivelse." });
-        }
-
-        let parsed;
-        try {
-          const lastBrace = clean.lastIndexOf("}");
-          parsed = JSON.parse(clean.substring(0, lastBrace + 1));
-        } catch (e1) {
-          parsed = repairTruncatedJson(clean);
-        }
-
-        if (!parsed || !parsed.forslag) {
-          return jsonRes({ forslag: [], feil: "Forslaget ble for langt og kunne ikke leses helt. Prøv færre personer om gangen." });
-        }
-
-        return jsonRes(parsed);
-
-      } catch (err) {
-        return jsonRes({ error: err.message }, 500);
+      });
+    });
+    // Autofyll pris når man forlater navnefeltet, hvis pris ikke er satt
+    inp.addEventListener("blur", () => {
+      setTimeout(() => liste.classList.remove("open"), 150);
+      if (prisInp && !prisInp.value) {
+        const p = estimatePrice(inp.value);
+        if (p != null) prisInp.value = p;
       }
+    });
+  }
+
+  window.apneMiddagInntasting = (dag) => { middagOpenDag = dag; renderMiddag(); };
+  window.lukkMiddagInntasting = () => { middagOpenDag = null; renderMiddag(); };
+
+  window.leggTilMiddagIngrediens = async (dag) => {
+    const navn = document.getElementById(`middag-ing-navn-${dag}`)?.value.trim();
+    if (!navn) { alert("Skriv en ingrediens."); return; }
+    const antall = parseFloat(document.getElementById(`middag-ing-antall-${dag}`)?.value) || 1;
+    const enhet = document.getElementById(`middag-ing-enhet-${dag}`)?.value.trim() || "stk";
+    const prisRaw = document.getElementById(`middag-ing-pris-${dag}`)?.value;
+    const pris = prisRaw !== "" ? Number(prisRaw) : (estimatePrice(navn) || null);
+
+    middagsplan[dag] = middagsplan[dag] || {};
+    const liste = Array.isArray(middagsplan[dag].ingredienser) ? middagsplan[dag].ingredienser.map(normIngrediens) : [];
+    liste.push({ navn, antall, enhet, pris });
+    middagsplan[dag].ingredienser = liste;
+    await lagreMiddagsplan();
+    // Hold feltet åpent for rask innlegging av flere
+    renderMiddag();
+  };
+
+  window.fjernMiddagIngrediens = async (dag, index) => {
+    const liste = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
+    liste.splice(index, 1);
+    middagsplan[dag].ingredienser = liste;
+    await lagreMiddagsplan();
+  };
+
+  window.endreMiddagIngrediens = async (dag, index, felt, verdi) => {
+    const liste = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
+    if (!liste[index]) return;
+    if (felt === "navn") {
+      const nyttNavn = verdi.trim();
+      if (!nyttNavn) return;
+      liste[index].navn = nyttNavn;
+      // Prøv å hente pris automatisk hvis den ikke er satt manuelt
+      if (liste[index].pris == null) {
+        const p = estimatePrice(nyttNavn);
+        if (p != null) liste[index].pris = p;
+      }
+    } else if (felt === "antall") {
+      liste[index].antall = parseFloat(verdi) || 1;
+    } else if (felt === "enhet") {
+      liste[index].enhet = verdi.trim() || "stk";
+    } else if (felt === "pris") {
+      liste[index].pris = verdi !== "" ? Number(verdi) : null;
     }
+    middagsplan[dag].ingredienser = liste;
+    await lagreMiddagsplan();
+    renderMiddag();
+  };
 
-    // -------------------------------------------------------
-    //  /scan – kvitteringsscanning / kjøleskap-analyse
-    // -------------------------------------------------------
-    if (url.pathname === "/scan" && request.method === "POST") {
-      try {
-        if (!apiKey) return jsonRes({ error: "API key not configured" }, 500);
+  // Autocomplete på redigerbare ingrediens-felt
+  window.middagEditAutocomplete = (dag, i) => {
+    const inp = document.getElementById(`middag-ing-edit-${dag}-${i}`);
+    const liste = document.getElementById(`middag-edit-ac-${dag}-${i}`);
+    if (!inp || !liste) return;
+    const kandidater = getAcCandidates(inp.value);
+    if (!kandidater.length) { liste.classList.remove("open"); liste.innerHTML = ""; return; }
+    liste.innerHTML = kandidater.slice(0, 6).map(navn =>
+      `<div class="autocomplete-item" onmousedown="event.preventDefault(); middagVelgEditForslag('${dag}', ${i}, ${JSON.stringify(navn).replace(/"/g, '&quot;')})">${escapeHtml(navn)}</div>`
+    ).join("");
+    liste.classList.add("open");
+  };
 
-        const { image, mediaType, type } = await request.json();
+  let middagEditNettoppValgt = false;
 
-        const prompt = type === "receipt"
-          ? `Dette er en norsk dagligvarekvittering. Les HELE varelinjen for hver kjøpte vare.
+  // Valg fra forslagslista (onmousedown + preventDefault så blur ikke overskriver)
+  window.middagVelgEditForslag = async (dag, i, navn) => {
+    middagEditNettoppValgt = true;
+    const liste = document.getElementById(`middag-edit-ac-${dag}-${i}`);
+    if (liste) { liste.classList.remove("open"); liste.innerHTML = ""; }
+    await endreMiddagIngrediens(dag, i, "navn", navn);
+    // Nullstill flagget etter at blur har rukket å kjøre
+    setTimeout(() => { middagEditNettoppValgt = false; }, 300);
+  };
 
-Svar KUN med gyldig JSON, ingen annen tekst:
-{
-  "dato": "2026-06-07",
-  "butikk": "Rema 1000",
-  "total": 349.50,
-  "varer": [
-    {
-      "navn": "Melk",
-      "linje": "2 X TINE LETTMELK 1L 29,90",
-      "antall": 2,
-      "enhet": "stk",
-      "stkpris": 14.95,
-      "pris": 29.90
-    },
-    {
-      "navn": "Bananer",
-      "linje": "0,846 KG BANAN 19,90",
-      "antall": 0.846,
-      "enhet": "kg",
-      "stkpris": 23.52,
-      "pris": 19.90
-    },
-    {
-      "navn": "Cola Zero",
-      "linje": "6BX COLA ZERO 1,5L 87,00",
-      "antall": 6,
-      "enhet": "stk",
-      "stkpris": 14.50,
-      "pris": 87.00
-    },
-    {
-      "navn": "Hamburger",
-      "linje": "BURGER 2X180G 49,00",
-      "antall": 1,
-      "enhet": "pk",
-      "stkpris": 49.00,
-      "pris": 49.00
-    },
-    {
-      "navn": "Løk",
-      "linje": "LOK 0,532 KG 12,90",
-      "antall": 0.532,
-      "enhet": "kg",
-      "stkpris": 24.25,
-      "pris": 12.90
+  // Når feltet forlates uten å velge forslag: lagre fritekst
+  window.middagEditBlur = async (dag, i, verdi) => {
+    if (middagEditNettoppValgt) return; // et forslag ble nettopp valgt – ikke overskriv
+    const liste = document.getElementById(`middag-edit-ac-${dag}-${i}`);
+    if (liste) { liste.classList.remove("open"); liste.innerHTML = ""; }
+    const naa = (middagsplan[dag]?.ingredienser || []).map(normIngrediens)[i];
+    if (naa && verdi.trim() && verdi.trim() !== naa.navn) {
+      await endreMiddagIngrediens(dag, i, "navn", verdi);
     }
-  ]
-}
+  };
 
-Regler:
-- "linje": hele varelinjen slik den står på kvitteringen
-- "pris": total linjesum for varen (det beløpet som trekkes fra totalen)
-- "stkpris": pris per enhet (pris / antall)
-- "antall": skill nøye mellom antall kjøpt og pakningsbeskrivelse:
-  - Tall FØR varenavnet = antall kjøpt: "6 STK COLA" → antall=6, "2 X MELK" → antall=2, "6BX COLA ZERO" → antall=6, "0,846 KG BANAN" → antall=0.846
-  - Tall INNE I varenavnet = pakningsbeskrivelse, antall kjøpt = 1: "BURGER 2X180G" → antall=1, "EGG 12STK" → antall=1, "COLA 6PK" → antall=1
-  - BX betyr boks, samme som STK
-- "enhet": stk, kg, g, l, dl eller pk
-- "total": kvitteringens totalbeløp (TOTALT / Å BETALE / SUM)
-- "navn": nøyaktig varenavn slik det fremgår av kvitteringen, med korrekt norsk stavemåte og æøå. lok → Løk, brod → Brød. IKKE forkorte eller forenkle: jordbærsorbet forblir jordbærsorbet, helfet kulturmelk forblir helfet kulturmelk, appelsinjuice forblir appelsinjuice. Behold kjente produktnavn eksakt: Cola Zero, Pepsi Max, Kvikk Lunsj, Grandiosa.
-- "dato": YYYY-MM-DD format
-- "butikk": butikknavnet fra kvitteringen
-- IKKE ta med: rabatter, bonuspoeng, poser, pant, gebyrer, betalingslinjer, kortinfo`
-          : `Se på dette kjøleskapet. List varer som er tomme eller nesten tomme. Svar KUN med JSON:
-{"varer":[{"navn":"Melk","grunn":"nesten tom"}]}`;
+  async function lagreMiddagsplan() {
+    if (!LIST_ID) return;
+    await setDoc(doc(db, "lists", LIST_ID, "meta", "middagsplan"), { dager: middagsplan, updatedAt: Date.now() });
+  }
 
-        const { ok, status, rawText } = await callAnthropic(apiKey, {
-          model: "claude-sonnet-4-6",
-          max_tokens: 4096,
-          system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst. Hvis du ikke kan analysere bildet, svar med tomt resultat i JSON-format.",
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
-              { type: "text", text: prompt }
-            ]
-          }]
+  window.setMiddagRett = async (dag, verdi) => {
+    middagsplan[dag] = middagsplan[dag] || {};
+    middagsplan[dag].rett = verdi.trim();
+    await lagreMiddagsplan();
+  };
+
+  window.middagTilHandleliste = (dag) => {
+    const ingredienser = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
+    if (ingredienser.length === 0) return;
+    const rett = middagsplan[dag]?.rett || "middagen";
+    const overlay = document.getElementById("middag-send-overlay");
+    document.getElementById("middag-send-title").textContent = `Hva mangler du til ${rett}?`;
+    const liste = document.getElementById("middag-send-liste");
+    liste.innerHTML = ingredienser.map((ing, i) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" class="middag-send-cb" data-i="${i}" checked style="width:18px;height:18px;flex-shrink:0" />
+        <span style="flex:1">${escapeHtml(ing.navn)}</span>
+        <span style="color:var(--ink3);font-size:12px">${ing.antall} ${escapeHtml(ing.enhet)}</span>
+      </label>`).join("");
+    overlay.dataset.dag = dag;
+    overlay.style.display = "flex";
+  };
+
+  window.bekreftMiddagTilHandleliste = async () => {
+    const overlay = document.getElementById("middag-send-overlay");
+    const dag = overlay.dataset.dag;
+    const ingredienser = (middagsplan[dag]?.ingredienser || []).map(normIngrediens);
+    const valgte = [...document.querySelectorAll(".middag-send-cb")]
+      .filter(cb => cb.checked)
+      .map(cb => ingredienser[Number(cb.dataset.i)]);
+    if (valgte.length === 0) { alert("Ingen varer valgt."); return; }
+    for (const ing of valgte) {
+      await addItem(ing.navn, null, ing.enhet);
+    }
+    overlay.style.display = "none";
+    alert(`${valgte.length} ${valgte.length === 1 ? "vare" : "varer"} lagt i handlelista.`);
+  };
+
+  window.lukkMiddagSend = () => {
+    document.getElementById("middag-send-overlay").style.display = "none";
+  };
+
+  // ===== IMPORTER UKESMENY (AI) =====
+  let importertMeny = null;      // resultat fra AI: [{dag, rett, ingredienser:[...]}]
+  let importBildeData = null;    // base64 hvis bilde er valgt
+
+  document.getElementById("middag-import-btn")?.addEventListener("click", () => {
+    document.getElementById("middag-import-tekst").value = "";
+    document.getElementById("middag-import-status").textContent = "";
+    document.getElementById("middag-import-preview").innerHTML = "";
+    importertMeny = null;
+    importBildeData = null;
+    document.getElementById("middag-import-overlay").style.display = "flex";
+  });
+
+  window.lukkMiddagImport = () => {
+    document.getElementById("middag-import-overlay").style.display = "none";
+  };
+
+  let importBildeType = "image/png";
+  document.getElementById("middag-import-bilde")?.addEventListener("change", async (e) => {
+    const fil = e.target.files?.[0];
+    if (!fil) return;
+    importBildeType = fil.type || "image/png";
+    const reader = new FileReader();
+    reader.onload = () => {
+      importBildeData = reader.result.split(",")[1]; // base64 uten prefiks
+      document.getElementById("middag-import-status").textContent = `Bilde valgt: ${fil.name}. Trykk «Tolk meny».`;
+    };
+    reader.readAsDataURL(fil);
+  });
+
+  window.tolkUkesmeny = async () => {
+    const tekst = document.getElementById("middag-import-tekst").value.trim();
+    const status = document.getElementById("middag-import-status");
+    const btn = document.getElementById("middag-import-tolk-btn");
+    if (!tekst && !importBildeData) { alert("Lim inn menytekst eller last opp et bilde først."); return; }
+
+    btn.disabled = true;
+    btn.textContent = "Tolker...";
+    status.textContent = "Sender menyen til AI for tolkning...";
+    try {
+      const body = importBildeData ? { bilde: importBildeData, mediaType: importBildeType } : { tekst };
+      const res = await fetch("/parse-menu", {
+        method: "POST",
+        headers: await aiHeaders(),
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.error || !data.dager) {
+        const detalj = data.detaljer || data.error || "ukjent feil";
+        status.innerHTML = `<span style="color:#c0392b">Klarte ikke å tolke menyen.</span><br><span style="font-size:11px">${escapeHtml(String(detalj)).slice(0,200)}</span>`;
+        return;
+      }
+      importertMeny = data.dager;
+      status.textContent = "";
+      visMenyForhandsvisning(importertMeny);
+    } catch (e) {
+      status.innerHTML = `<span style="color:#c0392b">Noe gikk galt. Sjekk nettforbindelsen.</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Tolk meny";
+    }
+  };
+
+  function visMenyForhandsvisning(dager) {
+    const preview = document.getElementById("middag-import-preview");
+    if (!dager || dager.length === 0) {
+      preview.innerHTML = `<div style="color:var(--ink3);font-size:13px;margin-top:12px">Fant ingen retter i menyen.</div>`;
+      return;
+    }
+    let html = `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px">Velg hvilke dager som skal fylles inn:</div>`;
+    dager.forEach((d, i) => {
+      const ing = (d.ingredienser || []).map(x => typeof x === "string" ? x : x.navn).join(", ");
+      html += `
+        <label style="display:flex;gap:10px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;align-items:flex-start">
+          <input type="checkbox" class="meny-dag-cb" data-i="${i}" checked style="width:18px;height:18px;flex-shrink:0;margin-top:2px" />
+          <div style="flex:1">
+            <div style="font-size:12px;color:var(--ink3);text-transform:capitalize">${escapeHtml(d.dag || "?")}</div>
+            <div style="font-weight:600;font-size:14px">${escapeHtml(d.rett || "")}</div>
+            <div style="font-size:12px;color:var(--ink2);margin-top:2px">${escapeHtml(ing)}</div>
+          </div>
+        </label>`;
+    });
+    html += `<button onclick="bekreftMenyImport()" style="width:100%;background:var(--accent);border:none;border-radius:8px;padding:11px;font-size:13px;cursor:pointer;color:#fff;margin-top:6px">Fyll inn valgte dager</button></div>`;
+    preview.innerHTML = html;
+  }
+
+  window.bekreftMenyImport = async () => {
+    if (!importertMeny) return;
+    const valgteIdx = [...document.querySelectorAll(".meny-dag-cb")].filter(cb => cb.checked).map(cb => Number(cb.dataset.i));
+    if (valgteIdx.length === 0) { alert("Velg minst én dag."); return; }
+
+    // Map norske dagsnavn til nøklene i planen
+    const dagNokkel = (navn) => {
+      const n = (navn || "").toLowerCase();
+      const treff = MIDDAG_DAGER.find(d => n.includes(d));
+      return treff || null;
+    };
+
+    let fylt = 0;
+    for (const idx of valgteIdx) {
+      const d = importertMeny[idx];
+      const nokkel = dagNokkel(d.dag);
+      if (!nokkel) continue;
+      const ingredienser = (d.ingredienser || []).map(x => {
+        if (typeof x === "string") return { navn: x, antall: 1, enhet: "stk", pris: estimatePrice(x) || null };
+        return { navn: x.navn, antall: x.antall || 1, enhet: x.enhet || "stk", pris: (x.pris != null ? x.pris : (estimatePrice(x.navn) || null)) };
+      });
+      middagsplan[nokkel] = { rett: d.rett || "", ingredienser };
+      fylt++;
+    }
+    await lagreMiddagsplan();
+    document.getElementById("middag-import-overlay").style.display = "none";
+    renderMiddag();
+    alert(`${fylt} ${fylt === 1 ? "dag" : "dager"} fylt inn fra menyen.`);
+  };
+
+  window.tomMiddagDag = async (dag) => {
+    if (!confirm(`Tømme ${dag}?`)) return;
+    delete middagsplan[dag];
+    if (middagOpenDag === dag) middagOpenDag = null;
+    await lagreMiddagsplan();
+  };
+
+  function beregnAlder(fodselsdato) {
+    const naa = new Date();
+    let alder = naa.getFullYear() - fodselsdato.getFullYear();
+    const m = naa.getMonth() - fodselsdato.getMonth();
+    if (m < 0 || (m === 0 && naa.getDate() < fodselsdato.getDate())) alder--;
+    return alder >= 0 ? alder : null;
+  }
+
+  window.setWishBirthday = async (person) => {
+    if (!HOUSEHOLD_ID) return;
+    const naavaerende = wishBirthdays[person] || "";
+    const svar = prompt(`Fødselsdato for ${person} (ÅÅÅÅ-MM-DD):`, naavaerende);
+    if (svar === null) return;
+    const trimmet = svar.trim();
+    // Tom = fjern datoen
+    if (!trimmet) {
+      const nye = { ...wishBirthdays };
+      delete nye[person];
+      await updateDoc(doc(db, "households", HOUSEHOLD_ID), { wishBirthdays: nye });
+      await loadWishPersons();
+      renderWishes();
+      return;
+    }
+    const d = new Date(trimmet);
+    if (isNaN(d.getTime())) { alert("Ugyldig dato. Bruk formatet ÅÅÅÅ-MM-DD, f.eks. 2023-05-12."); return; }
+    await updateDoc(doc(db, "households", HOUSEHOLD_ID), {
+      wishBirthdays: { ...wishBirthdays, [person]: trimmet }
+    });
+    await loadWishPersons();
+    renderWishes();
+  };
+
+  // ===== MOTTAKER: åpne en delt ønskeliste via lenke =====
+  let sharedWishUnsub = null;
+  async function openSharedWishlist(kode) {
+    try {
+      const snap = await getDoc(doc(db, "sharedWishlists", kode));
+      if (!snap.exists()) {
+        visSharedWishError("Denne ønskelista finnes ikke lenger.");
+        return;
+      }
+      const meta = snap.data();
+      const overlay = document.getElementById("shared-wish-overlay");
+      overlay.style.display = "flex";
+      document.getElementById("shared-wish-title").textContent = `🎁 ${meta.person} sin ønskeliste`;
+      document.getElementById("shared-wish-sub").textContent = meta.ownerName ? `Delt av ${meta.ownerName}` : "";
+
+      if (sharedWishUnsub) sharedWishUnsub();
+      const q = query(
+        collection(db, "lists", meta.householdId, "wishes"),
+        orderBy("createdAt", "asc")
+      );
+      sharedWishUnsub = onSnapshot(q, snap2 => {
+        const alle = [];
+        snap2.forEach(d => alle.push({ id: d.id, ...d.data() }));
+        const personWishes = alle.filter(w => w.person === meta.person);
+        renderSharedWishes(personWishes, meta);
+      }, err => {
+        console.error(err);
+        visSharedWishError("Får ikke tilgang til ønskelista. Lenken kan være ugyldig.");
+      });
+    } catch (e) {
+      console.error("Kunne ikke åpne delt ønskeliste:", e);
+      visSharedWishError("Noe gikk galt. Prøv lenken på nytt.");
+    }
+  }
+
+  function visSharedWishError(tekst) {
+    const overlay = document.getElementById("shared-wish-overlay");
+    overlay.style.display = "flex";
+    document.getElementById("shared-wish-list").innerHTML = `<div class="board-empty">${escapeHtml(tekst)}</div>`;
+  }
+
+  function renderSharedWishes(personWishes, meta) {
+    const el = document.getElementById("shared-wish-list");
+    if (personWishes.length === 0) {
+      el.innerHTML = `<div class="board-empty">Ingen ønsker lagt til ennå.</div>`;
+      return;
+    }
+    let html = "";
+    personWishes.forEach(w => {
+      const prisStr = w.pris ? ` · ${w.pris} kr` : "";
+      const lenkeStr = w.lenke ? ` · <a href="${escapeHtml(w.lenke)}" target="_blank" rel="noopener" style="color:var(--accent)">se vare</a>` : "";
+      html += `
+        <div class="item ${w.kjopt ? "done" : ""}" style="margin-bottom:8px">
+          <button class="check-btn" onclick="toggleSharedWishKjopt('${meta.householdId}','${w.id}', ${!!w.kjopt})">${w.kjopt ? "✓" : ""}</button>
+          <div class="item-main">
+            <div class="item-name">${escapeHtml(w.navn)}</div>
+            <div class="item-detail">${prisStr}${lenkeStr}${w.kjopt && w.kjoptAv ? ` · kjøpt av ${escapeHtml(w.kjoptAv)}` : ""}</div>
+          </div>
+        </div>`;
+    });
+    html += `<p style="font-size:12px;color:var(--ink3);padding:10px 4px">Kryss av når du har kjøpt noe, så ser andre at det er tatt – og ${escapeHtml(meta.person === (currentUser?.displayName||"") ? "personen" : meta.person)} blir ikke vist hva som er kjøpt.</p>`;
+    el.innerHTML = html;
+  }
+
+  window.toggleSharedWishKjopt = async (householdId, wishId, kjopt) => {
+    await updateDoc(doc(db, "lists", householdId, "wishes", wishId), {
+      kjopt: !kjopt,
+      kjoptAv: !kjopt ? (currentUser?.displayName?.split(" ")[0] || "noen") : ""
+    });
+  };
+
+  window.lukkSharedWishlist = () => {
+    if (sharedWishUnsub) sharedWishUnsub();
+    document.getElementById("shared-wish-overlay").style.display = "none";
+    // Fjern parameteren fra URL-en
+    window.history.replaceState({}, "", window.location.pathname);
+  };
+
+  // Genererer en lang, ikke-gjettbar delingskode
+  function genShareCode() {
+    const tegn = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let kode = "";
+    const arr = new Uint32Array(20);
+    crypto.getRandomValues(arr);
+    for (let i = 0; i < 20; i++) kode += tegn[arr[i] % tegn.length];
+    return "wsh_" + kode;
+  }
+
+  window.shareWishlist = async (person) => {
+    if (!HOUSEHOLD_ID || !currentUser) return;
+    try {
+      // Gjenbruk eksisterende delingskode for denne personen hvis den finnes
+      const eksisterende = (window._sharedWishCodes || {})[person];
+      let kode = eksisterende;
+      if (!kode) {
+        kode = genShareCode();
+        await setDoc(doc(db, "sharedWishlists", kode), {
+          householdId: HOUSEHOLD_ID,
+          person: person,
+          ownerUid: currentUser.uid,
+          ownerName: currentUser.displayName || "",
+          createdAt: Date.now()
         });
+        window._sharedWishCodes = { ...(window._sharedWishCodes || {}), [person]: kode };
+      }
+      const lenke = `${window.location.origin}${window.location.pathname}?onskeliste=${kode}`;
+      // Vis lenke med kopier-mulighet
+      const boks = document.getElementById("onsker-content");
+      const banner = document.createElement("div");
+      banner.style.cssText = "background:var(--accent-light);border:1px solid var(--accent);border-radius:12px;padding:14px;margin-bottom:12px;font-size:13px";
+      banner.innerHTML = `
+        <div style="font-weight:600;margin-bottom:6px">Delingslenke for ${escapeHtml(person)} sin ønskeliste</div>
+        <div style="color:var(--ink2);margin-bottom:8px">Send denne til familie og venner. De logger inn med Google og ser ${escapeHtml(person)} sine ønsker – og kan krysse av det de kjøper. De ser ingenting annet i appen din.</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <code style="flex:1;background:var(--card);padding:8px;border-radius:8px;font-size:11px;word-break:break-all">${escapeHtml(lenke)}</code>
+          <button id="copy-share-link" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;white-space:nowrap">Kopier</button>
+        </div>`;
+      boks.prepend(banner);
+      document.getElementById("copy-share-link").addEventListener("click", async (e) => {
+        try { await navigator.clipboard.writeText(lenke); e.target.textContent = "Kopiert!"; }
+        catch { e.target.textContent = lenke; }
+      });
+    } catch (e) {
+      console.error("Kunne ikke lage delingslenke:", e);
+      alert("Klarte ikke å lage delingslenke. Sjekk at sikkerhetsreglene er oppdatert (se neste steg).");
+    }
+  };
 
-        if (!ok) return jsonRes({ error: "Anthropic API feil", status, detaljer: rawText }, 500);
+  window.deleteWishPerson = async (person) => {
+    if (!HOUSEHOLD_ID) return;
+    const antallOnsker = wishes.filter(w => w.person === person).length;
+    // Husholdningsmedlemmer kan ikke fjernes herfra – bare ekstra-personer (barn)
+    if (boardMemberNames.includes(person)) {
+      alert(`${person} er et husholdningsmedlem og kan ikke fjernes fra ønskelistene her. Ekstra-personer (barn e.l.) kan fjernes.`);
+      return;
+    }
+    const msg = antallOnsker > 0
+      ? `Fjerne ${person} og de ${antallOnsker} ønskene deres?`
+      : `Fjerne ${person}?`;
+    if (!confirm(msg)) return;
+    try {
+      // Slett personens ønsker
+      for (const w of wishes.filter(w => w.person === person)) {
+        await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "wishes", w.id));
+      }
+      // Fjern fra wishPersons og wishBirthdays
+      const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const data = hhSnap.exists() ? hhSnap.data() : {};
+      const nyePersoner = (Array.isArray(data.wishPersons) ? data.wishPersons : []).filter(p => p !== person);
+      const nyeBd = { ...(data.wishBirthdays || {}) };
+      delete nyeBd[person];
+      await updateDoc(doc(db, "households", HOUSEHOLD_ID), { wishPersons: nyePersoner, wishBirthdays: nyeBd });
+      currentWishPerson = null;
+      document.getElementById("onsker-person-select").value = "";
+      document.getElementById("onsker-add-area").style.display = "none";
+      await loadWishPersons();
+      renderWishes();
+    } catch (e) {
+      console.error("Kunne ikke fjerne person:", e);
+      alert("Klarte ikke å fjerne personen. Prøv igjen.");
+    }
+  };
 
-        const data = JSON.parse(rawText);
-        const text = data.content?.[0]?.text || "";
-        let clean = text.replace(/```json|```/g, "").trim();
-        const firstBrace = clean.indexOf("{");
-        const lastBrace = clean.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace !== -1) {
-          clean = clean.substring(firstBrace, lastBrace + 1);
-        }
+  async function loadBoardMembers() {
+    try {
+      const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const members = hhSnap.exists() ? (hhSnap.data().members || {}) : {};
+      const names = Array.isArray(members)
+        ? []  // gammelt array-format uten navn – hopp over
+        : Object.values(members).map(n => String(n).trim()).filter(Boolean);
+      boardMemberNames = [...new Set(names)].sort((a, b) => a.localeCompare(b, "no"));
+      fillBoardMemberDropdowns();
+      if (!window._boardOtherWired) {
+        wireOtherToggle("board-assigned-input", "board-assigned-other");
+        wireOtherToggle("board-person-input", "board-person-other");
+        window._boardOtherWired = true;
+      }
+    } catch (e) {
+      console.error("Kunne ikke laste husholdningsmedlemmer:", e);
+    }
+  }
 
-        if (!clean.startsWith("{")) {
-          const fallback = type === "receipt"
-            ? { dato: null, butikk: null, total: null, varer: [], feil: "Kunne ikke lese kvitteringen. Prøv et klarere bilde." }
-            : { varer: [], feil: "Kunne ikke analysere bildet. Prøv et klarere bilde." };
-          return jsonRes(fallback);
-        }
+  function fillBoardMemberDropdowns() {
+    [["board-assigned-input", "Ansvarlig"], ["board-person-input", "Gjelder hvem"]].forEach(([id, placeholder]) => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const current = sel.value;
+      const opts = [`<option value="">${placeholder}</option>`]
+        .concat(boardMemberNames.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`))
+        .concat([`<option value="__annet__">Annet…</option>`]);
+      sel.innerHTML = opts.join("");
+      if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
+    });
+  }
 
-        const parsed = JSON.parse(clean);
-        return jsonRes(parsed);
+  // Viser fritekstfelt når "Annet…" velges
+  function wireOtherToggle(selectId, otherId) {
+    const sel = document.getElementById(selectId);
+    const other = document.getElementById(otherId);
+    if (!sel || !other) return;
+    sel.addEventListener("change", () => {
+      const show = sel.value === "__annet__";
+      other.style.display = show ? "block" : "none";
+      if (show) other.focus(); else other.value = "";
+    });
+  }
 
-      } catch (err) {
-        return jsonRes({ error: err.message }, 500);
+  // Leser valgt person: enten dropdown-navn, eller fritekst hvis "Annet…"
+  function readBoardPerson(selectId, otherId) {
+    const sel = document.getElementById(selectId);
+    const other = document.getElementById(otherId);
+    if (!sel) return "";
+    if (sel.value === "__annet__") return (other?.value || "").trim();
+    return sel.value;
+  }
+
+  // Setter dropdown til et navn ved redigering; faller til "Annet…" hvis navnet ikke finnes
+  function setBoardPerson(selectId, otherId, value) {
+    const sel = document.getElementById(selectId);
+    const other = document.getElementById(otherId);
+    if (!sel) return;
+    const v = value || "";
+    if (!v) { sel.value = ""; if (other) { other.style.display = "none"; other.value = ""; } return; }
+    if ([...sel.options].some(o => o.value === v)) {
+      sel.value = v;
+      if (other) { other.style.display = "none"; other.value = ""; }
+    } else {
+      sel.value = "__annet__";
+      if (other) { other.style.display = "block"; other.value = v; }
+    }
+  }
+
+  function getTaskDate(task) {
+    if (!task.dueDate) return null;
+    const d = new Date(`${task.dueDate}T${task.dueTime || "00:00"}`);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function isTodayDate(d) {
+    if (!d) return false;
+    const today = new Date();
+    return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  }
+
+  function formatTaskDate(task) {
+    const d = getTaskDate(task);
+    if (!d) return "Ingen frist";
+    const dateText = d.toLocaleDateString("no-NO", { weekday:"short", day:"numeric", month:"short" });
+    return task.dueTime ? `${dateText} kl. ${task.dueTime}` : dateText;
+  }
+
+  function taskTypeIcon(type) {
+    if (type === "event") return "📅";
+    if (type === "reminder") return "⏰";
+    return "☐";
+  }
+
+  function taskTypeLabel(type) {
+    if (type === "event") return "Aktivitet";
+    if (type === "reminder") return "Påminnelse";
+    return "Oppgave";
+  }
+
+  function recurrenceLabel(recurrence) {
+    if (!recurrence || !recurrence.enabled || recurrence.frequency === "none") return "";
+    const labels = { daily:"Daglig", weekly:"Ukentlig", monthly:"Månedlig" };
+    return labels[recurrence.frequency] || "Gjentakende";
+  }
+
+  function renderTaskCard(task) {
+    const recText = recurrenceLabel(task.recurrence);
+    const reminderText = task.reminder?.enabled ? `Varsel ${task.reminder.minutesBefore} min før` : "";
+    return `<div class="swipe-wrapper" id="swipe-task-${task.id}">
+      <div class="swipe-bg swipe-bg-done"><span class="swipe-bg-icon">✓</span></div>
+      <div class="swipe-bg swipe-bg-delete"><span class="swipe-bg-icon">🗑</span></div>
+      <div class="swipe-inner">
+        <div class="board-card ${task.completed ? "done" : ""} ${task.important ? "important" : ""}">
+          <button class="board-check" onclick="toggleBoardTask('${task.id}', ${!!task.completed})">${task.completed ? "✓" : ""}</button>
+          <div class="board-main">
+            <div class="board-title">${taskTypeIcon(task.type)} ${escapeHtml(task.title)}</div>
+            <div class="board-meta">
+              ${escapeHtml(formatTaskDate(task))}
+              ${task.assignedTo ? ` · Ansvarlig: ${escapeHtml(task.assignedTo)}` : ""}
+              ${task.relatedPerson ? ` · Gjelder: ${escapeHtml(task.relatedPerson)}` : ""}
+            </div>
+            <div>
+              <span class="board-pill">${escapeHtml(taskTypeLabel(task.type))}</span>
+              ${recText ? `<span class="board-pill">🔁 ${escapeHtml(recText)}</span>` : ""}
+              ${reminderText ? `<span class="board-pill">🔔 ${escapeHtml(reminderText)}</span>` : ""}
+            </div>
+          </div>
+          <button class="board-star ${task.important ? "on" : ""}" onclick="toggleTaskImportant('${task.id}', event)" title="${task.important ? "Fjern viktig" : "Merk som viktig"}">${task.important ? "★" : "☆"}</button>
+          ${task.dueDate ? `<button class="board-edit" onclick="taskToCalendar('${task.id}', event)" title="Legg i kalender">📅</button>` : ""}
+          <button class="board-edit" onclick="startEditTask('${task.id}')" title="Rediger">✎</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function splitBoardPeople(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
+    return String(value)
+      .split(/[;,]/)
+      .map(v => v.trim())
+      .filter(Boolean);
+  }
+
+  function getBoardPeople() {
+    const people = new Set();
+    (familyBoardItems || []).forEach(task => {
+      splitBoardPeople(task.assignedTo).forEach(p => people.add(p));
+      splitBoardPeople(task.relatedPerson).forEach(p => people.add(p));
+    });
+    return [...people].sort((a, b) => a.localeCompare(b, "no"));
+  }
+
+  function taskMatchesBoardPerson(task, person) {
+    if (!person || person === "Alle") return true;
+    const target = person.trim().toLowerCase();
+    const names = [
+      ...splitBoardPeople(task.assignedTo),
+      ...splitBoardPeople(task.relatedPerson)
+    ].map(v => v.toLowerCase());
+    return names.includes(target);
+  }
+
+  function renderBoardPersonFilters() {
+    const people = getBoardPeople();
+    if (people.length === 0) return "";
+    if (selectedBoardPerson !== "Alle" && !people.includes(selectedBoardPerson)) selectedBoardPerson = "Alle";
+
+    const all = ["Alle", ...people];
+    return `<div class="board-person-filters">
+      ${all.map(name => `
+        <button class="board-filter-chip ${selectedBoardPerson === name ? "active" : ""}" onclick="setBoardPersonFilter('${escapeJsString(name)}')">
+          ${escapeHtml(name)}
+        </button>
+      `).join("")}
+    </div>`;
+  }
+
+  window.setBoardPersonFilter = (person) => {
+    selectedBoardPerson = person || "Alle";
+    renderFamilyBoard();
+  };
+
+  function renderFamilyBoard() {
+    const container = document.getElementById("board-content");
+    if (!container) return;
+
+    const filtersHtml = renderBoardPersonFilters();
+
+    if (!familyBoardItems || familyBoardItems.length === 0) {
+      container.innerHTML = `${filtersHtml}<div class="board-empty">Ingen oppgaver ennå</div>`;
+      return;
+    }
+
+    const visibleItems = familyBoardItems.filter(t => taskMatchesBoardPerson(t, selectedBoardPerson));
+    if (visibleItems.length === 0) {
+      container.innerHTML = `${filtersHtml}<div class="board-empty">Ingen oppgaver for ${escapeHtml(selectedBoardPerson)}</div>`;
+      return;
+    }
+
+    const active = visibleItems.filter(t => !t.completed);
+    const done = visibleItems.filter(t => t.completed);
+    const byImportance = (a, b) => (b.important ? 1 : 0) - (a.important ? 1 : 0);
+    const today = active.filter(t => isTodayDate(getTaskDate(t))).sort(byImportance);
+    const upcoming = active.filter(t => !isTodayDate(getTaskDate(t))).sort((a,b) => {
+      const imp = byImportance(a, b);
+      if (imp !== 0) return imp;
+      const ad = getTaskDate(a)?.getTime() || 9999999999999;
+      const bd = getTaskDate(b)?.getTime() || 9999999999999;
+      return ad - bd;
+    });
+
+    let html = filtersHtml;
+    if (today.length) html += `<div class="board-section"><div class="board-section-title">I dag</div><div class="board-list">${today.map(renderTaskCard).join("")}</div></div>`;
+    if (upcoming.length) html += `<div class="board-section"><div class="board-section-title">Kommende</div><div class="board-list">${upcoming.map(renderTaskCard).join("")}</div></div>`;
+    if (done.length) {
+      const shownDone = showAllDone ? done.slice().reverse() : done.slice(-10).reverse();
+      html += `<div class="board-section"><div class="board-section-title">Fullført (${done.length})</div><div class="board-list">${shownDone.map(renderTaskCard).join("")}</div>`;
+      if (done.length > 10) html += `<button class="board-show-all" onclick="toggleShowAllDone()">${showAllDone ? "Vis færre" : `Vis alle ${done.length}`}</button>`;
+      html += `</div>`;
+    }
+    container.innerHTML = html || `<div class="board-empty">Ingen aktive oppgaver</div>`;
+    requestAnimationFrame(attachSwipeToTasks);
+  }
+  let editingTaskId = null;
+  let showAllDone = false;
+  let formImportant = false;
+
+  function setFormImportant(val) {
+    formImportant = !!val;
+    const btn = document.getElementById("board-important-toggle");
+    if (!btn) return;
+    btn.classList.toggle("on", formImportant);
+    btn.setAttribute("aria-pressed", formImportant ? "true" : "false");
+    btn.textContent = formImportant ? "★ Viktig" : "☆ Marker som viktig";
+  }
+
+  document.getElementById("board-important-toggle")?.addEventListener("click", () => setFormImportant(!formImportant));
+
+  // "Flere valg" – vis/skjul de valgfrie feltene
+  function setBoardMoreOpen(open) {
+    const fields = document.getElementById("board-more-fields");
+    const btn = document.getElementById("board-more-toggle");
+    if (!fields || !btn) return;
+    fields.style.display = open ? "block" : "none";
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.textContent = open ? "Færre valg ▴" : "Flere valg ▾";
+  }
+  document.getElementById("board-more-toggle")?.addEventListener("click", () => {
+    const open = document.getElementById("board-more-fields").style.display !== "none";
+    setBoardMoreOpen(!open);
+  });
+
+  window.toggleShowAllDone = () => { showAllDone = !showAllDone; renderFamilyBoard(); };
+
+  window.startEditTask = (id) => {
+    const task = familyBoardItems.find(t => t.id === id);
+    if (!task) return;
+    editingTaskId = id;
+    document.getElementById("board-title-input").value = task.title || "";
+    document.getElementById("board-type-input").value = task.type || "task";
+    setBoardPerson("board-assigned-input", "board-assigned-other", task.assignedTo || "");
+    setBoardPerson("board-person-input", "board-person-other", task.relatedPerson || "");
+    document.getElementById("board-date-input").value = task.dueDate || "";
+    document.getElementById("board-time-input").value = task.dueTime || "";
+    document.getElementById("board-repeat-input").value = task.recurrence?.frequency || "none";
+    document.getElementById("board-reminder-input").value = task.reminder?.minutesBefore ? String(task.reminder.minutesBefore) : "none";
+    setFormImportant(task.important);
+    // Åpne "flere valg" hvis oppgaven bruker noen av de valgfrie feltene
+    const harValgfritt = task.relatedPerson || task.dueDate || task.dueTime ||
+      (task.recurrence?.frequency && task.recurrence.frequency !== "none") ||
+      task.reminder?.minutesBefore;
+    setBoardMoreOpen(!!harValgfritt);
+    const btn = document.getElementById("board-add-btn");
+    btn.textContent = "✓ Lagre endring";
+    document.getElementById("board-screen").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  function resetBoardForm() {
+    editingTaskId = null;
+    document.getElementById("board-title-input").value = "";
+    setBoardPerson("board-assigned-input", "board-assigned-other", "");
+    setBoardPerson("board-person-input", "board-person-other", "");
+    document.getElementById("board-date-input").value = "";
+    document.getElementById("board-time-input").value = "";
+    document.getElementById("board-repeat-input").value = "none";
+    document.getElementById("board-reminder-input").value = "none";
+    document.getElementById("board-type-input").value = "task";
+    setFormImportant(false);
+    setBoardMoreOpen(false);
+    document.getElementById("board-add-btn").textContent = "+ Legg til på tavlen";
+  }
+
+  document.getElementById("board-add-btn").addEventListener("click", async () => {
+    const title = document.getElementById("board-title-input").value.trim();
+    if (!title) { alert("Skriv inn en oppgave først."); return; }
+
+    const type = document.getElementById("board-type-input").value || "task";
+    const assignedTo = readBoardPerson("board-assigned-input", "board-assigned-other");
+    if (!assignedTo) {
+      alert("Velg hvem som er ansvarlig for oppgaven.");
+      document.getElementById("board-assigned-input").focus();
+      return;
+    }
+    const relatedPerson = readBoardPerson("board-person-input", "board-person-other");
+    const dueDate = document.getElementById("board-date-input").value || "";
+    const dueTime = document.getElementById("board-time-input").value || "";
+    const repeat = document.getElementById("board-repeat-input").value || "none";
+    const reminderValue = document.getElementById("board-reminder-input").value || "none";
+
+    const taskData = {
+      title, type, assignedTo, relatedPerson, dueDate, dueTime,
+      important: formImportant,
+      recurrence: { enabled: repeat !== "none", frequency: repeat, interval: 1, weekdays: [] },
+      reminder: { enabled: reminderValue !== "none", minutesBefore: reminderValue === "none" ? null : Number(reminderValue) },
+      notification: { enabled: reminderValue !== "none", minutesBefore: reminderValue === "none" ? null : Number(reminderValue), pushReady: false },
+      updatedAt: Date.now()
+    };
+
+    if (editingTaskId) {
+      await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", editingTaskId), taskData);
+    } else {
+      await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
+        ...taskData,
+        completed: false,
+        createdBy: currentUser?.uid || "",
+        createdByName: currentUser?.displayName || "",
+        createdAt: Date.now()
+      });
+    }
+
+    resetBoardForm();
+  });
+
+  function nextRecurrenceDate(fromDateStr, frequency) {
+    // Tar utgangspunkt i oppgavens dato (eller i dag hvis den mangler) og legger til ett intervall
+    const base = fromDateStr ? new Date(`${fromDateStr}T12:00:00`) : new Date();
+    if (isNaN(base.getTime())) return "";
+    if (frequency === "daily") base.setDate(base.getDate() + 1);
+    else if (frequency === "weekly") base.setDate(base.getDate() + 7);
+    else if (frequency === "monthly") base.setMonth(base.getMonth() + 1);
+    else return "";
+    const y = base.getFullYear();
+    const m = String(base.getMonth() + 1).padStart(2, "0");
+    const d = String(base.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  async function spawnNextRecurrence(task) {
+    if (!task?.recurrence?.enabled || task.recurrence.frequency === "none") return;
+    const nextDate = nextRecurrenceDate(task.dueDate, task.recurrence.frequency);
+    if (!nextDate) return;
+    await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
+      title: task.title,
+      type: task.type || "task",
+      assignedTo: task.assignedTo || "",
+      relatedPerson: task.relatedPerson || "",
+      dueDate: nextDate,
+      dueTime: task.dueTime || "",
+      completed: false,
+      recurrence: { ...task.recurrence },
+      reminder: task.reminder ? { ...task.reminder } : { enabled: false, minutesBefore: null },
+      notification: task.notification ? { ...task.notification } : { enabled: false, minutesBefore: null, pushReady: false },
+      createdBy: currentUser?.uid || "",
+      createdByName: currentUser?.displayName || "",
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  }
+
+  window.toggleBoardTask = async (id, completed) => {
+    // completed = nåværende tilstand. Vi snur den.
+    const becomingDone = !completed;
+    const task = familyBoardItems.find(t => t.id === id);
+
+    await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id), {
+      completed: becomingDone,
+      completedAt: becomingDone ? Date.now() : null,
+      updatedAt: Date.now()
+    });
+
+    // Når en gjentakende oppgave fullføres via avkrysning (ikke swipe): opprett neste forekomst.
+    // Swipe håndterer dette selv etter at angre-vinduet er passert, for å unngå duplikat ved angre.
+    if (becomingDone && task) await spawnNextRecurrence(task);
+  };
+
+  window.deleteBoardTask = async (id) => {
+    await deleteDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id));
+  };
+
+  window.toggleTaskImportant = async (id, evt) => {
+    if (evt) evt.stopPropagation();
+    const task = familyBoardItems.find(t => t.id === id);
+    if (!task) return;
+    await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", id), {
+      important: !task.important,
+      updatedAt: Date.now()
+    });
+  };
+
+  window.taskToCalendar = (id, evt) => {
+    if (evt) evt.stopPropagation();
+    const task = familyBoardItems.find(t => t.id === id);
+    if (!task || !task.dueDate) return;
+
+    // Bygg start- og slutt-tidspunkt
+    const harTid = !!task.dueTime;
+    const startISO = `${task.dueDate}T${task.dueTime || "09:00"}`;
+    const start = new Date(startISO);
+    if (isNaN(start.getTime())) { alert("Ugyldig dato på oppgaven."); return; }
+    const slutt = new Date(start.getTime() + 60 * 60 * 1000); // 1 time varighet
+
+    // Formater til iCalendar (lokaltid uten Z, så kalenderen tolker som enhetens tid)
+    const fmt = (d) => {
+      const p = (n) => String(n).padStart(2, "0");
+      const dato = `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;
+      if (!harTid) return dato; // heldagsoppgave
+      return `${dato}T${p(d.getHours())}${p(d.getMinutes())}00`;
+    };
+
+    const uid = `${id}-${Date.now()}@handleliste`;
+    const stempel = fmt(new Date());
+    let beskrivelse = [];
+    if (task.assignedTo) beskrivelse.push(`Ansvarlig: ${task.assignedTo}`);
+    if (task.relatedPerson) beskrivelse.push(`Gjelder: ${task.relatedPerson}`);
+    const desc = beskrivelse.join("\\n");
+
+    // Bygg VEVENT
+    let linjer = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Handleliste//Tavle//NO",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${stempel}`,
+    ];
+    if (harTid) {
+      linjer.push(`DTSTART:${fmt(start)}`);
+      linjer.push(`DTEND:${fmt(slutt)}`);
+    } else {
+      linjer.push(`DTSTART;VALUE=DATE:${fmt(start)}`);
+    }
+    linjer.push(`SUMMARY:${task.title.replace(/([,;\\])/g, "\\$1")}`);
+    if (desc) linjer.push(`DESCRIPTION:${desc}`);
+
+    // Varsel (VALARM) hvis oppgaven har det
+    if (task.reminder?.enabled && task.reminder.minutesBefore) {
+      linjer.push("BEGIN:VALARM");
+      linjer.push("ACTION:DISPLAY");
+      linjer.push(`DESCRIPTION:${task.title.replace(/([,;\\])/g, "\\$1")}`);
+      linjer.push(`TRIGGER:-PT${task.reminder.minutesBefore}M`);
+      linjer.push("END:VALARM");
+    }
+    linjer.push("END:VEVENT", "END:VCALENDAR");
+
+    const ics = linjer.join("\r\n");
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${task.title.replace(/[^a-zæøåA-ZÆØÅ0-9 ]/g, "").trim() || "oppgave"}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+
+  // TEMA + TEKSTSTØRRELSE
+  function applyTheme(theme) {
+    if (theme === 'dark') {
+      document.body.classList.add('dark');
+      document.getElementById('opt-dark').classList.add('active');
+      document.getElementById('opt-light').classList.remove('active');
+      document.getElementById('theme-color-meta')?.setAttribute('content', '#080d14');
+    } else {
+      document.body.classList.remove('dark');
+      document.getElementById('opt-light').classList.add('active');
+      document.getElementById('opt-dark').classList.remove('active');
+      document.getElementById('theme-color-meta')?.setAttribute('content', '#2d6a4f');
+    }
+    localStorage.setItem('hl-theme', theme);
+  }
+
+  function applyFontSize(size) {
+    document.body.classList.remove('text-stor', 'text-xl');
+    if (size === 'stor') document.body.classList.add('text-stor');
+    if (size === 'xl') document.body.classList.add('text-xl');
+    ['opt-normal','opt-stor','opt-xl'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+    const activeId = size === 'stor' ? 'opt-stor' : size === 'xl' ? 'opt-xl' : 'opt-normal';
+    document.getElementById(activeId)?.classList.add('active');
+    localStorage.setItem('hl-fontsize', size);
+  }
+
+  window.setTheme = (theme) => { applyTheme(theme); closeSettingsDropdown(); };
+  window.setFontSize = (size) => { applyFontSize(size); };
+
+  window.toggleSettingsDropdown = () => {
+    const dd = document.getElementById('settings-dropdown');
+    dd.classList.toggle('open');
+    if (dd.classList.contains('open')) loadHouseholdInfo();
+  };
+
+  async function loadHouseholdInfo() {
+    const membersEl = document.getElementById("household-members");
+    const codeEl = document.getElementById("household-code");
+    if (!HOUSEHOLD_ID) { if (membersEl) membersEl.textContent = "Ingen husholdning"; return; }
+    if (codeEl) codeEl.textContent = HOUSEHOLD_ID;
+    try {
+      const snap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const members = snap.exists() ? (snap.data().members || {}) : {};
+      const navn = Array.isArray(members)
+        ? []
+        : Object.entries(members).map(([uid, n]) => ({ navn: String(n), erMeg: uid === currentUser?.uid }));
+      if (navn.length === 0) {
+        membersEl.textContent = "Ingen medlemmer registrert ennå.";
+      } else {
+        membersEl.innerHTML = navn.map(m =>
+          `<div style="padding:2px 0">👤 ${escapeHtml(m.navn)}${m.erMeg ? ' <span style="color:var(--ink3);font-size:11px">(deg)</span>' : ''}</div>`
+        ).join("");
+      }
+    } catch (e) {
+      membersEl.textContent = "Kunne ikke laste medlemmer.";
+    }
+  }
+
+  window.copyHouseholdCode = async (evt) => {
+    if (evt) evt.stopPropagation();
+    if (!HOUSEHOLD_ID) return;
+    try {
+      await navigator.clipboard.writeText(HOUSEHOLD_ID);
+      evt.target.textContent = "Kopiert!";
+      setTimeout(() => { evt.target.textContent = "Kopier"; }, 1500);
+    } catch (e) {}
+  };
+  window.closeSettingsDropdown = () => {
+    document.getElementById('settings-dropdown').classList.remove('open');
+  };
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.user-area')) closeSettingsDropdown();
+  });
+
+  // Bruk lagrede innstillinger ved oppstart (lyst tema er standard)
+  applyTheme(localStorage.getItem('hl-theme') || 'light');
+  applyFontSize(localStorage.getItem('hl-fontsize') || 'normal');
+
+  // PRISOPPSUMMERING
+  function renderPriceSummary() {
+    const active = currentItems.filter(i => !i.done);
+    const el = document.getElementById("price-summary");
+    const totalEl = document.getElementById("price-total");
+    const subEl = document.getElementById("price-sub");
+    if (!el || !totalEl) return;
+
+    if (active.length === 0) { el.style.display = "none"; return; }
+
+    let total = 0;
+    let withPrice = 0;
+    active.forEach(item => {
+      const p = item.price || estimatePrice(item.name);
+      if (p) {
+        total += p * (item.qty || 1);
+        withPrice++;
+      }
+    });
+
+    if (total === 0) { el.style.display = "none"; return; }
+
+    el.style.display = "flex";
+    totalEl.textContent = Math.round(total) + " kr";
+    if (subEl) {
+      const missing = active.length - withPrice;
+      subEl.textContent = missing > 0
+        ? `${active.length} varer · ${missing} uten pris`
+        : `${active.length} varer`;
+    }
+  }
+
+  // ── SWIPE LOGIC ──────────────────────────────────────────────────────────
+  // Sveip høyre = hake av / fullført   Sveip venstre = slett
+  const SWIPE_THRESHOLD = 90;   // px for å trigge action
+  const SWIPE_COMMIT_AT = 140;  // px for å "flyge" ut av skjermen
+
+  // Undo-system
+  let undoTimer = null;
+  let undoBarAnim = null;
+  let pendingUndo = null; // { type, id, data, execute }
+
+  function showUndoToast(msg, undoFn) {
+    if (undoTimer) { clearTimeout(undoTimer); cancelAnimationFrame(undoBarAnim); }
+    pendingUndo = undoFn;
+    const toast = document.getElementById("undo-toast");
+    const msgEl = document.getElementById("undo-toast-msg");
+    const bar   = document.getElementById("undo-toast-bar");
+    msgEl.textContent = msg;
+    bar.style.transition = "none";
+    bar.style.transform = "scaleX(1)";
+    toast.classList.add("show");
+
+    // Krympe progress-bar over 4 sek
+    requestAnimationFrame(() => {
+      bar.style.transition = "transform 4s linear";
+      bar.style.transform = "scaleX(0)";
+    });
+
+    undoTimer = setTimeout(() => {
+      toast.classList.remove("show");
+      pendingUndo = null;
+    }, 4000);
+  }
+
+  window.undoLastAction = () => {
+    if (!pendingUndo) return;
+    clearTimeout(undoTimer);
+    pendingUndo();
+    pendingUndo = null;
+    document.getElementById("undo-toast").classList.remove("show");
+  };
+
+  function initSwipe(wrapper, onDone, onDelete) {
+    const inner = wrapper.querySelector(".swipe-inner");
+    const bgDone = wrapper.querySelector(".swipe-bg-done");
+    const bgDel  = wrapper.querySelector(".swipe-bg-delete");
+    let startX = 0, startY = 0, dx = 0, dragging = false, locked = false;
+    let axisDecided = false;
+
+    function pointerStart(e) {
+      if (locked) return;
+      const t = e.touches ? e.touches[0] : e;
+      startX = t.clientX; startY = t.clientY;
+      dx = 0; dragging = true; axisDecided = false;
+      wrapper.classList.add("swiping");
+    }
+
+    function pointerMove(e) {
+      if (!dragging || locked) return;
+      const t = e.touches ? e.touches[0] : e;
+      const curDx = t.clientX - startX;
+      const curDy = t.clientY - startY;
+
+      if (!axisDecided) {
+        if (Math.abs(curDy) > Math.abs(curDx) + 6) { dragging = false; wrapper.classList.remove("swiping"); return; }
+        if (Math.abs(curDx) > 6) axisDecided = true;
+        else return;
+      }
+
+      dx = curDx;
+      // Rubber-band resistance beyond threshold
+      const raw = dx;
+      const sign = raw > 0 ? 1 : -1;
+      const abs  = Math.abs(raw);
+      const disp = abs < SWIPE_THRESHOLD
+        ? abs
+        : SWIPE_THRESHOLD + (abs - SWIPE_THRESHOLD) * 0.4;
+      inner.style.transform = `translateX(${sign * disp}px)`;
+
+      const progress = Math.min(1, abs / SWIPE_THRESHOLD);
+      if (raw > 0) {
+        bgDone.style.opacity = progress;
+        bgDel.style.opacity  = 0;
+      } else {
+        bgDel.style.opacity  = progress;
+        bgDone.style.opacity = 0;
+      }
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function pointerEnd() {
+      if (!dragging || locked) return;
+      dragging = false;
+      wrapper.classList.remove("swiping");
+      const absX = Math.abs(dx);
+
+      if (absX > SWIPE_THRESHOLD) {
+        locked = true;
+        // Fly out — overshoot exit
+        const exitDist = dx > 0 ? wrapper.offsetWidth + 40 : -(wrapper.offsetWidth + 40);
+        wrapper.classList.add("committing");
+        inner.style.transform = `translateX(${exitDist}px)`;
+        setTimeout(() => {
+          if (dx > 0) onDone(); else onDelete();
+        }, 380);
+      } else {
+        // Snap back with bounce
+        wrapper.classList.add("snap-back");
+        inner.style.transform = "";
+        bgDone.style.opacity = 0; bgDel.style.opacity = 0;
+        setTimeout(() => wrapper.classList.remove("snap-back"), 400);
       }
     }
 
-    // -------------------------------------------------------
-    //  /parse-menu – tolker ukesmeny (tekst eller bilde)
-    // -------------------------------------------------------
-    if (url.pathname === "/parse-menu" && request.method === "POST") {
-      try {
-        if (!apiKey) return jsonRes({ error: "API key not configured" }, 500);
+    inner.addEventListener("touchstart", pointerStart, { passive: true });
+    inner.addEventListener("touchmove",  pointerMove,  { passive: false });
+    inner.addEventListener("touchend",   pointerEnd);
+    inner.addEventListener("mousedown",  pointerStart);
+    window.addEventListener("mousemove", (e) => { if (dragging) pointerMove(e); });
+    window.addEventListener("mouseup",   () => { if (dragging) pointerEnd(); });
+  }
 
-        const { tekst, bilde, mediaType } = await request.json();
+  function attachSwipeToItems() {
+    currentItems.forEach(item => {
+      const wrapper = document.getElementById(`swipe-${item.id}`);
+      if (!wrapper || wrapper._swipeInit) return;
+      wrapper._swipeInit = true;
+      initSwipe(
+        wrapper,
+        async () => {
+          // Sveip høyre → hake av, med undo
+          const wasDone = item.done;
+          await toggleItem(item.id, wasDone);
+          if (!wasDone) {
+            showUndoToast(`${item.name} merket som handlet`, async () => {
+              await toggleItem(item.id, true); // angre → sett tilbake til ikke-handlet
+            });
+          }
+        },
+        async () => {
+          // Sveip venstre → slett, med undo
+          const snapshot = { ...item };
+          await deleteItem(item.id);
+          showUndoToast(`${item.name} slettet`, async () => {
+            await addDoc(itemsColRef(), {
+              name: snapshot.name, done: false,
+              qty: snapshot.qty || 1, unit: snapshot.unit || "stk",
+              cat: snapshot.cat || "annet",
+              createdAt: Date.now(),
+              addedBy: snapshot.addedBy || ""
+            });
+          });
+        }
+      );
+    });
+  }
 
-        const prompt = `Du tolker en norsk ukesmeny og gjør den om til strukturerte data.
+  function attachSwipeToTasks() {
+    familyBoardItems.forEach(task => {
+      const wrapper = document.getElementById(`swipe-task-${task.id}`);
+      if (!wrapper || wrapper._swipeInit) return;
+      wrapper._swipeInit = true;
+      initSwipe(
+        wrapper,
+        async () => {
+          const wasCompleted = task.completed;
+          // Kryss av uten å spawne neste forekomst ennå (vent på evt. angre)
+          await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", task.id), {
+            completed: !wasCompleted,
+            completedAt: !wasCompleted ? Date.now() : null,
+            updatedAt: Date.now()
+          });
+          if (!wasCompleted) {
+            let undone = false;
+            showUndoToast(`${task.title} fullført`, async () => {
+              undone = true;
+              await updateDoc(doc(db, "lists", HOUSEHOLD_ID, "tasks", task.id), {
+                completed: false, completedAt: null, updatedAt: Date.now()
+              });
+            });
+            // Spawn neste forekomst først når angre-vinduet er passert uten angre
+            setTimeout(() => { if (!undone) spawnNextRecurrence(task); }, 4200);
+          }
+        },
+        async () => {
+          const snapshot = { ...task };
+          await deleteBoardTask(task.id);
+          showUndoToast(`${task.title} slettet`, async () => {
+            await addDoc(collection(db, "lists", HOUSEHOLD_ID, "tasks"), {
+              title: snapshot.title, type: snapshot.type || "task",
+              assignedTo: snapshot.assignedTo || "",
+              relatedPerson: snapshot.relatedPerson || "",
+              dueDate: snapshot.dueDate || "", dueTime: snapshot.dueTime || "",
+              completed: false,
+              recurrence: snapshot.recurrence || { enabled: false, frequency: "none", interval: 1, weekdays: [] },
+              reminder: snapshot.reminder || { enabled: false, minutesBefore: null },
+              notification: snapshot.notification || { enabled: false, minutesBefore: null, pushReady: false },
+              createdBy: snapshot.createdBy || "", createdByName: snapshot.createdByName || "",
+              createdAt: Date.now(), updatedAt: Date.now()
+            });
+          });
+        }
+      );
+    });
+  }
+  // ── END SWIPE ─────────────────────────────────────────────────────────────
 
-Svar KUN med gyldig JSON, ingen annen tekst:
-{
-  "dager": [
-    {
-      "dag": "mandag",
-      "rett": "Laks teriyaki-bowl",
-      "ingredienser": [
-        { "navn": "Laks", "antall": 1, "enhet": "pk" },
-        { "navn": "Fullkornsris", "antall": 1, "enhet": "pk" },
-        { "navn": "Avokado", "antall": 2, "enhet": "stk" }
-      ]
+  // Hook price summary into list updates
+  function startListeningWithPrice() {
+    // VIKTIG: koble fra forrige lytter først — ellers fortsetter gamle lyttere å fyre
+    // og overskriver currentItems med data fra forrige liste (og lekker minne/lesekvote)
+    if (unsubscribeList) { unsubscribeList(); unsubscribeList = null; }
+    const q = query(itemsColRef(), orderBy("createdAt","asc"));
+    unsubscribeList = onSnapshot(q, snapshot => {
+      currentItems = [];
+      snapshot.forEach(d => currentItems.push({ id:d.id, ...d.data() }));
+      renderList(currentItems);
+      renderSuggestions();
+      renderPriceSummary();
+      if (document.getElementById("shop-overlay")?.classList.contains("open")) renderShoppingMode();
+      requestAnimationFrame(attachSwipeToItems);
+    });
+  }
+
+  // HANDLEMODUS
+window.openShoppingMode = () => {
+  const active = currentItems.filter(i => !i.done);
+  if (active.length === 0) { alert("Handlelisten er tom!"); return; }
+  renderShoppingMode();
+  document.getElementById("shop-overlay").classList.add("open");
+  document.body.style.overflow = "hidden";
+};
+
+window.closeShoppingMode = () => {
+  document.getElementById("shop-overlay").classList.remove("open");
+  document.body.style.overflow = "";
+};
+
+window.toggleShoppingModeItem = async (id, currentDone) => {
+  await updateDoc(itemDocRef(id), { done: !currentDone });
+  if (!currentDone && !activeSubList) {
+    const item = currentItems.find(i => i.id === id);
+    if (item) {
+      learnFromPurchase([item.name]);
+      await savePurchaseHistory();
     }
-  ]
-}
-
-Regler:
-- "dag" MÅ være et norsk ukedagsnavn med små bokstaver: mandag, tirsdag, onsdag, torsdag, fredag, lørdag eller søndag
-- Ta KUN med retter som har en tydelig ukedag. Ikke dikt opp dager som ikke står i menyen
-- "rett": kort, gjenkjennelig navn på retten (ikke hele beskrivelsen)
-- "ingredienser": hovedingrediensene med kort norsk varenavn og korrekt æøå
-- "antall" og "enhet": sett fornuftige verdier hvis det fremgår, ellers antall 1 og enhet "stk"
-- "enhet" må være én av: stk, kg, g, l, dl, pk
-- IKKE ta med krydder/vann/salt/pepper med mindre det er en tydelig hovedingrediens
-- Norsk stavemåte med æøå`;
-
-        const content = bilde
-          ? [
-              { type: "image", source: { type: "base64", media_type: mediaType || "image/png", data: bilde } },
-              { type: "text", text: "Dette er et bilde av en ukesmeny. " + prompt }
-            ]
-          : [{ type: "text", text: prompt + "\n\nUkesmeny:\n" + (tekst || "(tom)") }];
-
-        const { ok, status, rawText } = await callAnthropic(apiKey, {
-          model: "claude-sonnet-4-6",
-          max_tokens: 8000,
-          system: "Du er en JSON-generator. Du svarer KUN med gyldig JSON, aldri med forklaringer eller annen tekst.",
-          messages: [{ role: "user", content }]
-        });
-
-        if (!ok) return jsonRes({ error: "Anthropic API feil", status, detaljer: rawText }, 500);
-
-        const data = JSON.parse(rawText);
-        const text = data.content?.[0]?.text || "";
-        let clean = text.replace(/```json|```/g, "").trim();
-        const firstBrace = clean.indexOf("{");
-        if (firstBrace !== -1) clean = clean.substring(firstBrace);
-
-        if (!clean.startsWith("{")) {
-          return jsonRes({ dager: [], feil: "Kunne ikke tolke menyen. Prøv å lime inn tydeligere tekst." });
-        }
-
-        let parsed;
-        try {
-          const lastBrace = clean.lastIndexOf("}");
-          parsed = JSON.parse(clean.substring(0, lastBrace + 1));
-        } catch (e1) {
-          parsed = repairTruncatedJson(clean);
-        }
-
-        if (!parsed || !parsed.dager) {
-          return jsonRes({ dager: [], feil: "Menyen ble for lang til å leses helt. Prøv færre dager om gangen." });
-        }
-
-        return jsonRes(parsed);
-
-      } catch (err) {
-        return jsonRes({ error: err.message }, 500);
-      }
-    }
-
-    // -------------------------------------------------------
-    //  Alt annet: statiske filer
-    // -------------------------------------------------------
-    return env.ASSETS.fetch(request);
   }
 };
+
+function renderShoppingMode() {
+  const body = document.getElementById("shop-body");
+  const sub = document.getElementById("shop-header-sub");
+  const footerLeft = document.getElementById("shop-footer-left");
+  const footerTotal = document.getElementById("shop-footer-total");
+
+  const remaining = currentItems.filter(i => !i.done);
+  const done = currentItems.filter(i => i.done);
+  sub.textContent = `${remaining.length} vare${remaining.length === 1 ? "" : "r"} igjen`;
+
+  // Løpende total (alle aktive)
+  let total = 0;
+  currentItems.filter(i => !i.done).forEach(item => {
+    const p = item.price || estimatePrice(item.name);
+    if (p) total += p * (item.qty || 1);
+  });
+  footerLeft.textContent = total > 0 ? "Estimert gjenstående" : "Estimert total";
+  footerTotal.textContent = total > 0 ? Math.round(total) + " kr" : "—";
+
+  // Grupper etter kategori
+  const groups = {};
+  remaining.forEach(item => {
+    const cat = item.cat || guessCategory(item.name);
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(item);
+  });
+
+  function renderShopItem(item) {
+    const qty = item.qty || 1;
+    const unit = item.unit || "stk";
+    const price = item.price || estimatePrice(item.name);
+    const lineTotal = price ? Math.round(price * qty) : null;
+    const addedBy = item.addedBy ? item.addedBy.split(" ")[0] : null;
+    const detailParts = [];
+    if (qty > 1 || unit !== "stk") detailParts.push(`${qty} ${unit}`);
+    if (lineTotal) detailParts.push(`${lineTotal} kr`);
+    if (addedBy) detailParts.push(`↑ ${addedBy}`);
+    const detail = detailParts.join(" · ");
+    return `<div class="shop-item ${item.done ? "done" : ""}" onclick="toggleShoppingModeItem('${item.id}', ${item.done})">
+      <div class="shop-checkbox">${item.done ? "✓" : ""}</div>
+      <div style="flex:1">
+        <div class="shop-item-name">${escapeHtml(item.name)}</div>
+        ${detail ? `<div class="shop-item-detail">${detail}</div>` : ""}
+      </div>
+    </div>`;
+  }
+
+  let html = "";
+  CAT_ORDER.forEach(cat => {
+    if (!groups[cat]) return;
+    html += `<div class="shop-cat-label">${CAT_LABELS[cat]}</div>`;
+    groups[cat].forEach(item => { html += renderShopItem(item); });
+  });
+
+  if (done.length > 0) {
+    html += `<div class="shop-cat-label" style="margin-top:1.5rem">✓ Lagt i kurven (${done.length})</div>`;
+    done.forEach(item => { html += renderShopItem(item); });
+  }
+
+  body.innerHTML = html || `<div class="empty-state"><div class="big">✅</div><p>Alt er handlet!</p></div>`;
+}
+
+// Registrer Service Worker for offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').then((registration) => {
+      console.log('Service Worker registrert:', registration);
+    }).catch((error) => {
+      console.log('Service Worker registrering feilet:', error);
+    });
+  });
+}
+
+// Vis/skjul offline-banner basert på nettverkstilstand
+function updateOfflineBanner() {
+  const banner = document.getElementById('offline-banner');
+  if (!banner) return;
+  
+  if (navigator.onLine) {
+    banner.classList.remove('show');
+  } else {
+    banner.classList.add('show');
+  }
+}
+
+// Sjekk tilstand ved lasting
+updateOfflineBanner();
+
+// Lytt på online/offline events
+window.addEventListener('online', () => {
+  console.log('Du er nå online!');
+  updateOfflineBanner();
+});
+
+window.addEventListener('offline', () => {
+  console.log('Du er nå offline');
+  updateOfflineBanner();
+});
+  
+
+/* ===== SVG-ikon-hydrering: bytter chrome-emoji til rene SVG-ikoner ved runtime ===== */
+(function(){
+  const S = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ic"';
+  const F = 'viewBox="0 0 24 24" fill="currentColor" stroke="none" class="ic"';
+  const ICONS = {
+    '\u{1F6D2}':`<svg ${S}><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>`,
+    '\u{1F4CB}':`<svg ${S}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+    '\u{1F5D1}':`<svg ${S}><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>`,
+    '\u{270E}':`<svg ${S}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+    '\u{270F}':`<svg ${S}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+    '\u{1F4F7}':`<svg ${S}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>`,
+    '\u{2699}':`<svg ${S}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>`,
+    '\u{2795}':`<svg ${S}><path d="M12 5v14M5 12h14"/></svg>`,
+    '\u{1F514}':`<svg ${S}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`,
+    '\u{2605}':`<svg ${F}><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01Z"/></svg>`,
+    '\u{2606}':`<svg ${S}><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01Z"/></svg>`,
+    '\u{2713}':`<svg ${S}><path d="M20 6 9 17l-5-5"/></svg>`,
+    '\u{2714}':`<svg ${S}><path d="M20 6 9 17l-5-5"/></svg>`,
+    '\u{2705}':`<svg ${S}><path d="M20 6 9 17l-5-5"/></svg>`,
+    '\u{2715}':`<svg ${S}><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+    '\u{2716}':`<svg ${S}><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+    '\u{2728}':`<svg ${F}><path d="M12 3 13.4 9.2 19.6 10.6 13.4 12 12 18.2 10.6 12 4.4 10.6 10.6 9.2Z"/></svg>`,
+    '\u{1F4E6}':`<svg ${S}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`,
+    '\u{1F9F3}':`<svg ${S}><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
+    '\u{1F465}':`<svg ${S}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    '\u{1F464}':`<svg ${S}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+    '\u{1F50D}':`<svg ${S}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`,
+    '\u{1F501}':`<svg ${S}><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`,
+    '\u{1F4C8}':`<svg ${S}><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg>`,
+    '\u{1F4C4}':`<svg ${S}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`,
+    '\u{1F4B0}':`<svg ${S}><path d="M2 9a3 3 0 0 1 3-3h14a2 2 0 0 1 2 2v1"/><path d="M2 9v8a3 3 0 0 0 3 3h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H5"/><circle cx="16.5" cy="13.5" r="1.5"/></svg>`
+  };
+  const keys = Object.keys(ICONS).map(k => k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
+  const RE = new RegExp('(?:'+keys+')\\uFE0F?','gu');
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function hydrateText(node){
+    const txt = node.nodeValue;
+    if(!txt) return;
+    RE.lastIndex = 0;
+    if(!RE.test(txt)) return;
+    RE.lastIndex = 0;
+    let out='', last=0, m;
+    while((m = RE.exec(txt))){
+      out += esc(txt.slice(last, m.index));
+      const key = m[0].replace(/\uFE0F/g,'');
+      out += ICONS[key] || esc(m[0]);
+      last = m.index + m[0].length;
+    }
+    out += esc(txt.slice(last));
+    const span = document.createElement('span');
+    span.className = 'ic-host';
+    span.innerHTML = out;
+    if(node.parentNode) node.parentNode.replaceChild(span, node);
+  }
+  const SKIP = {SCRIPT:1,STYLE:1,TEXTAREA:1,OPTION:1};
+  function inSkip(p){ return !p || p.nodeType!==1 || SKIP[p.nodeName] || (p.closest && p.closest('.ic-host, svg')); }
+  function hydrate(root){
+    if(!root) return;
+    if(root.nodeType === 3){ if(!inSkip(root.parentNode)) hydrateText(root); return; }
+    if(root.nodeType !== 1) return;
+    if(SKIP[root.nodeName] || (root.closest && root.closest('.ic-host, svg'))) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(n){ return inSkip(n.parentNode) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
+    });
+    const list=[]; let n;
+    while((n = walker.nextNode())) list.push(n);
+    list.forEach(hydrateText);
+  }
+  function boot(){
+    hydrate(document.body);
+    new MutationObserver(muts=>{
+      for(const mut of muts){
+        if(mut.addedNodes) mut.addedNodes.forEach(node=>{ try{ hydrate(node); }catch(e){} });
+      }
+    }).observe(document.body, {childList:true, subtree:true});
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+
+
+/* =========================================================================
+   DELING – kostnadsdeling per PERSON (lists/{LIST_ID}/...)
+   Modell:
+     people/{id}       { name, vipps, uid|null, createdAt }
+     expenses/{id}     { desc, amount, paidBy(personId), sharedBy[personIds], createdAt, createdBy }
+     settlements/{id}  { from(personId), to(personId), amount, createdAt, createdBy }
+   Hver utgift splittes likt mellom personene den deles med.
+   "Marker betalt" lagrer et oppgjør som trekkes fra saldoene.
+   ========================================================================= */
+  let delPeople = [];
+  let delExpenses = [];
+  let delSettlements = [];
+  let delMembers = {};            // {uid: navn} for aktiv liste (til "Hent fra medlemmer")
+  let unsubDelPeople = null, unsubDelExpenses = null, unsubDelSettle = null;
+  let editPersonId = null, editExpenseId = null;
+
+  function dEsc(s){ return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function dKr(n){ const r = Math.round((Number(n)||0)*100)/100; return r.toLocaleString("nb-NO",{minimumFractionDigits:0,maximumFractionDigits:2}) + " kr"; }
+  function dAmt(x){ return Number(x && x.amount != null ? x.amount : 0) || 0; }
+  function personName(id){ const p = delPeople.find(x => x.id === id); return p ? p.name : "Ukjent"; }
+
+  async function loadDelMembers(){
+    delMembers = {};
+    try {
+      const ref = currentListType === "shared" ? doc(db,"sharedLists",LIST_ID) : doc(db,"households",LIST_ID);
+      const s = await getDoc(ref);
+      if (s.exists()) delMembers = s.data().members || {};
+    } catch(e){ console.warn("deling: medlemmer", e); }
+    if (Array.isArray(delMembers)) { const t={}; for(const u of delMembers) t[u]="Medlem"; delMembers=t; }
+  }
+
+  function startListeningDeling(){
+    stopListeningDeling();
+    if (!LIST_ID) return;
+    loadDelMembers();
+    unsubDelPeople = onSnapshot(query(collection(db,"lists",LIST_ID,"people"), orderBy("createdAt")), (snap)=>{
+      delPeople = []; snap.forEach(d=>delPeople.push({id:d.id, ...d.data()})); renderDeling();
+    }, e=>console.warn("people:",e));
+    unsubDelExpenses = onSnapshot(query(collection(db,"lists",LIST_ID,"expenses"), orderBy("createdAt","desc")), (snap)=>{
+      delExpenses = []; snap.forEach(d=>delExpenses.push({id:d.id, ...d.data()})); renderDeling();
+    }, e=>console.warn("expenses:",e));
+    unsubDelSettle = onSnapshot(query(collection(db,"lists",LIST_ID,"settlements"), orderBy("createdAt","desc")), (snap)=>{
+      delSettlements = []; snap.forEach(d=>delSettlements.push({id:d.id, ...d.data()})); renderDeling();
+    }, e=>console.warn("settlements:",e));
+  }
+  function stopListeningDeling(){
+    if (unsubDelPeople){ unsubDelPeople(); unsubDelPeople=null; }
+    if (unsubDelExpenses){ unsubDelExpenses(); unsubDelExpenses=null; }
+    if (unsubDelSettle){ unsubDelSettle(); unsubDelSettle=null; }
+  }
+
+  /* Saldo per person = lagt ut − sum av andeler, justert for registrerte oppgjør.
+     Deretter minimeres antall overføringer (grådig). */
+  function computeDeling(){
+    const total = delExpenses.reduce((a,e)=>a+dAmt(e),0);
+    const net = {}; delPeople.forEach(p=>net[p.id]=0);
+    const paidMap = {}, owedMap = {}; delPeople.forEach(p=>{paidMap[p.id]=0; owedMap[p.id]=0;});
+    delExpenses.forEach(e=>{
+      const sharers = (Array.isArray(e.sharedBy)&&e.sharedBy.length) ? e.sharedBy : delPeople.map(p=>p.id);
+      const each = sharers.length ? dAmt(e)/sharers.length : 0;
+      if (net[e.paidBy]!==undefined){ net[e.paidBy]+=dAmt(e); paidMap[e.paidBy]+=dAmt(e); }
+      sharers.forEach(pid=>{ if(net[pid]!==undefined){ net[pid]-=each; owedMap[pid]+=each; } });
+    });
+    delSettlements.forEach(s=>{
+      if (net[s.from]!==undefined) net[s.from]+=dAmt(s);
+      if (net[s.to]!==undefined)   net[s.to]-=dAmt(s);
+    });
+    const balances = delPeople.map(p=>({ id:p.id, name:p.name, vipps:p.vipps||"", paid:paidMap[p.id]||0, owed:owedMap[p.id]||0, net:Math.round((net[p.id]||0)*100)/100 }));
+    const creditors = balances.filter(b=>b.net>0.009).map(b=>({...b,rem:b.net})).sort((a,b)=>b.rem-a.rem);
+    const debtors   = balances.filter(b=>b.net<-0.009).map(b=>({...b,rem:-b.net})).sort((a,b)=>b.rem-a.rem);
+    const transfers = []; let ci=0,di=0;
+    while (ci<creditors.length && di<debtors.length){
+      const c=creditors[ci], d=debtors[di], amt=Math.min(c.rem,d.rem);
+      if (amt>0.009) transfers.push({ fromId:d.id, fromName:d.name, toId:c.id, toName:c.name, toVipps:c.vipps, amount:Math.round(amt*100)/100 });
+      c.rem-=amt; d.rem-=amt; if(c.rem<=0.009)ci++; if(d.rem<=0.009)di++;
+    }
+    return { total, balances, transfers };
+  }
+
+  function renderDeling(){
+    const r = computeDeling();
+    renderDelSummary(r); renderDelSettlement(r); renderDelSettled(); renderDelExpenses(); renderDelPeople(r);
+  }
+
+  function renderDelSummary(r){
+    const el = document.getElementById("deling-summary"); if(!el) return;
+    el.innerHTML = delExpenses.length
+      ? `Totalt lagt ut: <strong>${dKr(r.total)}</strong> · ${delPeople.length} ${delPeople.length===1?"person":"personer"}`
+      : "";
+  }
+
+  function renderDelSettlement(r){
+    const el = document.getElementById("deling-settlement"); if(!el) return;
+    if (delPeople.length<2 || !delExpenses.length){ el.innerHTML=""; return; }
+    if (!r.transfers.length){ el.innerHTML = `<div class="deling-settled-note">✅ Alt er gjort opp – ingen overføringer gjenstår.</div>`; return; }
+    el.innerHTML = `<div class="deling-section-title">Oppgjør</div>` + r.transfers.map(t=>{
+      const pay = t.toVipps
+        ? `<button class="deling-vipps-btn" onclick="betalMedVipps('${dEsc(t.toVipps)}', ${t.amount}, this)">Betal med Vipps</button>`
+        : `<span class="deling-muted" style="font-size:11px;align-self:center">Legg inn Vipps-nr på «${dEsc(t.toName)}»</span>`;
+      return `<div class="deling-transfer">
+        <div class="deling-transfer-line">
+          <span class="deling-transfer-from">${dEsc(t.fromName)}</span>
+          <span class="deling-transfer-arrow">→</span>
+          <span class="deling-transfer-to">${dEsc(t.toName)}</span>
+          <span class="deling-transfer-amt">${dKr(t.amount)}</span>
+        </div>
+        <div class="deling-transfer-action">
+          ${pay}
+          <button class="deling-mark-btn" onclick="markerBetalt('${t.fromId}','${t.toId}',${t.amount})">Marker betalt</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderDelSettled(){
+    const el = document.getElementById("deling-settled-list"); if(!el) return;
+    if (!delSettlements.length){ el.innerHTML=""; return; }
+    el.innerHTML = `<div class="deling-section-title" style="margin-top:1.25rem">Registrerte oppgjør</div>` + delSettlements.map(s=>
+      `<div class="deling-paid-row">
+        <span class="deling-paid-text">${dEsc(personName(s.from))} betalte ${dEsc(personName(s.to))} · ${dKr(dAmt(s))}</span>
+        <button class="deling-icon-btn" title="Angre" onclick="angreBetalt('${s.id}')">✕</button>
+      </div>`).join("");
+  }
+
+  function renderDelExpenses(){
+    const el = document.getElementById("deling-expenses"); if(!el) return;
+    if (!delExpenses.length){ el.innerHTML = `<div class="deling-muted">Ingen utgifter registrert ennå.</div>`; return; }
+    el.innerHTML = delExpenses.map(e=>{
+      const sharers = (Array.isArray(e.sharedBy)&&e.sharedBy.length) ? e.sharedBy : delPeople.map(p=>p.id);
+      const delesTekst = sharers.length===delPeople.length ? "alle" : sharers.map(id=>dEsc(personName(id))).join(", ");
+      return `<div class="deling-exp-row">
+        <div class="deling-exp-info">
+          <div class="deling-exp-desc">${dEsc(e.desc||"Utgift")}</div>
+          <div class="deling-exp-who">${dEsc(personName(e.paidBy))} la ut · deles på ${delesTekst}</div>
+        </div>
+        <div class="deling-exp-amt">${dKr(dAmt(e))}</div>
+        <button class="deling-icon-btn" title="Rediger" onclick="openExpenseModal('${e.id}')">✎</button>
+        <button class="deling-icon-btn" title="Slett" onclick="deleteExpense('${e.id}')">✕</button>
+      </div>`;
+    }).join("");
+  }
+
+  function renderDelPeople(r){
+    const el = document.getElementById("deling-people"); if(!el) return;
+    if (!delPeople.length){
+      el.innerHTML = `<div class="empty-state"><div class="big">💰</div><p>Ingen personer ennå. Hent dem fra lista, eller legg til manuelt.</p></div>`;
+      return;
+    }
+    const bal = {}; r.balances.forEach(b=>bal[b.id]=b.net);
+    el.innerHTML = delPeople.map(p=>{
+      const n = bal[p.id] || 0;
+      let badge = "";
+      if (delExpenses.length){
+        if (n > 0.009) badge = `<span class="deling-bal pos">+${dKr(n)}</span>`;
+        else if (n < -0.009) badge = `<span class="deling-bal neg">−${dKr(-n)}</span>`;
+        else badge = `<span class="deling-bal zero">à jour</span>`;
+      }
+      const sub = p.vipps ? "Vipps " + dEsc(p.vipps) : `<span class="deling-muted" style="font-size:12px">ingen Vipps-nr</span>`;
+      return `<div class="deling-card">
+        <div class="deling-card-main">
+          <div class="deling-card-name">${dEsc(p.name)} ${badge}</div>
+          <div class="deling-card-sub">${sub}</div>
+        </div>
+        <div class="deling-card-actions">
+          <button class="deling-icon-btn" title="Rediger" onclick="openPersonModal('${p.id}')">✎</button>
+          <button class="deling-icon-btn" title="Slett" onclick="deletePerson('${p.id}')">🗑</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  /* ---------- Vipps-handoff (gjenbruker in-app-deteksjon) ---------- */
+  window.betalMedVipps = (vipps, amount, btn) => {
+    const nr = String(vipps||"").replace(/\s/g,"");
+    if (nr && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(nr).catch(()=>{});
+    if (typeof erInAppBrowser === "function" && erInAppBrowser()){
+      alert("Du er i en in-app nettleser (f.eks. Messenger/Instagram). Åpne appen i Chrome eller Safari for å hoppe til Vipps.\n\nMottakers Vipps-nr er kopiert: " + (nr||"(mangler)"));
+      return;
+    }
+    if (btn){ const o=btn.textContent; btn.textContent="Vipps-nr kopiert ✓"; setTimeout(()=>{btn.textContent=o;},2200); }
+    try { window.location.href = "vipps://"; } catch(e){}
+  };
+
+  /* ---------- Oppgjør (marker betalt / angre) ---------- */
+  window.markerBetalt = async (fromId, toId, amount) => {
+    if (!confirm(`Registrere at ${personName(fromId)} har betalt ${personName(toId)} ${dKr(amount)}?`)) return;
+    try { await addDoc(collection(db,"lists",LIST_ID,"settlements"), { from:fromId, to:toId, amount:Number(amount)||0, createdAt:Date.now(), createdBy:currentUser?currentUser.uid:null }); }
+    catch(e){ console.error(e); alert("Kunne ikke registrere oppgjøret."); }
+  };
+  window.angreBetalt = async (id) => {
+    if (!confirm("Angre dette oppgjøret? Beløpet vil dukke opp igjen i oppgjøret.")) return;
+    try { await deleteDoc(doc(db,"lists",LIST_ID,"settlements",id)); }
+    catch(e){ console.error(e); alert("Kunne ikke angre."); }
+  };
+
+  /* ---------- Personer ---------- */
+  window.hentFraMedlemmer = async () => {
+    const eksisterende = new Set(delPeople.map(p=>p.uid).filter(Boolean));
+    const nye = Object.entries(delMembers).filter(([uid])=>!eksisterende.has(uid));
+    if (!nye.length){ alert("Alle medlemmer på lista er allerede lagt til som personer."); return; }
+    try {
+      for (const [uid,navn] of nye){
+        await setDoc(doc(db,"lists",LIST_ID,"people",uid), { name:String(navn||"Medlem"), vipps:"", uid, createdAt:Date.now() }, { merge:true });
+      }
+    } catch(e){ console.error(e); alert("Kunne ikke hente medlemmer."); }
+  };
+
+  window.openPersonModal = (personId) => {
+    editPersonId = personId || null;
+    const p = personId ? delPeople.find(x=>x.id===personId) : null;
+    const t=document.getElementById("deling-person-title"), n=document.getElementById("deling-person-name"), v=document.getElementById("deling-person-vipps");
+    if(t) t.textContent = p ? "Rediger person" : "Ny person";
+    if(n) n.value = p ? (p.name||"") : "";
+    if(v) v.value = p ? (p.vipps||"") : "";
+    document.getElementById("deling-person-modal").classList.add("open");
+  };
+  window.savePerson = async () => {
+    const name = (document.getElementById("deling-person-name").value||"").trim();
+    if (!name){ alert("Skriv inn et navn."); return; }
+    const vipps = (document.getElementById("deling-person-vipps").value||"").replace(/\s/g,"");
+    try {
+      if (editPersonId) await updateDoc(doc(db,"lists",LIST_ID,"people",editPersonId), { name, vipps });
+      else await addDoc(collection(db,"lists",LIST_ID,"people"), { name, vipps, uid:null, createdAt:Date.now() });
+      document.getElementById("deling-person-modal").classList.remove("open"); editPersonId=null;
+    } catch(e){ console.error(e); alert("Kunne ikke lagre personen."); }
+  };
+  window.deletePerson = async (personId) => {
+    const brukt = delExpenses.some(e=>e.paidBy===personId || (Array.isArray(e.sharedBy)&&e.sharedBy.includes(personId)));
+    let msg = `Slette ${personName(personId)}?`;
+    if (brukt) msg += "\n\nNB: Personen er knyttet til utgifter. Rett opp dem først for et riktig oppgjør.";
+    if (!confirm(msg)) return;
+    try { await deleteDoc(doc(db,"lists",LIST_ID,"people",personId)); }
+    catch(e){ console.error(e); alert("Kunne ikke slette personen."); }
+  };
+
+  /* ---------- Utgifter ---------- */
+  window.openExpenseModal = (expenseId) => {
+    if (!delPeople.length){ alert("Legg til minst én person først (Hent fra medlemmer)."); return; }
+    editExpenseId = expenseId || null;
+    const e = expenseId ? delExpenses.find(x=>x.id===expenseId) : null;
+    const t=document.getElementById("deling-expense-title");
+    const d=document.getElementById("deling-expense-desc");
+    const a=document.getElementById("deling-expense-amount");
+    const pay=document.getElementById("deling-expense-paidby");
+    const share=document.getElementById("deling-expense-shared");
+    if(t) t.textContent = e ? "Rediger utgift" : "Ny utgift";
+    if(d) d.value = e ? (e.desc||"") : "";
+    if(a) a.value = e ? (e.amount!=null?e.amount:"") : "";
+    if(pay) pay.innerHTML = delPeople.map(p=>`<option value="${p.id}">${dEsc(p.name)}</option>`).join("");
+    if(pay && e && e.paidBy) pay.value = e.paidBy;
+    if(share){
+      const chosen = e && Array.isArray(e.sharedBy) ? e.sharedBy : delPeople.map(p=>p.id); // ny = alle
+      share.innerHTML = delPeople.map(p=>
+        `<label class="deling-check"><input type="checkbox" value="${dEsc(p.id)}" ${chosen.includes(p.id)?"checked":""}/> ${dEsc(p.name)}</label>`
+      ).join("");
+    }
+    document.getElementById("deling-expense-modal").classList.add("open");
+  };
+  window.toggleAlleDeler = (on) => {
+    document.querySelectorAll("#deling-expense-shared input[type=checkbox]").forEach(c=>{ c.checked = on; });
+  };
+  window.saveExpense = async () => {
+    const desc = (document.getElementById("deling-expense-desc").value||"").trim();
+    const amount = parseFloat((document.getElementById("deling-expense-amount").value||"").replace(",","."));
+    const paidBy = document.getElementById("deling-expense-paidby").value;
+    const sharedBy = Array.from(document.querySelectorAll("#deling-expense-shared input:checked")).map(c=>c.value);
+    if (!(amount>0)){ alert("Skriv inn et gyldig beløp."); return; }
+    if (!paidBy){ alert("Velg hvem som la ut."); return; }
+    if (!sharedBy.length){ alert("Velg minst én som skal dele utgiften."); return; }
+    try {
+      if (editExpenseId) await updateDoc(doc(db,"lists",LIST_ID,"expenses",editExpenseId), { desc, amount, paidBy, sharedBy });
+      else await addDoc(collection(db,"lists",LIST_ID,"expenses"), { desc, amount, paidBy, sharedBy, createdAt:Date.now(), createdBy:currentUser?currentUser.uid:null });
+      document.getElementById("deling-expense-modal").classList.remove("open"); editExpenseId=null;
+    } catch(e){ console.error(e); alert("Kunne ikke lagre utgiften."); }
+  };
+  window.deleteExpense = async (id) => {
+    if (!confirm("Slette denne utgiften?")) return;
+    try { await deleteDoc(doc(db,"lists",LIST_ID,"expenses",id)); }
+    catch(e){ console.error(e); alert("Kunne ikke slette utgiften."); }
+  };
+
+  window.closeDelingModal = (id) => { const m=document.getElementById(id); if(m) m.classList.remove("open"); };
+
+</script>
+
+<!-- DELT ØNSKELISTE: MOTTAKER-VISNING -->
+<div id="shared-wish-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:10000;flex-direction:column;padding:1.5rem;overflow-y:auto">
+  <div style="max-width:600px;margin:0 auto;width:100%">
+    <button onclick="lukkSharedWishlist()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:var(--ink2);margin-bottom:1rem">‹ Lukk</button>
+    <div style="font-family:'DM Serif Display',serif;font-size:1.5rem" id="shared-wish-title">🎁 Ønskeliste</div>
+    <div style="font-size:13px;color:var(--ink3);margin-bottom:1.5rem" id="shared-wish-sub"></div>
+    <div id="shared-wish-list"><div class="board-empty">Laster...</div></div>
+  </div>
+</div>
+
+</body>
+</html>
