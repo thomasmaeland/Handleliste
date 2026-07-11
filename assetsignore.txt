@@ -1,8 +1,0 @@
-_worker.js
-wrangler.jsonc
-.assetsignore
-.gitignore
-functions
-netlify
-netlify.toml
-AI_KONTEKST.md
