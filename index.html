@@ -606,8 +606,8 @@
       </div>
 
       <!-- SPARINGS-BANNER -->
-      <div id="sparing-banner" style="display:none;background:#f0faf4;border:1px solid #2d8a4e44;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#1a5c35">
-        <div id="sparing-banner-tekst"></div>
+      <div id="sparing-banner" style="display:block;background:#f0faf4;border:1px solid #2d8a4e44;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#1a5c35">
+        <div id="sparing-banner-tekst">🔍 Test: banneret vises</div>
       </div>
 
       <!-- RECEIPT SCAN -->
@@ -6846,12 +6846,7 @@ await addDoc(historyRef, {
     if (!banner || !tekst) return;
 
     const aktive = (items || []).filter(i => !i.done && i.kassalButikk && i.kassalPris);
-    // DEBUG: vis alltid banner med info
-    if (aktive.length === 0) {
-      banner.style.display = "block";
-      tekst.innerHTML = `🔍 Debug: ${(items||[]).length} varer totalt, ${(items||[]).filter(i=>!i.done).length} aktive, ${aktive.length} med kassalPris`;
-      return;
-    }
+    if (aktive.length === 0) { banner.style.display = "none"; return; }
 
     let totalSpart = 0;
     const sparLinje = [];
