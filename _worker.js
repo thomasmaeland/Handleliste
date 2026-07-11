@@ -459,7 +459,9 @@ Regler:
           .slice(0, 8)
           .map(({ skaar, ...rest }) => rest);
 
-        return jsonRes({ type: "produkter", produkter });
+        // DEBUG: send rådata for å se hva Kassalapp faktisk returnerer
+        const rawNavn = (searchData.data || []).slice(0, 10).map(p => p.name);
+        return jsonRes({ type: "produkter", produkter, rawNavn });
 
       } catch (err) {
         return jsonRes({ error: err.message }, 500);
