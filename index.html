@@ -586,10 +586,13 @@
 </button>
 <div class="smart-preview" id="butikk-tilbud-preview">
   <div style="display:flex;gap:6px;flex-wrap:wrap;padding:4px 0 10px">
-    ${["Meny","KIWI","Rema 1000","Spar","Bunnpris","Joker","Coop Extra"].map(b =>
-      `<button class="butikk-velg-btn" data-butikk="${b}" onclick="velgButikkTilbud('${b}')"
-        style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">${b}</button>`
-    ).join("")}
+    <button class="butikk-velg-btn" data-butikk="Meny" onclick="velgButikkTilbud('Meny')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Meny</button>
+    <button class="butikk-velg-btn" data-butikk="KIWI" onclick="velgButikkTilbud('KIWI')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">KIWI</button>
+    <button class="butikk-velg-btn" data-butikk="Rema 1000" onclick="velgButikkTilbud('Rema 1000')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Rema 1000</button>
+    <button class="butikk-velg-btn" data-butikk="Spar" onclick="velgButikkTilbud('Spar')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Spar</button>
+    <button class="butikk-velg-btn" data-butikk="Bunnpris" onclick="velgButikkTilbud('Bunnpris')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Bunnpris</button>
+    <button class="butikk-velg-btn" data-butikk="Joker" onclick="velgButikkTilbud('Joker')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Joker</button>
+    <button class="butikk-velg-btn" data-butikk="Coop Extra" onclick="velgButikkTilbud('Coop Extra')" style="border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;background:var(--card);color:var(--ink)">Coop Extra</button>
   </div>
   <div class="smart-preview-title" id="butikk-tilbud-title">Velg en butikk over</div>
   <div id="butikk-tilbud-items"></div>
