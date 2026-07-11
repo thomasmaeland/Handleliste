@@ -605,10 +605,7 @@
         <div class="price-summary-sub" id="price-sub"></div>
       </div>
 
-      <!-- SPARINGS-BANNER -->
-      <div id="sparing-banner" style="display:none;background:#f0faf4;border:1px solid #2d8a4e44;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#1a5c35">
-        <div id="sparing-banner-tekst"></div>
-      </div>
+      <!-- SPARINGS-BANNER fjernet herfra - vises over varelista -->
 
       <!-- RECEIPT SCAN -->
       <input type="file" id="receipt-input" accept="image/*" capture="environment" style="display:none" />
@@ -634,6 +631,10 @@
             <button class="sort-toggle-btn" id="sort-date-btn" onclick="toggleSortByDate()">🕒 Nyeste først</button>
             <button class="clear-done-btn" id="clear-done-btn">✓ Lagre og avslutt</button>
           </div>
+        </div>
+        <!-- SPARINGS-BANNER: vises når varer har prissammenligningsdata -->
+        <div id="sparing-banner" style="display:none;background:#f0faf4;border:1px solid #2d8a4e44;border-radius:10px;padding:10px 14px;margin:8px 0;font-size:13px;color:#1a5c35">
+          <div id="sparing-banner-tekst"></div>
         </div>
         <div class="items-list" id="items-list">
           <div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>
