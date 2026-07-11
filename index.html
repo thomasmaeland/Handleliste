@@ -4489,6 +4489,8 @@ window.leggTilFraButikk = async (navn, pris, butikk) => {
   document.body.appendChild(melding);
   setTimeout(() => melding.remove(), 2000);
 };
+
+  document.getElementById("smart-list-btn").addEventListener("click", () => {
     const preview = document.getElementById("smart-preview");
     if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
     const { items, thin } = buildSmartList();
