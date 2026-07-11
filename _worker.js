@@ -384,13 +384,13 @@ Regler:
         // STEG 2: Søk på navn — hent unike produkter (én per EAN)
         if (!query) return jsonRes({ error: "Mangler query eller ean" }, 400);
         const searchRes = await fetch(
-          `https://kassal.app/api/v1/products?search=${encodeURIComponent(query)}&size=10&unique=true`,
+          `https://kassal.app/api/v1/products?search=${encodeURIComponent(query)}&size=20`,
           { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } }
         );
         if (!searchRes.ok) return jsonRes({ error: "Kassalapp-feil ved søk" }, 500);
         const searchData = await searchRes.json();
 
-        const produkter = (searchData.data || [])
+        const alleProduktер = (searchData.data || [])
           .filter(p => p.ean)
           .map(p => {
             const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
@@ -404,6 +404,13 @@ Regler:
             };
           })
           .filter(p => p.price != null && p.price > 0);
+
+        // Dedupliser på EAN — behold én per EAN (laveste pris)
+        const sett = {};
+        alleProduktер.forEach(p => {
+          if (!sett[p.ean] || p.price < sett[p.ean].price) sett[p.ean] = p;
+        });
+        const produkter = Object.values(sett).slice(0, 10);
 
         return jsonRes({ type: "produkter", produkter });
 
