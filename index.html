@@ -6845,7 +6845,10 @@ await addDoc(historyRef, {
     if (!banner || !tekst) return;
 
     const aktive = (items || []).filter(i => !i.done && i.kassalButikk && i.kassalPris);
-    if (aktive.length === 0) { banner.style.display = "none"; return; }
+    // DEBUG: alltid vis
+    banner.style.display = "block";
+    tekst.innerHTML = "🔍 Debug: " + (items||[]).length + " varer, " + aktive.length + " med kassalPris. Varer: " + (items||[]).filter(i=>!i.done).map(i=>i.name+"(kassalPris="+i.kassalPris+")").join(", ");
+    if (false && aktive.length === 0) { banner.style.display = "none"; return; }
 
     let totalSpart = 0;
     const sparLinje = [];
