@@ -514,7 +514,7 @@
       <div style="display:flex;gap:8px;margin-bottom:8px">
         <button class="list-action-btn" id="tools-toggle-btn" onclick="toggleTools()" style="flex:1;margin-bottom:0">
           <span class="btn-icon">⚙️</span> Verktøy
-          <span class="btn-sub">smartliste · butikkpris</span>
+          <span class="btn-sub">smartliste · dagens priser</span>
           <span id="tools-chevron" style="margin-left:auto">›</span>
         </button>
         <button class="list-action-btn" id="list-switcher-toggle-btn" onclick="toggleListSwitcher()" style="flex:1;margin-bottom:0">
@@ -548,6 +548,18 @@
   <div id="store-compare-items"></div>
   <div class="smart-preview-actions">
     <button class="smart-cancel-btn" id="store-compare-cancel">Lukk</button>
+  </div>
+</div>
+<button class="smart-list-btn" id="live-price-btn">
+  <span class="btn-icon">🏷️</span>
+  Dagens priser
+  <span class="btn-sub">ekte priser fra norske butikker</span>
+</button>
+<div class="smart-preview" id="live-price-preview">
+  <div class="smart-preview-title" id="live-price-title"></div>
+  <div id="live-price-items"></div>
+  <div class="smart-preview-actions">
+    <button class="smart-cancel-btn" id="live-price-cancel">Lukk</button>
   </div>
 </div>
         </div>
@@ -4184,6 +4196,99 @@ document.getElementById("store-compare-btn").addEventListener("click", () => {
 
 document.getElementById("store-compare-cancel").addEventListener("click", () => {
   document.getElementById("store-compare-preview").classList.remove("open");
+});
+
+// DAGENS PRISER — ekte butikkpriser via Kassalapp (gjennom workeren)
+document.getElementById("live-price-btn").addEventListener("click", async () => {
+  const preview = document.getElementById("live-price-preview");
+  if (preview.classList.contains("open")) { preview.classList.remove("open"); return; }
+  const title = document.getElementById("live-price-title");
+  const area = document.getElementById("live-price-items");
+
+  const active = currentItems.filter(i => !i.done).slice(0, 15);
+  if (active.length === 0) {
+    title.textContent = "Listen er tom";
+    area.innerHTML = `<p class="smart-thin-msg">Legg til varer først 🛒</p>`;
+    preview.classList.add("open");
+    return;
+  }
+
+  title.textContent = "Slår opp dagens priser...";
+  area.innerHTML = `<p class="smart-thin-msg">Henter priser fra norske butikker 🏷️</p>`;
+  preview.classList.add("open");
+
+  try {
+    const queries = active.map(i => cleanName(i.name));
+    const res = await fetch("/price-lookup", {
+      method: "POST",
+      headers: await aiHeaders(),
+      body: JSON.stringify({ queries })
+    });
+    const data = await res.json();
+    if (data.error || !data.results) throw new Error(data.error || "Ukjent feil");
+
+    const storeTotals = {}, storeCounts = {};
+    const rows = [];
+
+    data.results.forEach((r, idx) => {
+      const item = active[idx];
+      const qty = item?.qty || 1;
+      if (!r.matches || r.matches.length === 0) {
+        rows.push({ navn: r.query, none: true });
+        return;
+      }
+      const sorted = [...r.matches].sort((a, b) => a.price - b.price);
+      rows.push({ navn: r.query, best: sorted[0], qty });
+
+      // Billigste treff per butikk for denne varen → butikk-totaler
+      const perStore = {};
+      sorted.forEach(m => {
+        if (!(m.store in perStore) || m.price < perStore[m.store]) perStore[m.store] = m.price;
+      });
+      Object.entries(perStore).forEach(([store, price]) => {
+        storeTotals[store] = (storeTotals[store] || 0) + price * qty;
+        storeCounts[store] = (storeCounts[store] || 0) + 1;
+      });
+    });
+
+    const found = rows.filter(r => !r.none).length;
+    if (found === 0) {
+      title.textContent = "Fant ingen priser";
+      area.innerHTML = `<p class="smart-thin-msg">Ingen av varene ga treff. Prøv mer generelle varenavn (f.eks. "Melk" i stedet for merkenavn).</p>`;
+      return;
+    }
+
+    // Ranger butikker: flest varer dekket først, deretter lavest sum
+    const stores = Object.entries(storeTotals)
+      .map(([store, total]) => ({ store, total: Math.round(total), count: storeCounts[store] }))
+      .sort((a, b) => b.count - a.count || a.total - b.total)
+      .slice(0, 5);
+
+    title.textContent = `Fant priser for ${found} av ${active.length} varer:`;
+    let html = stores.map((s, i) => `
+      <div class="smart-preview-item" style="justify-content:space-between;width:100%">
+        <span>${["🥇","🥈","🥉"][i] || "🏪"} ${escapeHtml(s.store)} <span style="opacity:.6;font-size:11px">(${s.count} varer)</span></span>
+        <strong style="color:var(--accent)">~${s.total} kr</strong>
+      </div>`).join("");
+
+    html += `<div style="margin-top:10px;margin-bottom:4px;font-size:12px;font-weight:500;color:var(--ink3)">Billigste treff per vare:</div>`;
+    html += rows.map(r => r.none
+      ? `<div style="font-size:12px;color:var(--ink3);padding:3px 0">– ${escapeHtml(r.navn)}: ingen treff</div>`
+      : `<div style="font-size:13px;padding:3px 0;display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+           <span style="min-width:0">${escapeHtml(r.navn)}<br><span style="opacity:.5;font-size:11px">${escapeHtml(r.best.name.slice(0, 42))}</span></span>
+           <span style="white-space:nowrap;text-align:right"><strong>${r.best.price} kr</strong><br><span style="opacity:.6;font-size:11px">${escapeHtml(r.best.store)}</span></span>
+         </div>`).join("");
+    html += `<div style="margin-top:8px;font-size:10px;color:var(--ink3)">Priser fra Kassalapp — hovedsakelig nettbutikkpriser, kan avvike fra din lokale butikk</div>`;
+    area.innerHTML = html;
+
+  } catch (e) {
+    console.warn("live-price:", e);
+    title.textContent = "Kunne ikke hente priser";
+    area.innerHTML = `<p class="smart-thin-msg">${escapeHtml(e.message)}</p>`;
+  }
+});
+document.getElementById("live-price-cancel").addEventListener("click", () => {
+  document.getElementById("live-price-preview").classList.remove("open");
 });
   
   document.getElementById("smart-list-btn").addEventListener("click", () => {
