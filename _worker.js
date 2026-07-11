@@ -459,9 +459,19 @@ Regler:
           .slice(0, 8)
           .map(({ skaar, ...rest }) => rest);
 
-        // DEBUG: send rådata for å se hva Kassalapp faktisk returnerer
-        const rawNavn = (searchData.data || []).slice(0, 10).map(p => p.name);
-        return jsonRes({ type: "produkter", produkter, rawNavn });
+        // Fallback: hvis relevansfilter gir 0 treff, vis de 5 beste råtreffene
+        // slik at brukeren ser noe heller enn ingenting
+        const sluttProdukt = produkter.length > 0 ? produkter : (() => {
+          const raSett = {};
+          (searchData.data || []).filter(p => p.ean).forEach(p => {
+            const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
+            if (pris && pris > 0 && (!raSett[p.ean] || pris < raSett[p.ean].price)) {
+              raSett[p.ean] = { name: p.name || "", ean: p.ean, price: pris, store: p.store?.name || "", vendor: p.vendor || "" };
+            }
+          });
+          return Object.values(raSett).slice(0, 6);
+        })();
+        return jsonRes({ type: "produkter", produkter: sluttProdukt, ingenRelevante: produkter.length === 0 });
 
       } catch (err) {
         return jsonRes({ error: err.message }, 500);
