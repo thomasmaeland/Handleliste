@@ -1,0 +1,15 @@
+{
+  // Konfigurasjon for Cloudflare-deploy (Workers med statiske filer).
+  // Denne gjenskaper det gamle Pages-oppsettet eksplisitt:
+  //  - _worker.js er serverkoden (API-proxy mot Anthropic og Kassalapp)
+  //  - alle andre filer serveres som statiske filer (ASSETS)
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "handleliste",
+  "main": "_worker.js",
+  "compatibility_date": "2026-07-11",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS"
+  }
+}
