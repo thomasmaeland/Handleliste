@@ -875,6 +875,21 @@
     </div>
 
     <!-- MIDDAG: SEND TIL HANDLELISTE (velg hva du mangler) -->
+    <!-- KASSALAPP PRISVELGER -->
+    <div id="kassal-pris-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;align-items:center;justify-content:center;padding:1rem">
+      <div style="background:var(--bg);border-radius:16px;max-width:400px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+          <div style="font-family:'DM Serif Display',serif;font-size:1.1rem" id="kassal-pris-tittel">Finn pris</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:2px">Velg butikk — pris og butikk lagres på varen.</div>
+        </div>
+        <div id="kassal-pris-liste" style="overflow-y:auto;flex:1;padding:0.5rem 1rem"></div>
+        <div style="padding:1rem 1.25rem;border-top:1px solid var(--border);display:flex;gap:8px">
+          <button onclick="lukkKassalPris()" style="flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--ink2)">Lukk</button>
+          <button onclick="fjernKassalPris()" id="kassal-pris-fjern" style="display:none;flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--ink3)">Fjern pris</button>
+        </div>
+      </div>
+    </div>
+
     <div id="middag-send-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;align-items:center;justify-content:center;padding:1rem">
       <div style="background:var(--bg);border-radius:16px;max-width:420px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
         <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
@@ -3594,9 +3609,10 @@ window.fjernFraHistorikk = async (navn) => {
           <button class="check-btn" onclick="toggleItem('${item.id}',${item.done})">${item.done?"✓":""}</button>
           <div class="item-main" onclick="openEdit('${item.id}')" style="cursor:pointer">
             <div class="item-name">${escapeHtml(item.name)}${endringMerke}</div>
-            <div class="item-detail">${detail}${dateBadge}</div>
+            <div class="item-detail">${detail}${dateBadge}${item.kassalButikk ? `<span style="margin-left:6px;font-size:11px;color:var(--ink3);border:1px solid var(--border);border-radius:6px;padding:1px 6px">${escapeHtml(item.kassalButikk)} ${item.kassalPris ? item.kassalPris + ' kr' : ''}</span>` : ''}</div>
           </div>
           ${initials ? `<span class="by-whom">${escapeHtml(initials)}</span>` : ""}
+          <button onclick="event.stopPropagation();apneKassalPris('${item.id}','${escapeHtml(item.name)}')" title="Finn pris i butikk" style="background:none;border:none;font-size:16px;cursor:pointer;padding:2px 4px;color:${item.kassalButikk ? 'var(--accent)' : 'var(--ink3)'}">🏷️</button>
           <div class="qty-wrap">
             <button class="qty-btn" onclick="changeQty('${item.id}',${qty},-1)">−</button>
             <span class="qty-num">${qty}</span>
@@ -3617,6 +3633,119 @@ window.fjernFraHistorikk = async (navn) => {
       createdAt: Date.now(), addedBy: currentUser?.displayName || "",
     });
   }
+
+  // ===== KASSALAPP PRISVELGER PÅ VAREKORT =====
+  let kassalPrisItemId = null;
+
+  window.apneKassalPris = async (id, navn) => {
+    kassalPrisItemId = id;
+    const overlay = document.getElementById("kassal-pris-overlay");
+    const tittel = document.getElementById("kassal-pris-tittel");
+    const liste = document.getElementById("kassal-pris-liste");
+    const fjernBtn = document.getElementById("kassal-pris-fjern");
+
+    tittel.textContent = navn;
+    liste.innerHTML = `<p style="text-align:center;padding:1rem;color:var(--ink3);font-size:13px">Henter priser 🏷️</p>`;
+    overlay.style.display = "flex";
+
+    // Vis fjern-knapp hvis varen allerede har en pris
+    const item = currentItems.find(i => i.id === id);
+    fjernBtn.style.display = item?.kassalButikk ? "block" : "none";
+
+    try {
+      const res = await fetch("/ean-search", {
+        method: "POST",
+        headers: await aiHeaders(),
+        body: JSON.stringify({ query: navn })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      const produkter = data.produkter || [];
+      if (produkter.length === 0) {
+        liste.innerHTML = `<p style="text-align:center;padding:1rem;color:var(--ink3);font-size:13px">Ingen treff på "${escapeHtml(navn)}" i Kassalapp.</p>`;
+        return;
+      }
+
+      // Vis produkter — velg ett for å se butikkpriser
+      liste.innerHTML = "";
+      produkter.slice(0, 5).forEach(p => {
+        const div = document.createElement("div");
+        div.style.cssText = "padding:10px 4px;border-bottom:1px solid var(--border);cursor:pointer";
+        div.innerHTML = `<div style="font-size:13px;font-weight:500">${escapeHtml(p.name)}</div><div style="font-size:11px;color:var(--ink3)">${escapeHtml(p.vendor||"")} · Fra ${p.price} kr</div>`;
+        div.addEventListener("mouseover", () => div.style.background = "var(--surface)");
+        div.addEventListener("mouseout", () => div.style.background = "transparent");
+        div.addEventListener("click", () => visKassalButikker(p.ean, p.name));
+        liste.appendChild(div);
+      });
+
+    } catch(e) {
+      console.warn("kassalPris:", e);
+      liste.innerHTML = `<p style="text-align:center;padding:1rem;color:var(--ink3);font-size:13px">Kunne ikke hente priser: ${escapeHtml(e.message)}</p>`;
+    }
+  };
+
+  async function visKassalButikker(ean, produktnavn) {
+    const liste = document.getElementById("kassal-pris-liste");
+    const tittel = document.getElementById("kassal-pris-tittel");
+    tittel.textContent = produktnavn;
+    liste.innerHTML = `<p style="text-align:center;padding:1rem;color:var(--ink3);font-size:13px">Henter butikkpriser...</p>`;
+
+    try {
+      const res = await fetch("/ean-search", {
+        method: "POST",
+        headers: await aiHeaders(),
+        body: JSON.stringify({ ean })
+      });
+      const data = await res.json();
+      const butikker = data.butikker || [];
+
+      if (butikker.length === 0) {
+        liste.innerHTML = `<p style="text-align:center;padding:1rem;color:var(--ink3);font-size:13px">Ingen butikkpriser funnet.</p>`;
+        return;
+      }
+
+      const billigst = butikker[0].price;
+      liste.innerHTML = "";
+
+      const hint = document.createElement("div");
+      hint.style.cssText = "font-size:11px;color:var(--ink3);padding:6px 4px";
+      hint.textContent = "Trykk på en butikk for å lagre pris på varen.";
+      liste.appendChild(hint);
+
+      butikker.forEach((b, i) => {
+        const rad = document.createElement("div");
+        rad.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);cursor:pointer";
+        const diff = b.price > billigst ? `<span style="font-size:11px;color:var(--ink3)"> +${(b.price-billigst).toFixed(2)}</span>` : "";
+        rad.innerHTML = `<div style="font-size:13px;font-weight:${i===0?'600':'400'}">${i===0?'🥇 ':''}${escapeHtml(b.store)}</div><div><span style="font-size:14px;font-weight:600;color:${i===0?'var(--accent)':'var(--ink)'}">${b.price} kr</span>${diff}</div>`;
+        rad.addEventListener("mouseover", () => rad.style.background = "var(--surface)");
+        rad.addEventListener("mouseout", () => rad.style.background = "transparent");
+        rad.addEventListener("click", async () => {
+          if (!kassalPrisItemId) return;
+          await updateDoc(itemDocRef(kassalPrisItemId), {
+            kassalPris: b.price,
+            kassalButikk: b.store
+          });
+          lukkKassalPris();
+        });
+        liste.appendChild(rad);
+      });
+
+    } catch(e) {
+      liste.innerHTML = `<p style="text-align:center;padding:1rem;color:var(--ink3);font-size:13px">${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  window.lukkKassalPris = () => {
+    document.getElementById("kassal-pris-overlay").style.display = "none";
+    kassalPrisItemId = null;
+  };
+
+  window.fjernKassalPris = async () => {
+    if (!kassalPrisItemId) return;
+    await updateDoc(itemDocRef(kassalPrisItemId), { kassalPris: null, kassalButikk: null });
+    lukkKassalPris();
+  };
 
   window.changeQty = async (id, currentQty, delta) => {
     const newQty = Math.max(1, currentQty + delta);
