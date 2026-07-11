@@ -605,6 +605,11 @@
         <div class="price-summary-sub" id="price-sub"></div>
       </div>
 
+      <!-- SPARINGS-BANNER -->
+      <div id="sparing-banner" style="display:none;background:#f0faf4;border:1px solid #2d8a4e44;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#1a5c35">
+        <div id="sparing-banner-tekst"></div>
+      </div>
+
       <!-- RECEIPT SCAN -->
       <input type="file" id="receipt-input" accept="image/*" capture="environment" style="display:none" />
       <div class="receipt-preview" id="receipt-preview">
@@ -3546,6 +3551,7 @@ window.fjernFraHistorikk = async (navn) => {
   function renderList(items) {
     const container = document.getElementById("items-list");
     updateSortToggleBtn();
+    oppdaterSparingsBanner(items); // beregn total sparing
     if (items.length === 0) {
       container.innerHTML = `<div class="empty-state"><div class="big">🛒</div><p>Listen er tom</p></div>`;
       return;
@@ -6828,6 +6834,32 @@ await addDoc(historyRef, {
     if (foretrukneButikker.size === 0) return butikker;
     const mine = butikker.filter(b => foretrukneButikker.has(b.store));
     return mine.length > 0 ? mine : butikker; // fallback til alle hvis ingen match
+  }
+
+  function oppdaterSparingsBanner(items) {
+    const banner = document.getElementById("sparing-banner");
+    const tekst = document.getElementById("sparing-banner-tekst");
+    if (!banner || !tekst) return;
+    const vareMedPriser = (items || []).filter(i =>
+      !i.done && i.kassalButikk && i.kassalPris && i.kassalAlleButikker
+    );
+    if (vareMedPriser.length === 0) { banner.style.display = "none"; return; }
+    const sparingPerButikk = {};
+    vareMedPriser.forEach(item => {
+      Object.entries(item.kassalAlleButikker || {}).forEach(([butikk, pris]) => {
+        if (butikk === item.kassalButikk) return;
+        if (foretrukneButikker.size > 0 && !foretrukneButikker.has(butikk)) return;
+        sparingPerButikk[butikk] = (sparingPerButikk[butikk] || 0) + (item.kassalPris - pris);
+      });
+    });
+    let besteButikk = null, besteSpart = 0;
+    Object.entries(sparingPerButikk).forEach(([butikk, spart]) => {
+      if (spart > besteSpart) { besteButikk = butikk; besteSpart = spart; }
+    });
+    if (!besteButikk || besteSpart < 1) { banner.style.display = "none"; return; }
+    const valgteButikker = [...new Set(vareMedPriser.map(i => i.kassalButikk))];
+    banner.style.display = "block";
+    tekst.innerHTML = `💚 Du kan spare ca. <strong>${besteSpart.toFixed(0)} kr</strong> på ${vareMedPriser.length === 1 ? "1 vare" : vareMedPriser.length + " varer"} ved å handle på <strong>${escapeHtml(besteButikk)}</strong> i stedet for ${escapeHtml(valgteButikker.join("/"))}.`;
   }
 
   async function loadHouseholdInfo() {
