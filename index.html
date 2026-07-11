@@ -6843,33 +6843,52 @@ await addDoc(historyRef, {
     const banner = document.getElementById('sparing-banner');
     const tekst = document.getElementById('sparing-banner-tekst');
     if (!banner || !tekst) return;
-    const aktive = (items || []).filter(i => !i.done);
+
+    // Alle ikke-fullførte varer med butikknavn og pris (tving til tall)
+    const aktive = (items || []).filter(i => !i.done && i.kassalButikk).map(i => ({
+      ...i,
+      kassalPris: i.kassalPris != null ? Number(i.kassalPris) : null
+    })).filter(i => i.kassalPris && i.kassalPris > 0);
+
     if (aktive.length === 0) { banner.style.display = 'none'; return; }
+
     let besteTips = null;
-    aktive.filter(i => i.kassalButikk && i.kassalPris && i.kassalAlleButikker).forEach(item => {
-      Object.entries(item.kassalAlleButikker).forEach(([butikk, pris]) => {
-        if (butikk === item.kassalButikk) return;
+
+    // Sjekk 1: kassalAlleButikker
+    aktive.filter(i => i.kassalAlleButikker).forEach(item => {
+      Object.entries(item.kassalAlleButikker).forEach(([butikk, rawPris]) => {
+        const pris = Number(rawPris);
+        if (butikk === item.kassalButikk || !pris) return;
         if (foretrukneButikker.size > 0 && !foretrukneButikker.has(butikk)) return;
         const spart = item.kassalPris - pris;
         if (spart > 0.5 && (!besteTips || spart > besteTips.spart))
           besteTips = { tekst: '💚 <strong>' + escapeHtml(item.name) + '</strong> er ' + spart.toFixed(0) + ' kr billigere på <strong>' + escapeHtml(butikk) + '</strong> enn ' + escapeHtml(item.kassalButikk) + '.', spart };
       });
     });
+
+    // Sjekk 2: samme varenavn, ulik kassalButikk
     if (!besteTips) {
       const grupper = {};
-      aktive.filter(i => i.kassalButikk && i.kassalPris).forEach(i => {
+      aktive.forEach(i => {
         const n = i.name.toLowerCase().trim();
         if (!grupper[n]) grupper[n] = [];
         grupper[n].push(i);
       });
       Object.values(grupper).forEach(g => {
         if (g.length < 2) return;
-        const s = [...g].sort((a,b) => a.kassalPris - b.kassalPris);
+        const s = [...g].sort((a, b) => a.kassalPris - b.kassalPris);
         const spart = s[s.length-1].kassalPris - s[0].kassalPris;
         if (spart > 0.5 && (!besteTips || spart > besteTips.spart))
           besteTips = { tekst: '💚 <strong>' + escapeHtml(s[0].name) + '</strong> er ' + spart.toFixed(0) + ' kr billigere på <strong>' + escapeHtml(s[0].kassalButikk) + '</strong> enn ' + escapeHtml(s[s.length-1].kassalButikk) + '.', spart };
       });
     }
+
+    // Sjekk 3: alltid vis noe hvis det finnes varer med butikk/pris
+    if (!besteTips && aktive.length > 0) {
+      const sorted = [...aktive].sort((a,b) => a.kassalPris - b.kassalPris);
+      besteTips = { tekst: '🏷️ ' + aktive.length + ' varer med priser. Billigst: <strong>' + escapeHtml(sorted[0].name) + '</strong> (' + escapeHtml(sorted[0].kassalButikk) + ' ' + sorted[0].kassalPris + ' kr)', spart: 0 };
+    }
+
     if (besteTips) { banner.style.display = 'block'; tekst.innerHTML = besteTips.tekst; }
     else { banner.style.display = 'none'; }
   }
