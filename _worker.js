@@ -418,17 +418,18 @@ Regler:
         const q = query.toLowerCase().trim();
         const qOrd = q.split(/\s+/);
 
-        // Skår relevans: 0=beste match, 999=ikke relevant
+        // Relevans: 0=første ord starter med søkeordet (best), 1=søkeordet er ett av første 2 ord, 999=ikke relevant
         function relevansSkaar(navn) {
           const n = navn.toLowerCase();
-          const forsteOrd = n.split(" ")[0];
-          // Enkeltords-søk: første ord i produktnavnet må starte med søkeordet
+          const navnOrd = n.split(" ");
           if (qOrd.length === 1) {
-            if (forsteOrd.startsWith(q)) return 0;  // "Sukker 1kg", "Sukkerbiter" — ja
-            return 999;                              // "0% Sukker Ispinne" — nei
+            if (navnOrd[0].startsWith(q)) return 0;
+            // Andre ord eksakt søkeord (f.eks. "Hvitt Sukker") — men IKKE "0% Sukker Ispinne" pga. tall/% som første ord
+            const andreOrd = navnOrd[1];
+            if (andreOrd && andreOrd === q && /^[a-zA-Z]/.test(navnOrd[0])) return 1;
+            return 999;
           }
-          // Flerords-søk (f.eks. "tine lettmelk"): alle ord må finnes i produktnavnet
-          if (qOrd.every(ord => n.includes(ord))) return 0;
+          if (qOrd.every(o => n.includes(o))) return 0;
           return 999;
         }
 
@@ -436,25 +437,23 @@ Regler:
           .filter(p => p.ean)
           .map(p => {
             const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
-            const skaar = relevansSkaar(p.name || "");
             return {
               name: p.name || "",
               ean: p.ean,
               price: pris,
               store: p.store?.name || "",
               vendor: p.vendor || "",
-              skaar
+              skaar: relevansSkaar(p.name || "")
             };
           })
           .filter(p => p.price != null && p.price > 0 && p.skaar < 999);
 
-        // Dedupliser på EAN — behold én per EAN (laveste pris)
+        // Dedupliser på EAN — laveste pris
         const sett = {};
         medSkaar.forEach(p => {
           if (!sett[p.ean] || p.price < sett[p.ean].price) sett[p.ean] = { ...p };
         });
 
-        // Sorter: best relevans først, deretter pris
         const produkter = Object.values(sett)
           .sort((a, b) => a.skaar - b.skaar || a.price - b.price)
           .slice(0, 8)
