@@ -351,85 +351,97 @@ Regler:
     // -------------------------------------------------------
     //  /price-lookup – slå opp priser på varenavn via Kassalapp
     // -------------------------------------------------------
-    if (url.pathname === "/price-lookup" && request.method === "POST") {
+    // -------------------------------------------------------
+    //  /ean-search – søk vare, hent EAN, sammenlign pris i alle butikker
+    // -------------------------------------------------------
+    if (url.pathname === "/ean-search" && request.method === "POST") {
       try {
         const kassalKey = env.KASSALAPP_API_KEY;
-        if (!kassalKey) return jsonRes({ error: "Kassalapp er ikke konfigurert (mangler KASSALAPP_API_KEY)" }, 500);
+        if (!kassalKey) return jsonRes({ error: "Kassalapp ikke konfigurert" }, 500);
 
-        const { queries } = await request.json();
-        if (!Array.isArray(queries) || queries.length === 0) return jsonRes({ error: "Ingen varer å slå opp" }, 400);
-        const limited = queries.slice(0, 15).map(q => String(q || "").trim()).filter(Boolean);
+        const { query, ean } = await request.json();
 
-        const lookupOne = async (q) => {
-          const apiUrl = "https://kassal.app/api/v1/products?search=" + encodeURIComponent(q) + "&size=8";
-          const res = await fetch(apiUrl, { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } });
-          if (!res.ok) return { query: q, matches: [] };
-          const data = await res.json();
-          const matches = (data.data || []).map(p => ({
-            name: p.name || "",
-            store: p.store?.name || "Ukjent butikk",
-            storeCode: p.store?.code || "",
-            price: typeof p.current_price === "number" ? p.current_price : (p.current_price?.price ?? null),
-            ean: p.ean || null,
-            image: p.image || null
-          })).filter(m => m.price != null && m.price > 0);
-          return { query: q, matches };
-        };
+        // STEG 1: Hvis vi allerede har EAN, hopp rett til prisoversikt
+        if (ean) {
+          const priceRes = await fetch(
+            `https://kassal.app/api/v1/products/ean/${encodeURIComponent(ean)}`,
+            { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } }
+          );
+          if (!priceRes.ok) return jsonRes({ error: "Kassalapp-feil ved EAN-oppslag" }, 500);
+          const priceData = await priceRes.json();
 
-        const results = [];
-        for (let i = 0; i < limited.length; i += 5) {
-          const batch = limited.slice(i, i + 5);
-          const batchResults = await Promise.all(batch.map(lookupOne));
-          results.push(...batchResults);
+          const butikker = (priceData.data || [])
+            .map(p => {
+              const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
+              return { store: p.store?.name || "Ukjent", price: pris, name: p.name || "" };
+            })
+            .filter(p => p.price != null && p.price > 0)
+            .sort((a, b) => a.price - b.price);
+
+          return jsonRes({ type: "priser", ean, butikker });
         }
-        return jsonRes({ results });
+
+        // STEG 2: Søk på navn — hent unike produkter (én per EAN)
+        if (!query) return jsonRes({ error: "Mangler query eller ean" }, 400);
+        const searchRes = await fetch(
+          `https://kassal.app/api/v1/products?search=${encodeURIComponent(query)}&size=10&unique=true`,
+          { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } }
+        );
+        if (!searchRes.ok) return jsonRes({ error: "Kassalapp-feil ved søk" }, 500);
+        const searchData = await searchRes.json();
+
+        const produkter = (searchData.data || [])
+          .filter(p => p.ean)
+          .map(p => {
+            const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
+            return {
+              name: p.name || "",
+              ean: p.ean,
+              price: pris,
+              store: p.store?.name || "",
+              image: p.image || null,
+              vendor: p.vendor || ""
+            };
+          })
+          .filter(p => p.price != null && p.price > 0);
+
+        return jsonRes({ type: "produkter", produkter });
+
       } catch (err) {
         return jsonRes({ error: err.message }, 500);
       }
     }
 
     // -------------------------------------------------------
-    //  /butikk-tilbud – henter billigste varer fra én butikkjede
+    //  /price-lookup – beholdt for bakoverkompatibilitet med Dagens priser
     // -------------------------------------------------------
-    if (url.pathname === "/butikk-tilbud" && request.method === "POST") {
+    if (url.pathname === "/price-lookup" && request.method === "POST") {
       try {
         const kassalKey = env.KASSALAPP_API_KEY;
-        if (!kassalKey) return jsonRes({ error: "Kassalapp er ikke konfigurert (mangler KASSALAPP_API_KEY)" }, 500);
-
-        const { butikk, side } = await request.json();
-        if (!butikk) return jsonRes({ error: "Mangler butikk" }, 400);
-
-        // Hent billigste produkter sortert på pris, filtrer på butikkjede klientside
-        // Vi henter 3 sider (30 produkter) for å få nok treff fra riktig butikk
-        const pageNum = side || 1;
-        const apiUrl = `https://kassal.app/api/v1/products?sort=price_asc&size=50&page=${pageNum}`;
-        const res = await fetch(apiUrl, { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } });
-        if (!res.ok) return jsonRes({ error: "Kassalapp-feil", status: res.status }, 500);
-        const data = await res.json();
-
-        // Filtrer til valgt butikk
-        const butikkNavn = butikk.toLowerCase();
-        const produkter = (data.data || [])
-          .filter(p => (p.store?.name || "").toLowerCase().includes(butikkNavn) || (p.store?.code || "").toLowerCase().includes(butikkNavn.replace(/\s/g, "_")))
-          .filter(p => {
-            const pris = typeof p.current_price === "number" ? p.current_price : p.current_price?.price;
-            return pris != null && pris > 0;
-          })
-          .map(p => ({
-            name: p.name || "",
-            store: p.store?.name || butikk,
-            storeCode: p.store?.code || "",
-            price: typeof p.current_price === "number" ? p.current_price : p.current_price?.price,
-            unitPrice: p.current_unit_price || null,
-            weight: p.weight || null,
-            weightUnit: p.weight_unit || null,
-            image: p.image || null,
+        if (!kassalKey) return jsonRes({ error: "Kassalapp er ikke konfigurert" }, 500);
+        const { queries } = await request.json();
+        if (!Array.isArray(queries) || queries.length === 0) return jsonRes({ error: "Ingen varer" }, 400);
+        const limited = queries.slice(0, 15).map(q => String(q || "").trim()).filter(Boolean);
+        const lookupOne = async (q) => {
+          const res = await fetch(`https://kassal.app/api/v1/products?search=${encodeURIComponent(q)}&size=8`, {
+            headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" }
+          });
+          if (!res.ok) return { query: q, matches: [] };
+          const data = await res.json();
+          const matches = (data.data || []).map(p => ({
+            name: p.name || "", store: p.store?.name || "Ukjent",
+            price: typeof p.current_price === "number" ? p.current_price : (p.current_price?.price ?? null),
             ean: p.ean || null
-          }))
-          .sort((a, b) => a.price - b.price)
-          .slice(0, 20);
-
-        return jsonRes({ butikk, produkter });
+          })).filter(m => m.price != null && m.price > 0);
+          return { query: q, matches };
+        };
+        const results = [];
+        for (let i = 0; i < limited.length; i += 5) {
+          const batch = limited.slice(i, i + 5);
+          const res = await Promise.all(batch.map(lookupOne));
+          results.push(...res);
+        }
+        return jsonRes({ results });
       } catch (err) {
         return jsonRes({ error: err.message }, 500);
       }
