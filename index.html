@@ -472,6 +472,18 @@
             <div id="list-info-content"></div>
           </div>
           <div class="dd-divider"></div>
+          <div class="dd-section-label">Mine butikker</div>
+          <div style="padding:4px 8px 4px;font-size:12px;color:var(--ink3)">Filtrer priser til butikkene du bruker.</div>
+          <div id="butikk-valg" style="padding:0 8px 8px;display:flex;flex-direction:column;gap:4px">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0"><input type="checkbox" class="butikk-cb" data-butikk="Meny" onchange="lagreButikkValg()" style="width:16px;height:16px"> Meny</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0"><input type="checkbox" class="butikk-cb" data-butikk="KIWI" onchange="lagreButikkValg()" style="width:16px;height:16px"> KIWI</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0"><input type="checkbox" class="butikk-cb" data-butikk="Rema 1000" onchange="lagreButikkValg()" style="width:16px;height:16px"> Rema 1000</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0"><input type="checkbox" class="butikk-cb" data-butikk="Spar" onchange="lagreButikkValg()" style="width:16px;height:16px"> Spar</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0"><input type="checkbox" class="butikk-cb" data-butikk="Bunnpris" onchange="lagreButikkValg()" style="width:16px;height:16px"> Bunnpris</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0"><input type="checkbox" class="butikk-cb" data-butikk="Joker" onchange="lagreButikkValg()" style="width:16px;height:16px"> Joker</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0"><input type="checkbox" class="butikk-cb" data-butikk="Coop Extra" onchange="lagreButikkValg()" style="width:16px;height:16px"> Coop Extra</label>
+          </div>
+          <div class="dd-divider"></div>
           <div class="dd-section-label">Husholdning</div>
           <div id="household-info" style="padding:4px 8px 8px;font-size:13px;color:var(--ink2)">
             <div id="household-members">Laster...</div>
@@ -1512,6 +1524,8 @@ let LIST_ID = null;
 
       // Tavla bindes til den FELLES husstanden (householdId), ikke vilkårlig "første liste"
       HOUSEHOLD_ID = data.householdId || privateIds[0] || user.uid;
+      // Last foretrukne butikker fra Firestore
+      lastButikkValg().catch(e => console.warn("lastButikkValg:", e));
     }
     
     // Hvis ingen private lister, opprett en
@@ -3714,26 +3728,43 @@ window.fjernFraHistorikk = async (navn) => {
         body: JSON.stringify({ ean })
       });
       const data = await res.json();
-      const butikker = data.butikker || [];
+      const alleButikker = data.butikker || [];
 
-      if (butikker.length === 0) {
+      if (alleButikker.length === 0) {
         liste.innerHTML = `<p style="text-align:center;padding:1rem;color:var(--ink3);font-size:13px">Ingen butikkpriser funnet.</p>`;
         return;
       }
 
-      const billigst = butikker[0].price;
+      // Filtrer til foretrukne butikker, fallback til alle
+      const butikker = filtrerButikker(alleButikker);
+      const billigstAlle = alleButikker[0].price;
+      const billigstMine = butikker[0].price;
+
       liste.innerHTML = "";
 
+      // Vis besparelse om billigste av alle er billigere enn billigste av mine
+      if (billigstAlle < billigstMine - 0.5) {
+        const info = document.createElement("div");
+        info.style.cssText = "background:#fff8e1;border:1px solid #f0c040;border-radius:8px;padding:8px 10px;font-size:12px;color:#7a5c00;margin-bottom:8px";
+        info.textContent = `💡 ${alleButikker[0].store} har billigste pris (${billigstAlle} kr), men er ikke blant dine butikker.`;
+        liste.appendChild(info);
+      }
+
       const hint = document.createElement("div");
-      hint.style.cssText = "font-size:11px;color:var(--ink3);padding:6px 4px";
-      hint.textContent = "Trykk på en butikk for å lagre pris på varen.";
+      hint.style.cssText = "font-size:11px;color:var(--ink3);padding:4px 4px 8px";
+      hint.textContent = foretrukneButikker.size > 0
+        ? `Viser dine ${butikker.length} butikker. Trykk for å lagre pris.`
+        : "Trykk på en butikk for å lagre pris på varen.";
       liste.appendChild(hint);
 
       butikker.forEach((b, i) => {
         const rad = document.createElement("div");
         rad.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);cursor:pointer";
-        const diff = b.price > billigst ? `<span style="font-size:11px;color:var(--ink3)"> +${(b.price-billigst).toFixed(2)}</span>` : "";
-        rad.innerHTML = `<div style="font-size:13px;font-weight:${i===0?'600':'400'}">${i===0?'🥇 ':''}${escapeHtml(b.store)}</div><div><span style="font-size:14px;font-weight:600;color:${i===0?'var(--accent)':'var(--ink)'}">${b.price} kr</span>${diff}</div>`;
+        const erBilligst = b.price === billigstMine;
+        const diff = b.price > billigstMine ? `<span style="font-size:11px;color:var(--ink3)"> +${(b.price - billigstMine).toFixed(2)}</span>` : "";
+        rad.innerHTML = `
+          <div style="font-size:13px;font-weight:${erBilligst?'600':'400'}">${erBilligst ? '🥇 ' : ''}${escapeHtml(b.store)}</div>
+          <div><span style="font-size:14px;font-weight:600;color:${erBilligst?'var(--accent)':'var(--ink)'}">${b.price} kr</span>${diff}</div>`;
         rad.addEventListener("mouseover", () => rad.style.background = "var(--surface)");
         rad.addEventListener("mouseout", () => rad.style.background = "transparent");
         rad.addEventListener("click", async () => {
@@ -6762,8 +6793,42 @@ await addDoc(historyRef, {
   window.toggleSettingsDropdown = () => {
     const dd = document.getElementById('settings-dropdown');
     dd.classList.toggle('open');
-    if (dd.classList.contains('open')) loadHouseholdInfo();
+    if (dd.classList.contains('open')) { loadHouseholdInfo(); lastButikkValg(); }
   };
+
+  // ===== FORETRUKNE BUTIKKER =====
+  let foretrukneButikker = new Set(["Meny","KIWI","Rema 1000"]); // standard
+
+  async function lastButikkValg() {
+    try {
+      if (!HOUSEHOLD_ID) return;
+      const snap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const lagret = snap.exists() ? (snap.data().foretrukneButikker || null) : null;
+      if (lagret && Array.isArray(lagret)) foretrukneButikker = new Set(lagret);
+    } catch(e) { console.warn("lastButikkValg:", e); }
+    // Oppdater checkboxer
+    document.querySelectorAll(".butikk-cb").forEach(cb => {
+      cb.checked = foretrukneButikker.has(cb.dataset.butikk);
+    });
+  }
+
+  window.lagreButikkValg = async () => {
+    const valgte = [...document.querySelectorAll(".butikk-cb")]
+      .filter(cb => cb.checked)
+      .map(cb => cb.dataset.butikk);
+    foretrukneButikker = new Set(valgte);
+    if (!HOUSEHOLD_ID) return;
+    try {
+      await updateDoc(doc(db, "households", HOUSEHOLD_ID), { foretrukneButikker: valgte });
+    } catch(e) { console.warn("lagreButikkValg:", e); }
+  };
+
+  // Filtrer butikker til foretrukne (eller alle hvis ingen er valgt)
+  function filtrerButikker(butikker) {
+    if (foretrukneButikker.size === 0) return butikker;
+    const mine = butikker.filter(b => foretrukneButikker.has(b.store));
+    return mine.length > 0 ? mine : butikker; // fallback til alle hvis ingen match
+  }
 
   async function loadHouseholdInfo() {
     const membersEl = document.getElementById("household-members");
