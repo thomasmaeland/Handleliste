@@ -367,21 +367,16 @@ Regler:
             `https://kassal.app/api/v1/products/ean/${encodeURIComponent(ean)}`,
             { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } }
           );
-          if (!priceRes.ok) return jsonRes({ error: "Kassalapp-feil ved EAN-oppslag" }, 500);
+          if (!priceRes.ok) return jsonRes({ error: "Kassalapp-feil ved EAN-oppslag", status: priceRes.status }, 500);
           const priceData = await priceRes.json();
 
-          // Debug: logg hva vi faktisk får fra Kassalapp
-          // priceData kan være { data: [...] } eller { data: { products: [...] } }
+          // data kan være array direkte eller nestet
           let produktliste = [];
-          if (Array.isArray(priceData.data)) {
-            produktliste = priceData.data;
-          } else if (priceData.data && Array.isArray(priceData.data.products)) {
-            produktliste = priceData.data.products;
-          } else if (Array.isArray(priceData)) {
-            produktliste = priceData;
-          }
+          if (Array.isArray(priceData.data)) produktliste = priceData.data;
+          else if (priceData.data && Array.isArray(priceData.data.products)) produktliste = priceData.data.products;
+          else if (Array.isArray(priceData)) produktliste = priceData;
 
-          const butikker = produktliste
+          let butikker = produktliste
             .map(p => ({
               store: p.store?.name || "Ukjent",
               price: p.current_price != null ? Number(p.current_price) : null,
@@ -390,7 +385,25 @@ Regler:
             .filter(p => p.price != null && p.price > 0)
             .sort((a, b) => a.price - b.price);
 
-          return jsonRes({ type: "priser", ean, butikker, debug: typeof priceData.data });
+          // Fallback: hvis EAN gir tomt, prøv navnesøk
+          if (butikker.length === 0 && produktliste.length > 0) {
+            const navn = produktliste[0]?.name || "";
+            if (navn) {
+              const fbRes = await fetch(
+                `https://kassal.app/api/v1/products?search=${encodeURIComponent(navn)}&size=20`,
+                { headers: { "Authorization": "Bearer " + kassalKey, "Accept": "application/json" } }
+              );
+              if (fbRes.ok) {
+                const fbData = await fbRes.json();
+                butikker = (Array.isArray(fbData.data) ? fbData.data : [])
+                  .map(p => ({ store: p.store?.name || "Ukjent", price: p.current_price != null ? Number(p.current_price) : null, name: p.name || "" }))
+                  .filter(p => p.price != null && p.price > 0)
+                  .sort((a, b) => a.price - b.price);
+              }
+            }
+          }
+
+          return jsonRes({ type: "priser", ean, butikker });
         }
 
         // STEG 2: Søk på navn — hent unike produkter (én per EAN)
