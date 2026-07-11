@@ -6851,49 +6851,48 @@ await addDoc(historyRef, {
     let totalSpart = 0;
     const sparLinje = [];
 
-    // Metode 1: varer med alle butikkpriser lagret (kassalAlleButikker)
+    // Metode 1: varer med alle butikkpriser lagret
     aktive.filter(i => i.kassalAlleButikker).forEach(item => {
-      let besteAlternativ = null;
+      let beste = null;
       Object.entries(item.kassalAlleButikker).forEach(([butikk, pris]) => {
         if (butikk === item.kassalButikk) return;
         if (foretrukneButikker.size > 0 && !foretrukneButikker.has(butikk)) return;
-        if (!besteAlternativ || pris < besteAlternativ.pris) besteAlternativ = { butikk, pris };
+        if (!beste || pris < beste.pris) beste = { butikk, pris };
       });
-      if (besteAlternativ && item.kassalPris - besteAlternativ.pris > 0.5) {
-        const spart = item.kassalPris - besteAlternativ.pris;
+      if (beste && item.kassalPris - beste.pris > 0.5) {
+        const spart = item.kassalPris - beste.pris;
         totalSpart += spart;
-        sparLinje.push({ navn: item.name, spart, fraButikk: item.kassalButikk, tilButikk: besteAlternativ.butikk });
+        sparLinje.push({ navn: item.name, spart, fra: item.kassalButikk, til: beste.butikk });
       }
     });
 
-    // Metode 2: varer med samme navn men ulik butikk i lista
-    const navnGrupper = {};
-    aktive.forEach(item => {
-      const n = item.name.toLowerCase().trim();
-      if (!navnGrupper[n]) navnGrupper[n] = [];
-      navnGrupper[n].push(item);
+    // Metode 2: samme varenavn, ulik butikk i lista
+    const grupper = {};
+    aktive.forEach(i => {
+      const n = i.name.toLowerCase().trim();
+      if (!grupper[n]) grupper[n] = [];
+      grupper[n].push(i);
     });
-    Object.values(navnGrupper).forEach(gruppe => {
-      if (gruppe.length < 2) return;
-      const sorted = [...gruppe].sort((a, b) => a.kassalPris - b.kassalPris);
-      const billigst = sorted[0];
-      sorted.slice(1).forEach(dyrere => {
-        const spart = dyrere.kassalPris - billigst.kassalPris;
+    Object.values(grupper).forEach(g => {
+      if (g.length < 2) return;
+      const sorted = [...g].sort((a, b) => a.kassalPris - b.kassalPris);
+      sorted.slice(1).forEach(dyr => {
+        const spart = dyr.kassalPris - sorted[0].kassalPris;
         if (spart > 0.5) {
           totalSpart += spart;
-          sparLinje.push({ navn: dyrere.name, spart, fraButikk: dyrere.kassalButikk, tilButikk: billigst.kassalButikk });
+          sparLinje.push({ navn: dyr.name, spart, fra: dyr.kassalButikk, til: sorted[0].kassalButikk });
         }
       });
     });
 
-    if (totalSpart < 1) { banner.style.display = "none"; return; }
+    if (totalSpart < 0.5) { banner.style.display = "none"; return; }
 
     banner.style.display = "block";
     if (sparLinje.length === 1) {
       const s = sparLinje[0];
-      tekst.innerHTML = `💚 <strong>${escapeHtml(s.navn)}</strong> er ${s.spart.toFixed(0)} kr billigere på <strong>${escapeHtml(s.tilButikk)}</strong> enn ${escapeHtml(s.fraButikk)}.`;
+      tekst.innerHTML = `💚 <strong>${escapeHtml(s.navn)}</strong> er ${s.spart.toFixed(0)} kr billigere på <strong>${escapeHtml(s.til)}</strong> enn ${escapeHtml(s.fra)}.`;
     } else {
-      tekst.innerHTML = `💚 Du kan spare ca. <strong>${totalSpart.toFixed(0)} kr</strong> totalt ved å bytte butikk på ${sparLinje.length} varer.`;
+      tekst.innerHTML = `💚 Du kan spare ca. <strong>${totalSpart.toFixed(0)} kr</strong> totalt ved å bytte butikk på ${sparLinje.length} varer — billigste er ${escapeHtml(sparLinje[0].til)}.`;
     }
   }
 
