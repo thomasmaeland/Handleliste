@@ -6844,26 +6844,57 @@ await addDoc(historyRef, {
     const banner = document.getElementById("sparing-banner");
     const tekst = document.getElementById("sparing-banner-tekst");
     if (!banner || !tekst) return;
-    const vareMedPriser = (items || []).filter(i =>
-      !i.done && i.kassalButikk && i.kassalPris && i.kassalAlleButikker
-    );
-    if (vareMedPriser.length === 0) { banner.style.display = "none"; return; }
-    const sparingPerButikk = {};
-    vareMedPriser.forEach(item => {
-      Object.entries(item.kassalAlleButikker || {}).forEach(([butikk, pris]) => {
+
+    const aktive = (items || []).filter(i => !i.done && i.kassalButikk && i.kassalPris);
+    if (aktive.length === 0) { banner.style.display = "none"; return; }
+
+    let totalSpart = 0;
+    const sparLinje = [];
+
+    // Metode 1: varer med alle butikkpriser lagret (kassalAlleButikker)
+    aktive.filter(i => i.kassalAlleButikker).forEach(item => {
+      let besteAlternativ = null;
+      Object.entries(item.kassalAlleButikker).forEach(([butikk, pris]) => {
         if (butikk === item.kassalButikk) return;
         if (foretrukneButikker.size > 0 && !foretrukneButikker.has(butikk)) return;
-        sparingPerButikk[butikk] = (sparingPerButikk[butikk] || 0) + (item.kassalPris - pris);
+        if (!besteAlternativ || pris < besteAlternativ.pris) besteAlternativ = { butikk, pris };
+      });
+      if (besteAlternativ && item.kassalPris - besteAlternativ.pris > 0.5) {
+        const spart = item.kassalPris - besteAlternativ.pris;
+        totalSpart += spart;
+        sparLinje.push({ navn: item.name, spart, fraButikk: item.kassalButikk, tilButikk: besteAlternativ.butikk });
+      }
+    });
+
+    // Metode 2: varer med samme navn men ulik butikk i lista
+    const navnGrupper = {};
+    aktive.forEach(item => {
+      const n = item.name.toLowerCase().trim();
+      if (!navnGrupper[n]) navnGrupper[n] = [];
+      navnGrupper[n].push(item);
+    });
+    Object.values(navnGrupper).forEach(gruppe => {
+      if (gruppe.length < 2) return;
+      const sorted = [...gruppe].sort((a, b) => a.kassalPris - b.kassalPris);
+      const billigst = sorted[0];
+      sorted.slice(1).forEach(dyrere => {
+        const spart = dyrere.kassalPris - billigst.kassalPris;
+        if (spart > 0.5) {
+          totalSpart += spart;
+          sparLinje.push({ navn: dyrere.name, spart, fraButikk: dyrere.kassalButikk, tilButikk: billigst.kassalButikk });
+        }
       });
     });
-    let besteButikk = null, besteSpart = 0;
-    Object.entries(sparingPerButikk).forEach(([butikk, spart]) => {
-      if (spart > besteSpart) { besteButikk = butikk; besteSpart = spart; }
-    });
-    if (!besteButikk || besteSpart < 1) { banner.style.display = "none"; return; }
-    const valgteButikker = [...new Set(vareMedPriser.map(i => i.kassalButikk))];
+
+    if (totalSpart < 1) { banner.style.display = "none"; return; }
+
     banner.style.display = "block";
-    tekst.innerHTML = `💚 Du kan spare ca. <strong>${besteSpart.toFixed(0)} kr</strong> på ${vareMedPriser.length === 1 ? "1 vare" : vareMedPriser.length + " varer"} ved å handle på <strong>${escapeHtml(besteButikk)}</strong> i stedet for ${escapeHtml(valgteButikker.join("/"))}.`;
+    if (sparLinje.length === 1) {
+      const s = sparLinje[0];
+      tekst.innerHTML = `💚 <strong>${escapeHtml(s.navn)}</strong> er ${s.spart.toFixed(0)} kr billigere på <strong>${escapeHtml(s.tilButikk)}</strong> enn ${escapeHtml(s.fraButikk)}.`;
+    } else {
+      tekst.innerHTML = `💚 Du kan spare ca. <strong>${totalSpart.toFixed(0)} kr</strong> totalt ved å bytte butikk på ${sparLinje.length} varer.`;
+    }
   }
 
   async function loadHouseholdInfo() {
