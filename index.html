@@ -3346,6 +3346,48 @@ let LIST_ID = null;
     }
   })();
 
+  // Sender et push-varsel til én bestemt uid via workeren (server-til-server,
+  // gjør Firestore-oppslag som frontend ikke har lesetilgang til selv).
+  async function sendPushToUid(targetUid, title, body, tag) {
+    if (!currentUser || !targetUid || targetUid === currentUser.uid || !HOUSEHOLD_ID) return;
+    try {
+      await fetch("/send-push", {
+        method: "POST",
+        headers: await aiHeaders(),
+        body: JSON.stringify({ householdId: HOUSEHOLD_ID, targetUid, title, body, tag })
+      });
+    } catch (e) {
+      console.warn("Kunne ikke sende push-varsel", e);
+    }
+  }
+
+  // Varsler alle ANDRE medlemmer av husstanden (ikke deg selv)
+  async function notifyOtherMembers(title, body, tag) {
+    if (!HOUSEHOLD_ID) return;
+    try {
+      const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const members = hhSnap.exists() ? (hhSnap.data().members || {}) : {};
+      const uids = Array.isArray(members) ? [] : Object.keys(members);
+      await Promise.all(uids.map(uid => sendPushToUid(uid, title, body, tag)));
+    } catch (e) {
+      console.warn("Kunne ikke varsle husstandsmedlemmer", e);
+    }
+  }
+
+  // Varsler ett bestemt medlem, gitt navnet slik det står i husstandens medlemsliste
+  async function notifyMemberByName(name, title, body, tag) {
+    if (!HOUSEHOLD_ID || !name) return;
+    try {
+      const hhSnap = await getDoc(doc(db, "households", HOUSEHOLD_ID));
+      const members = hhSnap.exists() ? (hhSnap.data().members || {}) : {};
+      if (Array.isArray(members)) return;
+      const entry = Object.entries(members).find(([, n]) => String(n).trim() === String(name).trim());
+      if (entry) await sendPushToUid(entry[0], title, body, tag);
+    } catch (e) {
+      console.warn("Kunne ikke varsle person", e);
+    }
+  }
+
   // PURCHASE HISTORY
   async function loadPurchaseHistory() {
     try {
@@ -3668,6 +3710,7 @@ window.fjernFraHistorikk = async (navn) => {
       createdAt: Date.now(), addedBy: currentUser?.displayName || "",
       ...ekstra
     });
+    notifyOtherMembers("Ny vare på handlelisten", trimmed, "item-add");
   }
 
   // ===== KASSALAPP PRISVELGER PÅ VAREKORT =====
@@ -6631,6 +6674,12 @@ await addDoc(historyRef, {
         createdByName: currentUser?.displayName || "",
         createdAt: Date.now()
       });
+      notifyMemberByName(
+        assignedTo,
+        "Ny oppgave: " + title,
+        dueDate ? `Frist ${dueDate}${dueTime ? " kl. " + dueTime : ""}` : "",
+        "task-add"
+      );
     }
 
     resetBoardForm();
