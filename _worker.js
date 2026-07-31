@@ -157,9 +157,18 @@ Regler:
       try {
         if (!apiKey) return jsonRes({ error: "API key not configured" }, 500);
 
-        const { image, mediaType, type } = await request.json();
+        const { image, mediaType, type, instructions } = await request.json();
 
-        const prompt = type === "receipt"
+        // Robusthet: gi en tydelig feilmelding hvis bildet mangler,
+        // i stedet for en kryptisk feil fra Anthropic-kallet lenger ned.
+        if (!image) {
+          return jsonRes({ error: "Mangler bilde. Ta bildet på nytt og prøv igjen." }, 400);
+        }
+        if (!mediaType) {
+          return jsonRes({ error: "Mangler bildeformat (mediaType)." }, 400);
+        }
+
+        let prompt = type === "receipt"
           ? `Dette er en norsk dagligvarekvittering. Les HELE varelinjen for hver kjøpte vare.
 
 Svar KUN med gyldig JSON, ingen annen tekst:
@@ -227,6 +236,13 @@ Regler:
 - IKKE ta med: rabatter, bonuspoeng, poser, pant, gebyrer, betalingslinjer, kortinfo`
           : `Se på dette kjøleskapet. List varer som er tomme eller nesten tomme. Svar KUN med JSON:
 {"varer":[{"navn":"Melk","grunn":"nesten tom"}]}`;
+
+        // Bruk "instructions" fra frontend hvis den er sendt med, i stedet for
+        // å la feltet ligge urørt i forespørselen. Gir brukeren mulighet til å
+        // sende en ekstra hint/presisering sammen med bildet.
+        if (instructions && String(instructions).trim()) {
+          prompt += `\n\nEkstra instruksjoner fra brukeren (ta hensyn til disse): ${String(instructions).trim()}`;
+        }
 
         const { ok, status, rawText } = await callAnthropic(apiKey, {
           model: "claude-sonnet-4-6",
