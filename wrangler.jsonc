@@ -11,5 +11,10 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS"
+  },
+  "triggers": {
+    // Sjekker påminnelser fra familietavla hvert 5. minutt og sender push
+    // via checkAndSendReminders() i _worker.js.
+    "crons": ["*/5 * * * *"]
   }
 }
