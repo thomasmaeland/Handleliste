@@ -68,6 +68,283 @@ async function callAnthropic(apiKey, payload) {
   return { ok: response.ok, status: response.status, rawText };
 }
 
+// Firebase Web API key (offentlig verdi, samme som i frontend firebaseConfig).
+// Brukes KUN til å verifisere idToken via Identity Toolkit, ikke en hemmelighet.
+const FIREBASE_WEB_API_KEY = "AIzaSyCoWYFF9JxVxMFNlwnLzrulSkHmTjh46uY";
+
+// ============================================================
+//  Google service-account-auth (for Firestore + FCM fra worker)
+//  Krever secrets: FIREBASE_SA_EMAIL, FIREBASE_SA_PRIVATE_KEY, FIREBASE_PROJECT_ID
+// ============================================================
+function base64url(bytesOrStr) {
+  const str = typeof bytesOrStr === "string"
+    ? btoa(bytesOrStr)
+    : btoa(String.fromCharCode(...new Uint8Array(bytesOrStr)));
+  return str.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function pemToArrayBuffer(pem) {
+  const clean = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\s+/g, "");
+  const binary = atob(clean);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+let cachedAccessToken = null; // { token, exp } – gjenbrukes mens worker-instansen er "varm"
+
+async function getGoogleAccessToken(env) {
+  if (cachedAccessToken && cachedAccessToken.exp > Date.now() + 30000) {
+    return cachedAccessToken.token;
+  }
+
+  const email = env.FIREBASE_SA_EMAIL;
+  const rawKey = env.FIREBASE_SA_PRIVATE_KEY;
+  if (!email || !rawKey) {
+    throw new Error("Google service-account ikke konfigurert (FIREBASE_SA_EMAIL / FIREBASE_SA_PRIVATE_KEY mangler som secrets)");
+  }
+  const privateKeyPem = rawKey.replace(/\\n/g, "\n");
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claims = {
+    iss: email,
+    scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600
+  };
+
+  const encHeader = base64url(JSON.stringify(header));
+  const encClaims = base64url(JSON.stringify(claims));
+  const unsigned = `${encHeader}.${encClaims}`;
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    pemToArrayBuffer(privateKeyPem),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sigBuffer = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(unsigned)
+  );
+  const jwt = `${unsigned}.${base64url(sigBuffer)}`;
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=${encodeURIComponent("urn:ietf:params:oauth:grant-type:jwt-bearer")}&assertion=${encodeURIComponent(jwt)}`
+  });
+  const data = await res.json();
+  if (!res.ok || !data.access_token) {
+    throw new Error("Kunne ikke hente Google-token: " + JSON.stringify(data));
+  }
+
+  cachedAccessToken = { token: data.access_token, exp: Date.now() + (data.expires_in || 3600) * 1000 };
+  return data.access_token;
+}
+
+// Verifiserer en Firebase Auth idToken via Identity Toolkit REST-endepunkt.
+// Enklere og mer robust enn å implementere JWKS/RS256-verifisering selv i workeren.
+async function verifyFirebaseIdToken(idToken) {
+  if (!idToken) return null;
+  try {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.users?.[0]?.localId || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ============================================================
+//  Firestore REST-hjelpere (bruker service-account-token, går utenom Security Rules —
+//  kun til bruk internt i worker, ALDRI eksponert direkte til klienten)
+// ============================================================
+function fsBase(env) {
+  const project = env.FIREBASE_PROJECT_ID || "handleliste-64ec3";
+  return `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`;
+}
+
+function fsValueToJs(v) {
+  if (!v) return null;
+  if ("stringValue" in v) return v.stringValue;
+  if ("integerValue" in v) return Number(v.integerValue);
+  if ("doubleValue" in v) return v.doubleValue;
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("nullValue" in v) return null;
+  if ("timestampValue" in v) return v.timestampValue;
+  if ("mapValue" in v) return fsFieldsToJs(v.mapValue.fields || {});
+  if ("arrayValue" in v) return (v.arrayValue.values || []).map(fsValueToJs);
+  return null;
+}
+function fsFieldsToJs(fields) {
+  const out = {};
+  for (const k in fields) out[k] = fsValueToJs(fields[k]);
+  return out;
+}
+function jsToFsValue(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === "boolean") return { booleanValue: v };
+  if (typeof v === "number") return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(jsToFsValue) } };
+  if (typeof v === "object") return { mapValue: { fields: fsFieldsFromJs(v) } };
+  return { stringValue: String(v) };
+}
+function fsFieldsFromJs(obj) {
+  const out = {};
+  for (const k in obj) out[k] = jsToFsValue(obj[k]);
+  return out;
+}
+
+async function firestoreGetDoc(env, accessToken, path) {
+  const res = await fetch(`${fsBase(env)}/${path}`, {
+    headers: { "Authorization": "Bearer " + accessToken }
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Firestore GET feilet: " + res.status);
+  const data = await res.json();
+  return data.fields ? fsFieldsToJs(data.fields) : {};
+}
+
+async function firestoreListDocs(env, accessToken, collectionPath) {
+  const out = [];
+  let pageToken = "";
+  do {
+    const url = `${fsBase(env)}/${collectionPath}?pageSize=200${pageToken ? "&pageToken=" + pageToken : ""}`;
+    const res = await fetch(url, { headers: { "Authorization": "Bearer " + accessToken } });
+    if (!res.ok) throw new Error("Firestore LIST feilet: " + res.status);
+    const data = await res.json();
+    for (const d of (data.documents || [])) {
+      const id = d.name.split("/").pop();
+      out.push({ id, ...fsFieldsToJs(d.fields || {}) });
+    }
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return out;
+}
+
+// dottedFields: f.eks. { "notification.pushSentAt": 12345, "pushEnabled": false }
+async function firestorePatchDoc(env, accessToken, path, dottedFields) {
+  const topLevel = {};
+  const maskPaths = [];
+  for (const dottedKey in dottedFields) {
+    maskPaths.push(dottedKey);
+    const parts = dottedKey.split(".");
+    let cursor = topLevel;
+    for (let i = 0; i < parts.length - 1; i++) {
+      cursor[parts[i]] = cursor[parts[i]] || {};
+      cursor = cursor[parts[i]];
+    }
+    cursor[parts[parts.length - 1]] = dottedFields[dottedKey];
+  }
+  const maskQuery = maskPaths.map(p => `updateMask.fieldPaths=${encodeURIComponent(p)}`).join("&");
+  const res = await fetch(`${fsBase(env)}/${path}?${maskQuery}`, {
+    method: "PATCH",
+    headers: { "Authorization": "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: fsFieldsFromJs(topLevel) })
+  });
+  return res.ok;
+}
+
+// ============================================================
+//  FCM – send push via HTTP v1 API
+// ============================================================
+async function sendFcmPush(env, accessToken, pushToken, title, body, data) {
+  const project = env.FIREBASE_PROJECT_ID || "handleliste-64ec3";
+  const res = await fetch(`https://fcm.googleapis.com/v1/projects/${project}/messages:send`, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: {
+        token: pushToken,
+        notification: { title, body },
+        data: data || {},
+        webpush: { fcm_options: { link: "https://handleliste.pages.dev/" } }
+      }
+    })
+  });
+  const rawText = await res.text();
+  return { ok: res.ok, status: res.status, rawText };
+}
+
+// Går gjennom alle husstander og sender push for påminnelser som forfaller nå.
+// Kalles fra scheduled()-handleren (Cron Trigger).
+async function checkAndSendReminders(env) {
+  const accessToken = await getGoogleAccessToken(env);
+  const now = Date.now();
+  const graceWindowMs = 30 * 60 * 1000; // ikke send for påminnelser eldre enn 30 min (unngå spam etter nedetid)
+
+  const households = await firestoreListDocs(env, accessToken, "households");
+
+  for (const hh of households) {
+    const members = hh.members || {};
+    if (Array.isArray(members)) continue; // gammelt format uten navn – hopp over
+    const nameToUid = {};
+    for (const uid in members) nameToUid[String(members[uid]).trim()] = uid;
+
+    let tasks;
+    try {
+      tasks = await firestoreListDocs(env, accessToken, `lists/${hh.id}/tasks`);
+    } catch (e) {
+      continue; // ingen tavle for denne husstanden ennå
+    }
+
+    for (const task of tasks) {
+      if (task.completed) continue;
+      if (!task.notification || !task.notification.enabled) continue;
+      if (task.notification.pushSentAt) continue;
+      if (!task.dueDate) continue;
+
+      const minutesBefore = Number(task.notification.minutesBefore || 0);
+      const dueDateTime = new Date(`${task.dueDate}T${task.dueTime || "08:00"}:00`);
+      if (isNaN(dueDateTime.getTime())) continue;
+      const notifyAt = dueDateTime.getTime() - minutesBefore * 60000;
+
+      if (now >= notifyAt && (now - notifyAt) <= graceWindowMs) {
+        const targetUid = nameToUid[String(task.assignedTo || "").trim()];
+
+        if (targetUid) {
+          try {
+            const targetUser = await firestoreGetDoc(env, accessToken, `users/${targetUid}`);
+            if (targetUser && targetUser.pushEnabled && targetUser.pushToken) {
+              const fcmRes = await sendFcmPush(
+                env, accessToken, targetUser.pushToken,
+                "Påminnelse: " + task.title,
+                task.dueTime ? `I dag kl. ${task.dueTime}` : "I dag",
+                { tag: "reminder-" + task.id }
+              );
+              if (!fcmRes.ok && (fcmRes.status === 404 || fcmRes.status === 400)) {
+                await firestorePatchDoc(env, accessToken, `users/${targetUid}`, { pushEnabled: false });
+              }
+            }
+          } catch (e) {
+            // fortsett til neste oppgave selv om én sending feiler
+          }
+        }
+
+        // Marker som sendt uansett, så vi ikke prøver igjen hvert 5. minutt
+        try {
+          await firestorePatchDoc(env, accessToken, `lists/${hh.id}/tasks/${task.id}`, {
+            "notification.pushSentAt": now
+          });
+        } catch (e) { /* ignorer */ }
+      }
+    }
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -530,8 +807,62 @@ Regler:
     }
 
     // -------------------------------------------------------
+    //  /send-push – send push-varsel til et husstandsmedlem
+    // -------------------------------------------------------
+    if (url.pathname === "/send-push" && request.method === "POST") {
+      try {
+        const idToken = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        const callerUid = await verifyFirebaseIdToken(idToken);
+        if (!callerUid) return jsonRes({ error: "Ikke innlogget" }, 401);
+
+        const { householdId, targetUid, title, body, tag } = await request.json();
+        if (!householdId || !targetUid || !title) {
+          return jsonRes({ error: "Mangler householdId, targetUid eller title" }, 400);
+        }
+        if (targetUid === callerUid) {
+          return jsonRes({ sent: false, reason: "self" });
+        }
+
+        const accessToken = await getGoogleAccessToken(env);
+
+        // Bekreft at både avsender og mottaker faktisk er medlemmer av oppgitt husstand,
+        // slik at endepunktet ikke kan misbrukes til å varsle vilkårlige uid-er.
+        const household = await firestoreGetDoc(env, accessToken, `households/${householdId}`);
+        const members = household?.members || {};
+        if (!members[callerUid] || !members[targetUid]) {
+          return jsonRes({ error: "Ugyldig husstand/medlem" }, 403);
+        }
+
+        const targetUser = await firestoreGetDoc(env, accessToken, `users/${targetUid}`);
+        if (!targetUser?.pushEnabled || !targetUser?.pushToken) {
+          return jsonRes({ sent: false, reason: "not_enabled" });
+        }
+
+        const safeTitle = String(title).slice(0, 120);
+        const safeBody = String(body || "").slice(0, 200);
+
+        const fcmRes = await sendFcmPush(env, accessToken, targetUser.pushToken, safeTitle, safeBody, { tag: String(tag || "") });
+
+        if (!fcmRes.ok) {
+          if (fcmRes.status === 404 || fcmRes.status === 400) {
+            await firestorePatchDoc(env, accessToken, `users/${targetUid}`, { pushEnabled: false });
+          }
+          return jsonRes({ sent: false, error: "FCM-feil", status: fcmRes.status, detaljer: fcmRes.rawText });
+        }
+
+        return jsonRes({ sent: true });
+      } catch (err) {
+        return jsonRes({ error: err.message }, 500);
+      }
+    }
+
+    // -------------------------------------------------------
     //  Alt annet: statiske filer
     // -------------------------------------------------------
     return env.ASSETS.fetch(request);
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(checkAndSendReminders(env));
   }
 };
